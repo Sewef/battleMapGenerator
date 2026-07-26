@@ -178,26 +178,61 @@ function drawRegionPath(
   terrain: TerrainKind,
   thickness: number,
 ) {
-  for (let index = 0; index < path.length - 1; index += 1) {
-    const start = map.centers[path[index]];
-    const end = map.centers[path[index + 1]];
-    const steps = Math.max(Math.abs(end.x - start.x), Math.abs(end.y - start.y)) * 2;
-    for (let step = 0; step <= steps; step += 1) {
-      const ratio = step / Math.max(1, steps);
-      const x = Math.round(start.x + (end.x - start.x) * ratio);
-      const y = Math.round(start.y + (end.y - start.y) * ratio);
-      for (let offsetY = -thickness; offsetY <= thickness; offsetY += 1) {
-        for (let offsetX = -thickness; offsetX <= thickness; offsetX += 1) {
-          const tile = grid[y + offsetY]?.[x + offsetX];
-          if (
-            tile &&
-            tile.terrain !== Terrain.Water &&
-            tile.terrain !== Terrain.Lava
-          ) {
-            tile.terrain = terrain;
-          }
+  const points = path.map((region) => map.centers[region]);
+  let previousCell: Point | undefined;
+  const paintCell = (centerX: number, centerY: number) => {
+    for (let offsetY = -thickness; offsetY <= thickness; offsetY += 1) {
+      for (let offsetX = -thickness; offsetX <= thickness; offsetX += 1) {
+        if (
+          thickness > 0 &&
+          offsetX * offsetX + offsetY * offsetY >
+            (thickness + .35) * (thickness + .35)
+        ) {
+          continue;
+        }
+        const tile = grid[centerY + offsetY]?.[centerX + offsetX];
+        if (
+          tile &&
+          tile.terrain !== Terrain.Water &&
+          tile.terrain !== Terrain.Lava
+        ) {
+          tile.terrain = terrain;
         }
       }
+    }
+  };
+
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const point0 = points[Math.max(0, index - 1)];
+    const point1 = points[index];
+    const point2 = points[index + 1];
+    const point3 = points[Math.min(points.length - 1, index + 2)];
+    const distance = Math.hypot(point2.x - point1.x, point2.y - point1.y);
+    const steps = Math.max(2, Math.ceil(distance * 4));
+    for (let step = 0; step <= steps; step += 1) {
+      const t = step / steps;
+      const t2 = t * t;
+      const t3 = t2 * t;
+      const x = Math.round(.5 * (
+        2 * point1.x +
+        (-point0.x + point2.x) * t +
+        (2 * point0.x - 5 * point1.x + 4 * point2.x - point3.x) * t2 +
+        (-point0.x + 3 * point1.x - 3 * point2.x + point3.x) * t3
+      ));
+      const y = Math.round(.5 * (
+        2 * point1.y +
+        (-point0.y + point2.y) * t +
+        (2 * point0.y - 5 * point1.y + 4 * point2.y - point3.y) * t2 +
+        (-point0.y + 3 * point1.y - 3 * point2.y + point3.y) * t3
+      ));
+
+      // Fill the inside corner when rasterization changes both coordinates at
+      // once. This keeps the surface connected without changing its curve.
+      if (previousCell && previousCell.x !== x && previousCell.y !== y) {
+        paintCell(x, previousCell.y);
+      }
+      paintCell(x, y);
+      previousCell = { x, y };
     }
   }
 }
