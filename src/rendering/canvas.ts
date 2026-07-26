@@ -6,13 +6,23 @@ import {
   type TerrainKind,
 } from "../domain/map";
 import { getTerrainStyle } from "./palettes";
+import {
+  blockTile,
+  SOURCE_TILE_SIZE,
+  terrainTileset,
+  tilesetFiles,
+} from "./tilesets";
 
-const terrainTileset = new Image();
-export const terrainTilesetReady = new Promise<void>((resolve) => {
-  terrainTileset.addEventListener("load", () => resolve(), { once: true });
-  terrainTileset.addEventListener("error", () => resolve(), { once: true });
-});
-terrainTileset.src = "/assets/tilesets/1.png";
+const terrainTilesets = new Map<string, HTMLImageElement>();
+export const terrainTilesetReady = Promise.all(tilesetFiles.map((file) =>
+  new Promise<void>((resolve) => {
+    const image = new Image();
+    image.addEventListener("load", () => resolve(), { once: true });
+    image.addEventListener("error", () => resolve(), { once: true });
+    image.src = `/assets/tilesets/${file}`;
+    terrainTilesets.set(file, image);
+  })
+)).then(() => undefined);
 
 export interface RenderOptions {
   targetCanvas: HTMLCanvasElement;
@@ -66,33 +76,28 @@ const terrainPaintOrder: TerrainKind[] = [
   Terrain.Void,
 ];
 
-const grassModes = new Set<LandscapeMode>([
-  "countryside",
-  "river",
-  "coast",
-  "wetlands",
-  "ancient-forest",
-  "farmland",
-  "archipelago",
-]);
-
-function createGrassPattern(
+function createTerrainPattern(
+  mode: LandscapeMode,
+  terrain: TerrainKind,
   cellSize: number,
   context: CanvasRenderingContext2D,
 ) {
-  if (!terrainTileset.complete || !terrainTileset.naturalWidth) return null;
+  const definition = terrainTileset(mode, terrain);
+  const block = definition?.block;
+  const image = definition && terrainTilesets.get(definition.file);
+  if (!block || !image?.complete || !image.naturalWidth) return null;
+  const source = blockTile(block);
   const tile = document.createElement("canvas");
   tile.width = cellSize;
   tile.height = cellSize;
   const tileContext = tile.getContext("2d")!;
   tileContext.imageSmoothingEnabled = false;
-  // User-facing coordinates are one-based: tile 2;2 starts at pixel 32;32.
   tileContext.drawImage(
-    terrainTileset,
-    32,
-    32,
-    32,
-    32,
+    image,
+    source.x * SOURCE_TILE_SIZE,
+    source.y * SOURCE_TILE_SIZE,
+    SOURCE_TILE_SIZE,
+    SOURCE_TILE_SIZE,
     0,
     0,
     cellSize,
@@ -104,6 +109,9 @@ function createGrassPattern(
 function underlyingTerrain(grid: Grid, x: number, y: number): TerrainKind {
   const terrain = grid[y][x].terrain;
   if (!overlayTerrains.has(terrain)) return terrain;
+  const canUnderlay = (kind: TerrainKind) =>
+    !overlayTerrains.has(kind) &&
+    !(terrain === Terrain.Road && kind === Terrain.Cliff);
 
   for (let radius = 1; radius <= 3; radius += 1) {
     const candidates = [
@@ -112,7 +120,7 @@ function underlyingTerrain(grid: Grid, x: number, y: number): TerrainKind {
       grid[y]?.[x - radius]?.terrain,
       grid[y]?.[x + radius]?.terrain,
     ].filter((kind): kind is TerrainKind =>
-      kind !== undefined && !overlayTerrains.has(kind)
+      kind !== undefined && canUnderlay(kind)
     );
     if (candidates.length) {
       return candidates.sort((a, b) =>
@@ -191,12 +199,10 @@ function drawTerrainLayers(
     layer.height = height;
     const layerContext = layer.getContext("2d")!;
     const style = getTerrainStyle(terrain, mode);
-    const grassPattern = useTileset &&
-        terrain === Terrain.Ground &&
-        grassModes.has(mode)
-      ? createGrassPattern(cellSize, layerContext)
+    const terrainPattern = useTileset
+      ? createTerrainPattern(mode, terrain, cellSize, layerContext)
       : null;
-    layerContext.fillStyle = grassPattern ?? style.color;
+    layerContext.fillStyle = terrainPattern ?? style.color;
     layerContext.fillRect(0, 0, width, height);
 
     const gradient = layerContext.createLinearGradient(0, 0, width, height);

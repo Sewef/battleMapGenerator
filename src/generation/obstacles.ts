@@ -172,20 +172,12 @@ export function placeTrees(
     }
     let footprint = [{ x, y }];
     const sizeRoll = random();
-    if (sizeRoll < .1) {
+    if (sizeRoll < .14) {
       const directionX = x < grid[0].length - 1 ? 1 : -1;
       const directionY = y < grid.length - 1 ? 1 : -1;
       footprint = [
         { x, y }, { x: x + directionX, y },
         { x, y: y + directionY }, { x: x + directionX, y: y + directionY },
-      ];
-    } else if (sizeRoll < .24) {
-      const horizontal = random() > .5;
-      footprint = [
-        { x, y },
-        horizontal
-          ? { x: x + (x < grid[0].length - 1 ? 1 : -1), y }
-          : { x, y: y + (y < grid.length - 1 ? 1 : -1) },
       ];
     }
     const valid = footprint.every((point) => {
