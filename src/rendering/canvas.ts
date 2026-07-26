@@ -138,10 +138,12 @@ function drawTransitionTerrain(
           horizontal ? 1 : qx === 0 ? 0 : 2,
           vertical ? 1 : qy === 0 ? 0 : 2,
         );
+        const sourceQuadrantX = horizontal ? qx : 1 - qx;
+        const sourceQuadrantY = vertical ? qy : 1 - qy;
         const sourceX = sourceTile.x * SOURCE_TILE_SIZE +
-          (1 - qx) * SOURCE_TILE_SIZE / 2;
+          sourceQuadrantX * SOURCE_TILE_SIZE / 2;
         const sourceY = sourceTile.y * SOURCE_TILE_SIZE +
-          (1 - qy) * SOURCE_TILE_SIZE / 2;
+          sourceQuadrantY * SOURCE_TILE_SIZE / 2;
         const destinationX = x * cellSize + qx * cellSize / 2;
         const destinationY = y * cellSize + qy * cellSize / 2;
         context.drawImage(

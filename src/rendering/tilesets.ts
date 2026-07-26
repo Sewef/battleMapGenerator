@@ -34,13 +34,19 @@ const biomeTilesets: Partial<Record<LandscapeMode, BiomeTileset>> = {
   sewer: {
     file: "1.png",
     terrains: {
-      [Terrain.Water]: { block: { x: 0, y: 1 } },
+      [Terrain.Water]: {
+        block: { x: 0, y: 1 },
+        quarters: { x: 1, y: 1 },
+      },
     },
   },
   underground: {
     file: "1.png",
     terrains: {
-      [Terrain.Water]: { block: { x: 0, y: 1 } },
+      [Terrain.Water]: {
+        block: { x: 0, y: 1 },
+        quarters: { x: 1, y: 1 },
+      },
     },
   },
 };
@@ -85,7 +91,10 @@ const sharedTerrains: Partial<Record<
   },
   [Terrain.Water]: {
     file: "1.png",
-    tiles: { block: { x: 0, y: 2 } },
+    tiles: {
+      block: { x: 0, y: 2 },
+      quarters: { x: 1, y: 2 },
+    },
   },
   [Terrain.Beach]: {
     file: "1.png",
