@@ -20,8 +20,8 @@ const terrainStyles: Record<TerrainKind, TerrainStyle> = {
   [Terrain.Beach]: { color: "#d8c68f", alt: "#cfbb80", label: "Beach" },
   [Terrain.Road]: { color: "#aa9475", alt: "#a28b6c", label: "Road" },
   [Terrain.Bridge]: { color: "#876d4f", alt: "#7e6448", label: "Bridge" },
-  [Terrain.Cliff]: { color: "#44463e", alt: "#292b25", label: "Cliff" },
-  [Terrain.Ravine]: { color: "#776b59", alt: "#6c604f", label: "Ravine" },
+  [Terrain.Cliff]: { color: "#66685f", alt: "#575950", label: "Cliff" },
+  [Terrain.Ravine]: { color: "#59483f", alt: "#493a34", label: "Ravine" },
 };
 
 const biomePalettes: Record<

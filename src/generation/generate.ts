@@ -180,6 +180,16 @@ function drawRegionPath(
 ) {
   const points = path.map((region) => map.centers[region]);
   let previousCell: Point | undefined;
+  const paintSingleCell = (x: number, y: number) => {
+    const tile = grid[y]?.[x];
+    if (
+      tile &&
+      tile.terrain !== Terrain.Water &&
+      tile.terrain !== Terrain.Lava
+    ) {
+      tile.terrain = terrain;
+    }
+  };
   const paintCell = (centerX: number, centerY: number) => {
     for (let offsetY = -thickness; offsetY <= thickness; offsetY += 1) {
       for (let offsetX = -thickness; offsetX <= thickness; offsetX += 1) {
@@ -190,14 +200,7 @@ function drawRegionPath(
         ) {
           continue;
         }
-        const tile = grid[centerY + offsetY]?.[centerX + offsetX];
-        if (
-          tile &&
-          tile.terrain !== Terrain.Water &&
-          tile.terrain !== Terrain.Lava
-        ) {
-          tile.terrain = terrain;
-        }
+        paintSingleCell(centerX + offsetX, centerY + offsetY);
       }
     }
   };
@@ -232,6 +235,32 @@ function drawRegionPath(
         paintCell(x, previousCell.y);
       }
       paintCell(x, y);
+
+      if (terrain === Terrain.Ravine) {
+        const phase = (index + t) * 1.18 + path[0] * .73;
+        const widthWave = Math.sin(phase);
+        const extraWidth = widthWave > .38
+          ? 2
+          : widthWave > -.38 ? 1 : 0;
+        if (extraWidth > 0) {
+          const directionX = point2.x - point0.x;
+          const directionY = point2.y - point0.y;
+          const normal = Math.abs(directionX) >= Math.abs(directionY)
+            ? { x: 0, y: 1 }
+            : { x: 1, y: 0 };
+          const distanceFromCenter = thickness + 1;
+          paintSingleCell(
+            x + normal.x * distanceFromCenter,
+            y + normal.y * distanceFromCenter,
+          );
+          if (extraWidth > 1) {
+            paintSingleCell(
+              x - normal.x * distanceFromCenter,
+              y - normal.y * distanceFromCenter,
+            );
+          }
+        }
+      }
       previousCell = { x, y };
     }
   }
@@ -532,14 +561,14 @@ function generateCavern(
     let [x, y] = floor[Math.floor(random() * floor.length)].split(",").map(Number);
     const poolSize = Math.round((4 + Math.floor(random() * 10)) * waterWeight);
     for (let index = 0; index < poolSize; index += 1) {
-      if (grid[y]?.[x].terrain === Terrain.Ground) grid[y][x].terrain = Terrain.Water;
+      if (grid[y]?.[x]?.terrain === Terrain.Ground) grid[y][x].terrain = Terrain.Water;
       const directions = [
         { x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 },
       ];
       const direction = directions[Math.floor(random() * directions.length)];
       const nextX = x + direction.x;
       const nextY = y + direction.y;
-      if (grid[nextY]?.[nextX].terrain === Terrain.Ground) {
+      if (grid[nextY]?.[nextX]?.terrain === Terrain.Ground) {
         x = nextX;
         y = nextY;
       }

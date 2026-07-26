@@ -86,6 +86,7 @@ function createTerrainMask(
   cellSize: number,
   width: number,
   height: number,
+  includeUnderlying = true,
 ) {
   const mask = document.createElement("canvas");
   mask.width = width;
@@ -94,7 +95,10 @@ function createTerrainMask(
   maskContext.fillStyle = "#fff";
   for (let y = 0; y < grid.length; y += 1) {
     for (let x = 0; x < grid[y].length; x += 1) {
-      if (underlyingTerrain(grid, x, y) === terrain) {
+      const tileTerrain = includeUnderlying
+        ? underlyingTerrain(grid, x, y)
+        : grid[y][x].terrain;
+      if (tileTerrain === terrain) {
         maskContext.fillRect(
           x * cellSize,
           y * cellSize,
@@ -154,7 +158,12 @@ function drawTerrainLayers(
     layerContext.fillRect(0, 0, width, height);
 
     layerContext.globalCompositeOperation = "destination-in";
-    layerContext.filter = `blur(${Math.max(1.5, cellSize * .11)}px)`;
+    const maskBlur = terrain === Terrain.Ravine
+      ? Math.max(.75, cellSize * .035)
+      : terrain === Terrain.Cliff
+        ? Math.max(1, cellSize * .055)
+        : Math.max(1.5, cellSize * .11);
+    layerContext.filter = `blur(${maskBlur}px)`;
     layerContext.drawImage(mask, 0, 0);
     layerContext.filter = "none";
     layerContext.globalCompositeOperation = "source-over";
@@ -182,6 +191,142 @@ function drawGlobalTexture(
     }
   }
   context.restore();
+}
+
+function createMaskEdge(
+  mask: HTMLCanvasElement,
+  offsetX: number,
+  offsetY: number,
+  blur: number,
+  color: string,
+) {
+  const edge = document.createElement("canvas");
+  edge.width = mask.width;
+  edge.height = mask.height;
+  const edgeContext = edge.getContext("2d")!;
+  edgeContext.drawImage(mask, 0, 0);
+  edgeContext.globalCompositeOperation = "destination-out";
+  edgeContext.filter = `blur(${blur}px)`;
+  edgeContext.drawImage(mask, offsetX, offsetY);
+  edgeContext.filter = "none";
+  edgeContext.globalCompositeOperation = "source-in";
+  edgeContext.fillStyle = color;
+  edgeContext.fillRect(0, 0, edge.width, edge.height);
+  return edge;
+}
+
+function drawReliefBevels(
+  grid: Grid,
+  cellSize: number,
+  hiddenItems: ReadonlySet<string>,
+  hiddenOpacity: number,
+  width: number,
+  height: number,
+  context: CanvasRenderingContext2D,
+) {
+  for (const terrain of [Terrain.Cliff, Terrain.Ravine] as const) {
+    if (!grid.some((row) => row.some((tile) => tile.terrain === terrain))) {
+      continue;
+    }
+    const mask = createTerrainMask(
+      grid,
+      terrain,
+      cellSize,
+      width,
+      height,
+      false,
+    );
+    const raised = terrain === Terrain.Cliff;
+    const depth = raised
+      ? Math.max(2, cellSize * .16)
+      : Math.max(1.5, cellSize * .1);
+    const blur = raised
+      ? Math.max(1, cellSize * .07)
+      : Math.max(.5, cellSize * .025);
+    const topLeft = createMaskEdge(
+      mask,
+      depth,
+      depth,
+      blur,
+      raised
+        ? "rgba(248, 242, 220, .5)"
+        : "rgba(235, 202, 151, .62)",
+    );
+    const bottomRight = createMaskEdge(
+      mask,
+      -depth,
+      -depth,
+      blur,
+      raised
+        ? "rgba(20, 23, 21, .68)"
+        : "rgba(224, 185, 132, .55)",
+    );
+    const wash = document.createElement("canvas");
+    wash.width = width;
+    wash.height = height;
+    const washContext = wash.getContext("2d")!;
+    washContext.drawImage(mask, 0, 0);
+    washContext.globalCompositeOperation = "source-in";
+    washContext.fillStyle = raised ? "#f1ead5" : "#211f1b";
+    washContext.fillRect(0, 0, width, height);
+
+    context.save();
+    context.globalAlpha = hiddenItems.has(terrain) ? hiddenOpacity : 1;
+    context.drawImage(topLeft, 0, 0);
+    context.drawImage(bottomRight, 0, 0);
+
+    // A restrained inner wash makes cliffs feel solid and ravines feel deep
+    // while preserving the palette underneath.
+    context.globalAlpha *= raised ? .06 : .5;
+    context.drawImage(wash, 0, 0);
+    context.restore();
+
+    if (raised) {
+      context.save();
+      context.globalAlpha = hiddenItems.has(terrain) ? hiddenOpacity : .72;
+      context.strokeStyle = "rgba(29, 31, 28, .72)";
+      context.lineWidth = Math.max(1, cellSize * .035);
+      context.lineCap = "round";
+      context.beginPath();
+      for (let y = 0; y < grid.length; y += 1) {
+        for (let x = 0; x < grid[y].length; x += 1) {
+          if (grid[y][x].terrain !== Terrain.Cliff) continue;
+          const left = x * cellSize;
+          const top = y * cellSize;
+          const right = left + cellSize;
+          const bottom = top + cellSize;
+          if (grid[y + 1]?.[x]?.terrain !== Terrain.Cliff) {
+            for (const ratio of [.28, .62]) {
+              const jitter = (
+                terrainVariation(x, y, Math.round(ratio * 100)) - .5
+              ) * cellSize * .08;
+              const hatchX = left + cellSize * ratio + jitter;
+              context.moveTo(hatchX, bottom - cellSize * .03);
+              context.lineTo(
+                hatchX - cellSize * .09,
+                bottom - cellSize * (.18 + ratio * .05),
+              );
+            }
+          }
+          if (grid[y]?.[x + 1]?.terrain !== Terrain.Cliff) {
+            for (const ratio of [.32, .7]) {
+              const jitter = (
+                terrainVariation(x, y, Math.round(ratio * 130)) - .5
+              ) * cellSize * .08;
+              const hatchY = top + cellSize * ratio + jitter;
+              context.moveTo(right - cellSize * .03, hatchY);
+              context.lineTo(
+                right - cellSize * (.18 + ratio * .04),
+                hatchY - cellSize * .08,
+              );
+            }
+          }
+        }
+      }
+      context.stroke();
+      context.restore();
+    }
+  }
 }
 
 function drawRoadNetwork(
@@ -646,6 +791,15 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     context,
   );
   drawGlobalTexture(width, height, context);
+  drawReliefBevels(
+    grid,
+    cellSize,
+    hiddenItems,
+    hiddenOpacity,
+    width,
+    height,
+    context,
+  );
   drawShorelines(grid, cellSize, hiddenItems, hiddenOpacity, context);
   drawRoadNetwork(grid, cellSize, mode, hiddenItems, hiddenOpacity, context);
 
