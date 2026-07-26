@@ -49,14 +49,14 @@ const sharedTerrains: Partial<Record<
   TerrainKind,
   {
     file: string;
-    block: TileBlock;
+    tiles: TerrainTiles;
     includedModes?: LandscapeMode[];
     excludedModes?: LandscapeMode[];
   }
 >> = {
   [Terrain.Ground]: {
     file: "1.png",
-    block: { x: 0, y: 0 },
+    tiles: { block: { x: 0, y: 0 } },
     includedModes: [
       "countryside",
       "river",
@@ -69,7 +69,10 @@ const sharedTerrains: Partial<Record<
   },
   [Terrain.Difficult]: {
     file: "1.png",
-    block: { x: 4, y: 6 },
+    tiles: {
+      block: { x: 4, y: 6 },
+      quarters: { x: 5, y: 6 },
+    },
     includedModes: [
       "countryside",
       "river",
@@ -82,19 +85,22 @@ const sharedTerrains: Partial<Record<
   },
   [Terrain.Water]: {
     file: "1.png",
-    block: { x: 0, y: 2 },
+    tiles: { block: { x: 0, y: 2 } },
   },
   [Terrain.Beach]: {
     file: "1.png",
-    block: { x: 2, y: 4 },
+    tiles: {
+      block: { x: 2, y: 4 },
+      quarters: { x: 3, y: 4 },
+    },
   },
   [Terrain.Lava]: {
     file: "1.png",
-    block: { x: 4, y: 0 },
+    tiles: { block: { x: 4, y: 0 } },
   },
   [Terrain.Cliff]: {
     file: "5.png",
-    block: { x: 0, y: 0 },
+    tiles: { block: { x: 0, y: 0 } },
   },
 };
 
@@ -119,7 +125,7 @@ export function terrainTileset(
   ) {
     return undefined;
   }
-  return { file: shared.file, tiles: { block: shared.block } };
+  return { file: shared.file, tiles: shared.tiles };
 }
 
 export function atlasTile(
