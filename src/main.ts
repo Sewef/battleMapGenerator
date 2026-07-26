@@ -52,6 +52,7 @@ function applyPreset(preset: Preset, useNewSeed = true) {
     inputs[field.id].value = String(field.percent ? Number(value) * 100 : value);
   }
   if (useNewSeed || !seedInput.value) seedInput.value = randomSeed();
+  // seedInput.value = "oak-2889";
   document.querySelectorAll(".preset-card").forEach((card) => {
     card.classList.toggle(
       "active",

@@ -10,29 +10,37 @@ export interface TileBlock {
   y: number;
 }
 
+export interface TerrainTiles {
+  block: TileBlock;
+  quarters?: TileBlock;
+}
+
 interface BiomeTileset {
   file: string;
-  terrains: Partial<Record<TerrainKind, TileBlock>>;
+  terrains: Partial<Record<TerrainKind, TerrainTiles>>;
 }
 
 const biomeTilesets: Partial<Record<LandscapeMode, BiomeTileset>> = {
   "desert-canyon": {
     file: "1.png",
     terrains: {
-      [Terrain.Ground]: { x: 2, y: 3 },
-      [Terrain.Difficult]: { x: 4, y: 3 },
+      [Terrain.Ground]: { block: { x: 2, y: 3 } },
+      [Terrain.Difficult]: {
+        block: { x: 4, y: 3 },
+        quarters: { x: 5, y: 3 },
+      },
     },
   },
   sewer: {
     file: "1.png",
     terrains: {
-      [Terrain.Water]: { x: 0, y: 1 },
+      [Terrain.Water]: { block: { x: 0, y: 1 } },
     },
   },
   underground: {
     file: "1.png",
     terrains: {
-      [Terrain.Water]: { x: 0, y: 1 },
+      [Terrain.Water]: { block: { x: 0, y: 1 } },
     },
   },
 };
@@ -98,10 +106,10 @@ export const tilesetFiles = [...new Set([
 export function terrainTileset(
   mode: LandscapeMode,
   terrain: TerrainKind,
-): { file: string; block: TileBlock } | undefined {
+): { file: string; tiles: TerrainTiles } | undefined {
   const biome = biomeTilesets[mode];
-  const biomeBlock = biome?.terrains[terrain];
-  if (biome && biomeBlock) return { file: biome.file, block: biomeBlock };
+  const biomeTiles = biome?.terrains[terrain];
+  if (biome && biomeTiles) return { file: biome.file, tiles: biomeTiles };
 
   const shared = sharedTerrains[terrain];
   if (
@@ -111,19 +119,20 @@ export function terrainTileset(
   ) {
     return undefined;
   }
-  return { file: shared.file, block: shared.block };
+  return { file: shared.file, tiles: { block: shared.block } };
 }
 
-export function blockTile(
+export function atlasTile(
   block: TileBlock,
   offsetX = 1,
   offsetY = 1,
 ) {
   // The atlas stores each 3×3 block in a five-tile-wide horizontal slot.
   // User-facing X positions are 0, 2, 4; they map to slot starts 0, 5, 10.
+  const slot = Math.floor(block.x / HORIZONTAL_COORDINATE_STEP);
+  const areaOffset = block.x % HORIZONTAL_COORDINATE_STEP === 0 ? 0 : 3;
   return {
-    x: block.x / HORIZONTAL_COORDINATE_STEP * HORIZONTAL_SLOT_SIZE +
-      offsetX,
+    x: slot * HORIZONTAL_SLOT_SIZE + areaOffset + offsetX,
     y: block.y * TILESET_BLOCK_SIZE + offsetY,
   };
 }
