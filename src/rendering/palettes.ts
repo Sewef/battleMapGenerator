@@ -61,21 +61,11 @@ const biomePalettes: Record<
   },
 };
 
-const biomeTerrainOverrides: Partial<
-  Record<LandscapeMode, Partial<Record<TerrainKind, Omit<TerrainStyle, "label">>>>
-> = {
-  volcanic: {
-    [Terrain.Cliff]: { color: "#aaa296", alt: "#989185" },
-    [Terrain.Ravine]: { color: "#4b3b37", alt: "#40312e" },
-  },
-};
-
 export function getTerrainStyle(kind: TerrainKind, mode: LandscapeMode): TerrainStyle {
   const base = terrainStyles[kind];
-  const themedBase = kind === Terrain.Ground
+  return kind === Terrain.Ground
     ? { ...base, ...biomePalettes[mode].ground }
     : kind === Terrain.Difficult
       ? { ...base, ...biomePalettes[mode].difficult }
       : base;
-  return { ...themedBase, ...biomeTerrainOverrides[mode]?.[kind] };
 }

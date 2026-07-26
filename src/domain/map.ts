@@ -76,9 +76,9 @@ export const TERRAIN_RULES: Record<
 
 export const OBSTACLE_RULES: Record<
   Exclude<ObstacleKind, "none">,
-  { label: string; movement: "blocked"; blocksSight: true }
+  { label: string; movement: "blocked"; blocksSight: boolean }
 > = {
   [Obstacle.Tree]: { label: "Tree", movement: "blocked", blocksSight: true },
-  [Obstacle.Rock]: { label: "Rock", movement: "blocked", blocksSight: true },
+  [Obstacle.Rock]: { label: "Rock", movement: "blocked", blocksSight: false },
   [Obstacle.Building]: { label: "Building", movement: "blocked", blocksSight: true },
 };

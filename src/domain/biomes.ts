@@ -39,7 +39,7 @@ export const PRESETS: Preset[] = [
     description: "Tight passages, rare chambers, rough ground, and underground pools.",
     width: 36, height: 24, seed: "", scale: 7, mode: "underground",
     waterWeight: 1, difficultWeight: 1, reliefWeight: 1,
-    rockRatio: 0, treeRatio: 0, buildingCount: 0,
+    rockRatio: 0.02, treeRatio: 0, buildingCount: 0,
   },
   {
     id: "volcanic",
