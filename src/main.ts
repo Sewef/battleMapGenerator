@@ -28,6 +28,7 @@ const inputs = Object.fromEntries(
 
 let activePreset = PRESETS[0];
 let currentGrid: Grid = [];
+const hiddenLegendItems = new Set<string>();
 
 function updateLabels() {
   document.querySelector("#width-value")!.textContent = widthInput.value;
@@ -65,6 +66,7 @@ function renderMap(grid: Grid, targetCanvas = previewCanvas, cellSize?: number) 
     cellSize,
     pixelRatio: targetCanvas === previewCanvas ? undefined : 1,
     updateInterface: targetCanvas === previewCanvas,
+    hiddenItems: hiddenLegendItems,
   });
 }
 
@@ -108,7 +110,35 @@ document.querySelector("#reset")!.addEventListener("click", () => {
   generate();
 });
 document.querySelector("#download")!.addEventListener("click", () => {
-  downloadWebp(currentGrid, activePreset.mode, seedInput.value.trim());
+  downloadWebp(
+    currentGrid,
+    activePreset.mode,
+    seedInput.value.trim(),
+    hiddenLegendItems,
+  );
+});
+document.querySelector("#legend")!.addEventListener("click", (event) => {
+  const groupButton = (event.target as HTMLElement).closest<HTMLButtonElement>(
+    "[data-legend-group-items]",
+  );
+  if (groupButton) {
+    const items = groupButton.dataset.legendGroupItems?.split(",") ?? [];
+    const allHidden = items.every((item) => hiddenLegendItems.has(item));
+    for (const item of items) {
+      if (allHidden) hiddenLegendItems.delete(item);
+      else hiddenLegendItems.add(item);
+    }
+    renderMap(currentGrid);
+    return;
+  }
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>(
+    "[data-legend-item]",
+  );
+  const item = button?.dataset.legendItem;
+  if (!item) return;
+  if (hiddenLegendItems.has(item)) hiddenLegendItems.delete(item);
+  else hiddenLegendItems.add(item);
+  renderMap(currentGrid);
 });
 for (const input of [widthInput, heightInput, scaleInput, ...Object.values(inputs)]) {
   input.addEventListener("input", updateLabels);

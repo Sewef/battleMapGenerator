@@ -3,7 +3,12 @@ import { drawGrid } from "../rendering/canvas";
 
 const WEBP_QUALITY = 0.95;
 
-function renderExportCanvas(grid: Grid, mode: LandscapeMode, cellSize: number) {
+function renderExportCanvas(
+  grid: Grid,
+  mode: LandscapeMode,
+  cellSize: number,
+  hiddenItems: ReadonlySet<string>,
+) {
   const canvas = document.createElement("canvas");
   drawGrid(grid, {
     targetCanvas: canvas,
@@ -11,6 +16,9 @@ function renderExportCanvas(grid: Grid, mode: LandscapeMode, cellSize: number) {
     cellSize,
     pixelRatio: 1,
     updateInterface: false,
+    hiddenItems,
+    hiddenOpacity: 0,
+    transparentBackground: true,
   });
   return canvas;
 }
@@ -26,11 +34,12 @@ export function downloadWebp(
   grid: Grid,
   mode: LandscapeMode,
   seed: string,
+  hiddenItems: ReadonlySet<string>,
   cellSize = 64,
 ) {
   const link = document.createElement("a");
   link.download = mapFilename(grid, seed, "webp");
-  link.href = renderExportCanvas(grid, mode, cellSize).toDataURL(
+  link.href = renderExportCanvas(grid, mode, cellSize, hiddenItems).toDataURL(
     "image/webp",
     WEBP_QUALITY,
   );

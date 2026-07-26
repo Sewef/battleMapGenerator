@@ -13,15 +13,15 @@ export interface TerrainStyle {
 const terrainStyles: Record<TerrainKind, TerrainStyle> = {
   [Terrain.Void]: { color: "#263334", alt: "#222f30", label: "Void" },
   [Terrain.Ground]: { color: "#b8ca8e", alt: "#afc382", label: "Ground" },
-  [Terrain.Difficult]: { color: "#9fa96c", alt: "#949f61", label: "Difficult · ×2" },
-  [Terrain.Water]: { color: "#7ea7a7", alt: "#739c9e", label: "Water · ×2" },
-  [Terrain.Lava]: { color: "#d7542f", alt: "#bd3e27", label: "Lava · blocked" },
-  [Terrain.Beach]: { color: "#d8c68f", alt: "#cfbb80", label: "Beach · ×2" },
+  [Terrain.Difficult]: { color: "#9fa96c", alt: "#949f61", label: "Difficult" },
+  [Terrain.Water]: { color: "#7ea7a7", alt: "#739c9e", label: "Water" },
+  [Terrain.Lava]: { color: "#d7542f", alt: "#bd3e27", label: "Lava" },
+  [Terrain.Beach]: { color: "#d8c68f", alt: "#cfbb80", label: "Beach" },
   [Terrain.Road]: { color: "#aa9475", alt: "#a28b6c", label: "Road" },
   [Terrain.Bridge]: { color: "#876d4f", alt: "#7e6448", label: "Bridge" },
-  [Terrain.Rock]: { color: "#85877c", alt: "#7a7d72", label: "Rock · blocks sight" },
-  [Terrain.Cliff]: { color: "#6f7165", alt: "#64675c", label: "Cliff · blocks sight" },
-  [Terrain.Ravine]: { color: "#776b59", alt: "#6c604f", label: "Ravine · clear sight" },
+  [Terrain.Rock]: { color: "#85877c", alt: "#7a7d72", label: "Rock" },
+  [Terrain.Cliff]: { color: "#6f7165", alt: "#64675c", label: "Cliff" },
+  [Terrain.Ravine]: { color: "#776b59", alt: "#6c604f", label: "Ravine" },
 };
 
 const biomePalettes: Record<

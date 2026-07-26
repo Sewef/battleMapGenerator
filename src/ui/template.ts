@@ -16,19 +16,9 @@ export function renderApp(root: HTMLElement) {
         <a class="brand" href="#" aria-label="Terra, home">
           <span class="brand-mark" aria-hidden="true">T</span><span>Terra</span>
         </a>
-        <div class="status"><span></span> Prototype 02</div>
       </header>
 
-      <section class="hero">
-        <div>
-          <p class="eyebrow">Outdoor terrain generator</p>
-          <h1>Shape the landscape.<br /><em>Set the stage for battle.</em></h1>
-        </div>
-        <p class="intro">Terrain, movement rules, and obstacles come together as a complete tactical map — reproducible and ready to export.</p>
-      </section>
-
       <section class="preset-section">
-        <div class="section-label">Map generator</div>
         <div class="preset-list">
           ${PRESETS.map((preset) => `
             <button class="preset-card" type="button" data-preset="${preset.id}">

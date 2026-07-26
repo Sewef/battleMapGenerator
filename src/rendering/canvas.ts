@@ -12,6 +12,9 @@ export interface RenderOptions {
   cellSize?: number;
   pixelRatio?: number;
   updateInterface?: boolean;
+  hiddenItems?: ReadonlySet<string>;
+  hiddenOpacity?: number;
+  transparentBackground?: boolean;
 }
 
 function drawTree(
@@ -157,7 +160,9 @@ function drawTerrainDetail(
 export function drawGrid(grid: Grid, options: RenderOptions) {
   if (!grid.length) return;
   const { targetCanvas: canvas, mode } = options;
-  const context = canvas.getContext("2d")!;
+  const context = canvas.getContext("2d", {
+    alpha: options.transparentBackground ?? false,
+  })!;
   const rows = grid.length;
   const columns = grid[0].length;
   const cellSize = options.cellSize ??
@@ -165,6 +170,8 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   const pixelRatio = options.pixelRatio ??
     Math.min(window.devicePixelRatio || 1, 2);
   const updateInterface = options.updateInterface ?? true;
+  const hiddenItems = options.hiddenItems ?? new Set<string>();
+  const hiddenOpacity = options.hiddenOpacity ?? .14;
   const width = columns * cellSize;
   const height = rows * cellSize;
 
@@ -175,12 +182,17 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     canvas.style.height = `${height}px`;
   }
   context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  if (!options.transparentBackground) {
+    context.fillStyle = "#f3f0e5";
+    context.fillRect(0, 0, width, height);
+  }
 
   const counts = new Map<string, number>();
   for (let y = 0; y < rows; y += 1) {
     for (let x = 0; x < columns; x += 1) {
       const tile = grid[y][x];
       const style = getTerrainStyle(tile.terrain, mode);
+      context.globalAlpha = hiddenItems.has(tile.terrain) ? hiddenOpacity : 1;
       context.fillStyle = (x + y * 3) % 4 === 0 ? style.alt : style.color;
       context.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
       drawTerrainDetail(grid, x, y, cellSize, context);
@@ -190,6 +202,7 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
       counts.set(tile.terrain, (counts.get(tile.terrain) ?? 0) + 1);
     }
   }
+  context.globalAlpha = 1;
 
   const treeGroups = new Map<number, Array<{ x: number; y: number }>>();
   for (let y = 0; y < rows; y += 1) {
@@ -202,30 +215,63 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
         treeGroups.set(id, group);
       }
       if (tile.obstacle === Obstacle.Building) {
+        context.globalAlpha =
+          hiddenItems.has(Obstacle.Building) ? hiddenOpacity : 1;
         drawBuilding(x, y, cellSize, grid, context);
+        context.globalAlpha = 1;
       }
       if (tile.obstacle !== Obstacle.None) {
         counts.set(tile.obstacle, (counts.get(tile.obstacle) ?? 0) + 1);
       }
     }
   }
+  context.globalAlpha = hiddenItems.has(Obstacle.Tree) ? hiddenOpacity : 1;
   for (const points of treeGroups.values()) drawTree(points, cellSize, context);
+  context.globalAlpha = 1;
 
   if (!updateInterface) return;
-  const legendItems = [
-    ...Object.values(Terrain).map((kind) => ({
+  const terrainItems = Object.values(Terrain).map((kind) => ({
       key: kind,
       label: getTerrainStyle(kind, mode).label,
       className: kind,
       color: getTerrainStyle(kind, mode).color,
-    })),
-    { key: Obstacle.Tree, label: "Tree · blocks sight", className: "tree", color: "" },
-    { key: Obstacle.Building, label: "Building · blocks sight", className: "building", color: "" },
+    })).filter(({ key }) => (counts.get(key) ?? 0) > 0);
+  const obstacleItems = [
+    { key: Obstacle.Tree, label: "Tree", className: "tree", color: "" },
+    { key: Obstacle.Building, label: "Building", className: "building", color: "" },
   ].filter(({ key }) => (counts.get(key) ?? 0) > 0);
 
-  document.querySelector("#legend")!.innerHTML = legendItems.map(
-    ({ key, label, className, color }) =>
-      `<span><i class="swatch ${className}"${color ? ` style="background:${color}"` : ""}></i>${label}<small>${counts.get(key)}</small></span>`,
-  ).join("");
+  type LegendItem = {
+    key: string;
+    label: string;
+    className: string;
+    color: string;
+  };
+  const renderLegendGroup = (
+    label: string,
+    items: LegendItem[],
+  ) => {
+    if (!items.length) return "";
+    const keys = items.map(({ key }) => key);
+    const allHidden = keys.every((key) => hiddenItems.has(key));
+    return `
+      <section class="legend-group">
+        <div class="legend-heading">
+          <strong>${label}</strong>
+          <button type="button" class="legend-toggle ${allHidden ? "is-hidden" : ""}" data-legend-group-items="${keys.join(",")}">
+            ${allHidden ? "Show all" : "Hide all"}
+          </button>
+        </div>
+        <div class="legend-items">
+          ${items.map(({ key, label: itemLabel, className, color }) =>
+            `<button type="button" data-legend-item="${key}" class="legend-item ${hiddenItems.has(key) ? "is-hidden" : ""}" aria-pressed="${hiddenItems.has(key)}"><i class="swatch ${className}"${color ? ` style="background:${color}"` : ""}></i><span>${itemLabel}</span><small>${counts.get(key)}</small></button>`
+          ).join("")}
+        </div>
+      </section>`;
+  };
+
+  document.querySelector("#legend")!.innerHTML =
+    renderLegendGroup("Terrain", terrainItems) +
+    renderLegendGroup("Obstacles", obstacleItems);
   document.querySelector("#dimensions")!.textContent = `${columns} × ${rows} cells`;
 }
