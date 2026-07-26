@@ -205,20 +205,24 @@ function drawTerrainLayers(
     layerContext.fillStyle = terrainPattern ?? style.color;
     layerContext.fillRect(0, 0, width, height);
 
-    const gradient = layerContext.createLinearGradient(0, 0, width, height);
-    gradient.addColorStop(0, "rgba(255,255,255,.09)");
-    gradient.addColorStop(.48, "rgba(255,255,255,0)");
-    gradient.addColorStop(1, "rgba(19,31,25,.10)");
-    layerContext.fillStyle = gradient;
-    layerContext.fillRect(0, 0, width, height);
+    if (!terrainPattern) {
+      const gradient = layerContext.createLinearGradient(0, 0, width, height);
+      gradient.addColorStop(0, "rgba(255,255,255,.09)");
+      gradient.addColorStop(.48, "rgba(255,255,255,0)");
+      gradient.addColorStop(1, "rgba(19,31,25,.10)");
+      layerContext.fillStyle = gradient;
+      layerContext.fillRect(0, 0, width, height);
+    }
 
     layerContext.globalCompositeOperation = "destination-in";
-    const maskBlur = terrain === Terrain.Ravine
-      ? Math.max(.75, cellSize * .035)
-      : terrain === Terrain.Cliff
-        ? Math.max(1, cellSize * .055)
-        : Math.max(1.5, cellSize * .11);
-    layerContext.filter = `blur(${maskBlur}px)`;
+    const maskBlur = useTileset
+      ? 0
+      : terrain === Terrain.Ravine
+        ? Math.max(.75, cellSize * .035)
+        : terrain === Terrain.Cliff
+          ? Math.max(1, cellSize * .055)
+          : Math.max(1.5, cellSize * .11);
+    if (maskBlur) layerContext.filter = `blur(${maskBlur}px)`;
     layerContext.drawImage(mask, 0, 0);
     layerContext.filter = "none";
     layerContext.globalCompositeOperation = "source-over";
@@ -847,17 +851,19 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     height,
     context,
   );
-  drawGlobalTexture(width, height, context);
-  drawReliefBevels(
-    grid,
-    cellSize,
-    hiddenItems,
-    hiddenOpacity,
-    width,
-    height,
-    context,
-  );
-  drawShorelines(grid, cellSize, hiddenItems, hiddenOpacity, context);
+  if (!useTileset) {
+    drawGlobalTexture(width, height, context);
+    drawReliefBevels(
+      grid,
+      cellSize,
+      hiddenItems,
+      hiddenOpacity,
+      width,
+      height,
+      context,
+    );
+    drawShorelines(grid, cellSize, hiddenItems, hiddenOpacity, context);
+  }
   drawRoadNetwork(grid, cellSize, mode, hiddenItems, hiddenOpacity, context);
 
   for (let y = 0; y < rows; y += 1) {
@@ -865,6 +871,7 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
       const tile = grid[y][x];
       context.globalAlpha = hiddenItems.has(tile.terrain) ? hiddenOpacity : 1;
       if (
+        !useTileset &&
         !overlayTerrains.has(tile.terrain) &&
         tile.terrain !== Terrain.Water &&
         tile.terrain !== Terrain.Cliff &&

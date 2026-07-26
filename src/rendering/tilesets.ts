@@ -84,6 +84,10 @@ const sharedTerrains: Partial<Record<
     file: "1.png",
     block: { x: 4, y: 0 },
   },
+  [Terrain.Cliff]: {
+    file: "5.png",
+    block: { x: 0, y: 0 },
+  },
 };
 
 export const tilesetFiles = [...new Set([
