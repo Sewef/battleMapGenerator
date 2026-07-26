@@ -16,6 +16,7 @@ import {
   scatterDifficultTerrain,
   scatterRocks,
 } from "./obstacles";
+import { generateCity } from "./city";
 
 interface RegionMap {
   centers: Point[];
@@ -344,7 +345,12 @@ function connectCavernAccess(
   grid[target.y][target.x].terrain = Terrain.Ground;
 }
 
-function generateCavern(grid: Grid, random: Random) {
+function generateCavern(
+  grid: Grid,
+  random: Random,
+  waterWeight: number,
+  difficultWeight: number,
+) {
   for (const row of grid) {
     for (const tile of row) tile.terrain = Terrain.Rock;
   }
@@ -398,10 +404,10 @@ function generateCavern(grid: Grid, random: Random) {
   }
 
   // A rare, compact underground pool is carved only inside existing floor.
-  if (random() < .38 && carved.size > 30) {
+  if (random() < .38 * waterWeight && carved.size > 30) {
     const floor = [...carved];
     let [x, y] = floor[Math.floor(random() * floor.length)].split(",").map(Number);
-    const poolSize = 4 + Math.floor(random() * 10);
+    const poolSize = Math.round((4 + Math.floor(random() * 10)) * waterWeight);
     for (let index = 0; index < poolSize; index += 1) {
       if (grid[y]?.[x].terrain === Terrain.Ground) grid[y][x].terrain = Terrain.Water;
       const directions = [
@@ -429,7 +435,7 @@ function generateCavern(grid: Grid, random: Random) {
 
   scatterDifficultTerrain(
     grid,
-    Math.round(carved.size * (.13 + random() * .07)),
+    Math.round(carved.size * (.13 + random() * .07) * difficultWeight),
     cellDistancesFromWater(grid),
     random,
   );
@@ -448,7 +454,7 @@ export function generateTerrain(options: TerrainOptions): Grid {
 
   if (options.mode === "countryside") {
     const pond = selectConnectedRegions(
-      map, Math.round(total * .035), seededRandom(`${seed}:pond`), () => true,
+      map, Math.round(total * .035 * options.waterWeight), seededRandom(`${seed}:pond`), () => true,
     );
     paintRegions(grid, map, pond, Terrain.Water);
     paintShore(grid, seededRandom(`${seed}:pond-shore`), 2);
@@ -458,11 +464,14 @@ export function generateTerrain(options: TerrainOptions): Grid {
   if (options.mode === "river") {
     const riverRandom = seededRandom(`${seed}:river`);
     const riverIsHorizontal = riverRandom() > .5;
-    meanderingCrossing(
+    if (options.waterWeight > 0) meanderingCrossing(
       grid,
       riverIsHorizontal,
       riverRandom,
-      [1, 2],
+      [
+        Math.max(0, Math.round(options.waterWeight)),
+        Math.max(0, Math.round(2 * options.waterWeight)),
+      ],
       () => Terrain.Water,
     );
     paintShore(grid, seededRandom(`${seed}:river-shore`), 2);
@@ -477,7 +486,7 @@ export function generateTerrain(options: TerrainOptions): Grid {
     const coastSeeds = edgeRegions(map, width, height, "left");
     const sea = selectConnectedRegions(
       map,
-      Math.round(total * .3),
+      Math.round(total * .3 * options.waterWeight),
       seededRandom(`${seed}:coast`),
       () => true,
       coastSeeds,
@@ -491,7 +500,7 @@ export function generateTerrain(options: TerrainOptions): Grid {
     const wetlandRandom = seededRandom(`${seed}:wetlands`);
     const firstPool = selectConnectedRegions(
       map,
-      Math.round(total * .16),
+      Math.round(total * .16 * options.waterWeight),
       wetlandRandom,
       () => true,
     );
@@ -499,7 +508,7 @@ export function generateTerrain(options: TerrainOptions): Grid {
 
     const secondPool = selectConnectedRegions(
       map,
-      Math.round(total * .08),
+      Math.round(total * .08 * options.waterWeight),
       seededRandom(`${seed}:wetlands-pool`),
       (region) => !firstPool.has(region),
     );
@@ -507,24 +516,29 @@ export function generateTerrain(options: TerrainOptions): Grid {
 
     // Narrow channels connect the wetland visually to the landscape beyond the
     // map without turning it into a single broad river.
-    meanderingCrossing(
+    if (options.waterWeight > 0) meanderingCrossing(
       grid,
       wetlandRandom() > .5,
       seededRandom(`${seed}:wetlands-channel`),
-      [0, 1],
+      [0, Math.max(0, Math.round(options.waterWeight))],
       () => Terrain.Water,
     );
     const wetlandDistance = cellDistancesFromWater(grid);
     scatterDifficultTerrain(
       grid,
-      Math.round(total * .18),
+      Math.round(total * .18 * options.difficultWeight),
       wetlandDistance,
       seededRandom(`${seed}:wetland-mud`),
     );
   }
 
   if (options.mode === "underground") {
-    generateCavern(grid, seededRandom(`${seed}:cavern`));
+    generateCavern(
+      grid,
+      seededRandom(`${seed}:cavern`),
+      options.waterWeight,
+      options.difficultWeight,
+    );
   }
 
   if (options.mode === "volcanic") {
@@ -534,16 +548,16 @@ export function generateTerrain(options: TerrainOptions): Grid {
     const hasLake = morphology < .68 || morphology > .86;
     let lavaPath: Point[] = [];
 
-    if (hasRiver) {
+    if (hasRiver && options.waterWeight > 0) {
       lavaPath = meanderingCrossing(
         grid,
         volcanicRandom() > .5,
         seededRandom(`${seed}:lava-river`),
-        [0, 1],
+        [0, Math.max(0, Math.round(options.waterWeight))],
         () => Terrain.Lava,
       );
     }
-    if (hasLake) {
+    if (hasLake && options.waterWeight > 0) {
       const visiblePath = lavaPath.filter(({ x, y }) =>
         x >= 0 && x < width && y >= 0 && y < height,
       );
@@ -554,7 +568,7 @@ export function generateTerrain(options: TerrainOptions): Grid {
         : undefined;
       const lavaLake = selectConnectedRegions(
         map,
-        Math.round(total * (.08 + volcanicRandom() * .07)),
+        Math.round(total * (.08 + volcanicRandom() * .07) * options.waterWeight),
         seededRandom(`${seed}:lava-lake`),
         () => true,
         preferred,
@@ -564,7 +578,7 @@ export function generateTerrain(options: TerrainOptions): Grid {
 
     scatterDifficultTerrain(
       grid,
-      Math.round(total * (.18 + volcanicRandom() * .08)),
+      Math.round(total * (.18 + volcanicRandom() * .08) * options.difficultWeight),
       grid.map((row) => row.map(() => Infinity)),
       seededRandom(`${seed}:ash-fields`),
     );
@@ -575,16 +589,25 @@ export function generateTerrain(options: TerrainOptions): Grid {
     const ridgeEnds = ridgeDistances
       .map((distance, region) => ({ distance, region }))
       .filter(({ distance }) => distance >= 3 && distance <= 6);
-    if (ridgeEnds.length) {
+    if (ridgeEnds.length && options.reliefWeight > 0) {
       const ridgeEnd = ridgeEnds[Math.floor(ridgeRandom() * ridgeEnds.length)].region;
       drawRegionPath(
         grid,
         map,
         shortestRegionPath(map, ridgeStart, ridgeEnd, ridgeRandom),
         Terrain.Cliff,
-        0,
+        Math.max(0, Math.round(options.reliefWeight) - 1),
       );
     }
+  }
+
+  if (options.mode === "city") {
+    generateCity(
+      grid,
+      seededRandom(`${seed}:city`),
+      options.buildingCount,
+      options.difficultWeight,
+    );
   }
 
   if (options.mode === "highlands") {
@@ -594,20 +617,28 @@ export function generateTerrain(options: TerrainOptions): Grid {
     const ridgeEnds = ridgeDistances
       .map((distance, region) => ({ distance, region }))
       .filter(({ distance }) => distance >= 5 && distance <= 8);
-    if (ridgeEnds.length) {
+    if (ridgeEnds.length && options.reliefWeight > 0) {
       const ridgeEnd = ridgeEnds[Math.floor(ridgeRandom() * ridgeEnds.length)].region;
       drawRegionPath(
         grid,
         map,
         shortestRegionPath(map, ridgeStart, ridgeEnd, ridgeRandom),
         Terrain.Cliff,
-        1,
+        Math.max(0, Math.round(options.reliefWeight)),
       );
     }
     const ravinePath = pathAcrossMap(
       map, width, height, ridgeRandom() > .5, seededRandom(`${seed}:ravine`),
     );
-    drawRegionPath(grid, map, ravinePath, Terrain.Ravine, 0);
+    if (options.reliefWeight > 0) {
+      drawRegionPath(
+        grid,
+        map,
+        ravinePath,
+        Terrain.Ravine,
+        Math.max(0, Math.round(options.reliefWeight) - 1),
+      );
+    }
     drawRoadCrossing(
       grid,
       ridgeRandom() > .5,
@@ -617,16 +648,28 @@ export function generateTerrain(options: TerrainOptions): Grid {
 
   // Second pass: obstacles do not participate in terrain morphology.
   const waterDistance = cellDistancesFromWater(grid);
-  if (options.mode !== "underground") {
+  if (options.mode !== "underground" && options.mode !== "city") {
     scatterRocks(grid, Math.round(total * options.rockRatio), seededRandom(`${seed}:rocks`));
   }
-  if (options.mode !== "underground" && options.mode !== "volcanic") {
+  if (
+    options.mode !== "underground" &&
+    options.mode !== "volcanic" &&
+    options.mode !== "city"
+  ) {
     placeBuildings(grid, options.buildingCount, seededRandom(`${seed}:buildings`));
     placeTrees(
       grid,
       Math.round(total * options.treeRatio),
       waterDistance,
       seededRandom(`${seed}:groves`),
+    );
+  }
+  if (options.mode === "city") {
+    placeTrees(
+      grid,
+      Math.round(total * options.treeRatio),
+      waterDistance,
+      seededRandom(`${seed}:street-trees`),
     );
   }
   return grid;

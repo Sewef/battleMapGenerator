@@ -51,6 +51,9 @@ h1 em { font-family: "Newsreader", serif; font-weight: 500; color: #617553; }
 .preset-icon.volcanic { background: #4e4b48; }
 .preset-icon.volcanic::before { width: 34px; height: 26px; left: 3px; bottom: -2px; background: #262d2d; clip-path: polygon(0 100%, 42% 12%, 58% 12%, 100% 100%); }
 .preset-icon.volcanic::after { width: 8px; height: 23px; left: 16px; top: 8px; border-radius: 50%; background: #d7542f; box-shadow: 0 -5px 6px #ed9a45; }
+.preset-icon.city { background: #a9a18d; }
+.preset-icon.city::before { width: 11px; height: 25px; left: 5px; bottom: 5px; background: #725846; box-shadow: 13px 5px #8c674e, 25px -2px #654d40; }
+.preset-icon.city::after { width: 44px; height: 5px; left: -2px; top: 19px; background: #c7b893; transform: rotate(-8deg); }
 .preset-icon.highlands { background: #9b9c84; }
 .preset-icon.highlands::before { width: 34px; height: 30px; left: 3px; bottom: 0; background: #666d5f; clip-path: polygon(0 100%, 35% 20%, 52% 57%, 72% 0, 100% 100%); }
 

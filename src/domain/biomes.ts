@@ -6,6 +6,7 @@ export const PRESETS: Preset[] = [
     name: "Open countryside",
     description: "A main road, a pond, and open ground.",
     width: 36, height: 24, seed: "", scale: 10, mode: "countryside",
+    waterWeight: 1, difficultWeight: 1, reliefWeight: 1,
     rockRatio: 0.02, treeRatio: 0.05, buildingCount: 2,
   },
   {
@@ -13,6 +14,7 @@ export const PRESETS: Preset[] = [
     name: "River valley",
     description: "A continuous river, banks, a road, and a bridge.",
     width: 36, height: 24, seed: "", scale: 8, mode: "river",
+    waterWeight: 1, difficultWeight: 1, reliefWeight: 1,
     rockRatio: 0.01, treeRatio: 0.09, buildingCount: 1,
   },
   {
@@ -20,6 +22,7 @@ export const PRESETS: Preset[] = [
     name: "Coastline",
     description: "An organic shoreline, beach, and coastal road.",
     width: 36, height: 24, seed: "", scale: 9, mode: "coast",
+    waterWeight: 1, difficultWeight: 1, reliefWeight: 1,
     rockRatio: 0.03, treeRatio: 0.06, buildingCount: 1,
   },
   {
@@ -27,6 +30,7 @@ export const PRESETS: Preset[] = [
     name: "Wetlands",
     description: "Shallow pools, muddy ground, and winding channels.",
     width: 36, height: 24, seed: "", scale: 8, mode: "wetlands",
+    waterWeight: 1, difficultWeight: 1, reliefWeight: 1,
     rockRatio: 0.005, treeRatio: 0.045, buildingCount: 0,
   },
   {
@@ -34,6 +38,7 @@ export const PRESETS: Preset[] = [
     name: "Underground",
     description: "Tight passages, rare chambers, rough ground, and underground pools.",
     width: 36, height: 24, seed: "", scale: 7, mode: "underground",
+    waterWeight: 1, difficultWeight: 1, reliefWeight: 1,
     rockRatio: 0, treeRatio: 0, buildingCount: 0,
   },
   {
@@ -41,13 +46,23 @@ export const PRESETS: Preset[] = [
     name: "Volcanic wastes",
     description: "Lava lakes and flows, ash fields, and broken ridges.",
     width: 36, height: 24, seed: "", scale: 7, mode: "volcanic",
+    waterWeight: 1, difficultWeight: 1, reliefWeight: 1,
     rockRatio: 0.07, treeRatio: 0, buildingCount: 0,
+  },
+  {
+    id: "city",
+    name: "City",
+    description: "Connected streets, plazas, alleys, and dense urban blocks.",
+    width: 36, height: 24, seed: "", scale: 8, mode: "city",
+    waterWeight: 0, difficultWeight: 0.7, reliefWeight: 0,
+    rockRatio: 0, treeRatio: 0.015, buildingCount: 8,
   },
   {
     id: "highlands",
     name: "Highlands",
     description: "Continuous ridges, a ravine, and a mountain pass.",
     width: 36, height: 24, seed: "", scale: 6, mode: "highlands",
+    waterWeight: 1, difficultWeight: 1, reliefWeight: 1,
     rockRatio: 0.06, treeRatio: 0.03, buildingCount: 1,
   },
 ];

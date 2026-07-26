@@ -52,6 +52,10 @@ const biomePalettes: Record<
     ground: { color: "#5f615d", alt: "#565955" },
     difficult: { color: "#414744", alt: "#3a0b0b" },
   },
+  city: {
+    ground: { color: "#b9b19c", alt: "#afa690" },
+    difficult: { color: "#8f8775", alt: "#857d6d" },
+  },
   highlands: {
     ground: { color: "#a9aa7d", alt: "#9d9f73" },
     difficult: { color: "#858360", alt: "#797858" },

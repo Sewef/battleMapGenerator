@@ -27,7 +27,8 @@ export type LandscapeMode =
   | "wetlands"
   | "underground"
   | "volcanic"
-  | "highlands";
+  | "highlands"
+  | "city";
 
 export interface Tile {
   terrain: TerrainKind;
@@ -43,6 +44,9 @@ export interface TerrainOptions {
   seed: string;
   scale: number;
   mode: LandscapeMode;
+  waterWeight: number;
+  difficultWeight: number;
+  reliefWeight: number;
   rockRatio: number;
   treeRatio: number;
   buildingCount: number;

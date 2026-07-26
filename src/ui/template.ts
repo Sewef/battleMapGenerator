@@ -1,9 +1,12 @@
 import { PRESETS } from "../domain/biomes";
 
 export const PARAMETER_FIELDS = [
-  { id: "rocks", key: "rockRatio", label: "Rocks", min: 0, max: 12, step: 1, percent: true },
-  { id: "trees", key: "treeRatio", label: "Trees", min: 0, max: 32, step: 1, percent: true },
-  { id: "buildings", key: "buildingCount", label: "Buildings", min: 0, max: 8, step: 1, percent: false },
+  { id: "water", key: "waterWeight", label: "Water / lava", min: 0, max: 200, step: 10, percent: true, group: "terrain" },
+  { id: "difficult", key: "difficultWeight", label: "Difficult terrain", min: 0, max: 200, step: 10, percent: true, group: "terrain" },
+  { id: "relief", key: "reliefWeight", label: "Cliffs / ravines", min: 0, max: 200, step: 10, percent: true, group: "terrain" },
+  { id: "rocks", key: "rockRatio", label: "Rocks", min: 0, max: 12, step: 1, percent: true, group: "obstacles" },
+  { id: "trees", key: "treeRatio", label: "Trees", min: 0, max: 32, step: 1, percent: true, group: "obstacles" },
+  { id: "buildings", key: "buildingCount", label: "Buildings", min: 0, max: 8, step: 1, percent: false, group: "obstacles" },
 ] as const;
 
 export function renderApp(root: HTMLElement) {
@@ -67,15 +70,20 @@ export function renderApp(root: HTMLElement) {
             <input id="scale" type="range" min="4" max="14" step="1" />
           </label>
 
+          ${[
+            ["terrain", "Terrain weight"],
+            ["obstacles", "Obstacle population"],
+          ].map(([group, title]) => `
           <div class="parameter-section">
-            <p>Obstacle population</p>
-            ${PARAMETER_FIELDS.map((field) => `
+            <p>${title}</p>
+            ${PARAMETER_FIELDS.filter((field) => field.group === group).map((field) => `
               <label class="field compact">
                 <span>${field.label} <output id="${field.id}-value"></output></span>
                 <input id="${field.id}" type="range" min="${field.min}" max="${field.max}" step="${field.step}" />
               </label>
             `).join("")}
           </div>
+          `).join("")}
 
           <button id="generate" class="primary-button" type="button">Generate map <span>→</span></button>
         </aside>
