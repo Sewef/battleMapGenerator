@@ -27,7 +27,7 @@ h1 em { font-family: "Newsreader", serif; font-weight: 500; color: #617553; }
 
 .preset-section { margin-bottom: 18px; }
 .section-label { margin-bottom: 10px; font-family: "DM Mono", monospace; font-size: 9px; letter-spacing: .13em; text-transform: uppercase; color: #6b746e; }
-.preset-list { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.preset-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
 .preset-card { min-height: 82px; padding: 14px; display: flex; gap: 12px; align-items: center; text-align: left; border: 1px solid #d0cebf; background: rgba(248,246,237,.6); cursor: pointer; transition: border-color .15s, background .15s, transform .15s; }
 .preset-card:hover { transform: translateY(-1px); border-color: #8b9488; }
 .preset-card.active { border-color: #536b51; background: #f8f6ed; box-shadow: inset 0 -2px #536b51; }
@@ -42,6 +42,15 @@ h1 em { font-family: "Newsreader", serif; font-weight: 500; color: #617553; }
 .preset-icon.river::after { width: 32px; height: 4px; left: 4px; top: 18px; background: #8e7251; }
 .preset-icon.coast { background: #78a5a3; }
 .preset-icon.coast::before { width: 25px; height: 44px; right: -5px; top: -2px; border-radius: 50%; background: #d8c68f; }
+.preset-icon.wetlands { background: #78999a; }
+.preset-icon.wetlands::before { width: 27px; height: 18px; left: 6px; top: 12px; border-radius: 48%; background: #8d9b65; transform: rotate(-8deg); }
+.preset-icon.wetlands::after { width: 18px; height: 10px; right: 1px; bottom: 3px; border-radius: 50%; background: #b0b57a; }
+.preset-icon.underground { background: #4c5350; }
+.preset-icon.underground::before { width: 30px; height: 25px; left: 5px; bottom: -5px; border-radius: 50% 50% 0 0; background: #222c2d; }
+.preset-icon.underground::after { width: 8px; height: 8px; left: 16px; top: 15px; border-radius: 50%; background: #78999a; box-shadow: 7px 5px #78999a; }
+.preset-icon.volcanic { background: #4e4b48; }
+.preset-icon.volcanic::before { width: 34px; height: 26px; left: 3px; bottom: -2px; background: #262d2d; clip-path: polygon(0 100%, 42% 12%, 58% 12%, 100% 100%); }
+.preset-icon.volcanic::after { width: 8px; height: 23px; left: 16px; top: 8px; border-radius: 50%; background: #d7542f; box-shadow: 0 -5px 6px #ed9a45; }
 .preset-icon.highlands { background: #9b9c84; }
 .preset-icon.highlands::before { width: 34px; height: 30px; left: 3px; bottom: 0; background: #666d5f; clip-path: polygon(0 100%, 35% 20%, 52% 57%, 72% 0, 100% 100%); }
 
@@ -75,6 +84,7 @@ input[type="range"]::-webkit-slider-thumb { appearance: none; width: 14px; heigh
 .map-toolbar { height: 42px; }
 .map-toolbar > div { display: flex; align-items: baseline; gap: 13px; }
 .map-toolbar span { font-family: "DM Mono", monospace; font-size: 9px; text-transform: uppercase; letter-spacing: .09em; color: #747c76; }
+.export-actions { display: flex; gap: 7px; }
 .download-button { padding: 8px 10px; border: 1px solid #cfccbd; background: transparent; cursor: pointer; font-family: "DM Mono", monospace; text-transform: uppercase; font-size: 9px; letter-spacing: .05em; }
 .download-button:hover { background: #e9e7da; }
 .canvas-wrap { flex: 1; min-height: 520px; padding: 24px; display: grid; place-items: center; overflow: auto; background-color: #dad8ca; background-image: radial-gradient(#c1c0b4 1px, transparent 1px); background-size: 12px 12px; border: 1px solid #cfccbc; }
@@ -88,6 +98,7 @@ canvas { display: block; max-width: 100%; height: auto !important; box-shadow: 0
 .swatch.void { background: #263334; }
 .swatch.difficult { background: #9fa96c; }
 .swatch.water { background: #7ea7a7; }
+.swatch.lava { background: #d7542f; }
 .swatch.beach { background: #d8c68f; }
 .swatch.road { background: #aa9475; }
 .swatch.bridge { background: #876d4f; }
@@ -117,5 +128,7 @@ canvas { display: block; max-width: 100%; height: auto !important; box-shadow: 0
   .preset-list { grid-template-columns: 1fr; }
   .map-panel { padding: 20px 12px 14px; }
   .map-toolbar { height: auto; margin-bottom: 14px; }
+  .map-toolbar { align-items: flex-start; gap: 12px; }
+  .export-actions { flex-direction: column; }
   .canvas-wrap { padding: 10px; min-height: 320px; }
 }

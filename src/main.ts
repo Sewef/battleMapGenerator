@@ -5,6 +5,7 @@ import {
   PRESETS,
   Terrain,
   type Grid,
+  type LandscapeMode,
   type Preset,
   type TerrainKind,
 } from "./generator";
@@ -94,7 +95,10 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       <div class="map-panel">
         <div class="map-toolbar">
           <div><strong>Map preview</strong><span id="dimensions"></span></div>
-          <button id="download" class="download-button" type="button">Export PNG ↓</button>
+          <div class="export-actions">
+            <button id="copy" class="download-button" type="button">Copy to clipboard</button>
+            <button id="download" class="download-button" type="button">Export PNG ↓</button>
+          </div>
         </div>
         <div class="canvas-wrap">
           <canvas id="map" aria-label="Generated terrain grid"></canvas>
@@ -125,6 +129,7 @@ const terrainStyle: Record<TerrainKind, { color: string; alt: string; label: str
   [Terrain.Ground]: { color: "#b8ca8e", alt: "#afc382", label: "Ground" },
   [Terrain.Difficult]: { color: "#9fa96c", alt: "#949f61", label: "Difficult · ×2" },
   [Terrain.Water]: { color: "#7ea7a7", alt: "#739c9e", label: "Water · ×2" },
+  [Terrain.Lava]: { color: "#d7542f", alt: "#bd3e27", label: "Lava · blocked" },
   [Terrain.Beach]: { color: "#d8c68f", alt: "#cfbb80", label: "Beach · ×2" },
   [Terrain.Road]: { color: "#aa9475", alt: "#a28b6c", label: "Road" },
   [Terrain.Bridge]: { color: "#876d4f", alt: "#7e6448", label: "Bridge" },
@@ -132,6 +137,47 @@ const terrainStyle: Record<TerrainKind, { color: string; alt: string; label: str
   [Terrain.Cliff]: { color: "#6f7165", alt: "#64675c", label: "Cliff · blocks sight" },
   [Terrain.Ravine]: { color: "#776b59", alt: "#6c604f", label: "Ravine · clear sight" },
 };
+
+const biomePalettes: Record<
+  LandscapeMode,
+  { ground: { color: string; alt: string }; difficult: { color: string; alt: string } }
+> = {
+  countryside: {
+    ground: { color: "#b8ca8e", alt: "#afc382" },
+    difficult: { color: "#9fa96c", alt: "#949f61" },
+  },
+  river: {
+    ground: { color: "#a9c58b", alt: "#9dbb7f" },
+    difficult: { color: "#7f9b68", alt: "#758f60" },
+  },
+  coast: {
+    ground: { color: "#b9bf86", alt: "#adb47b" },
+    difficult: { color: "#99996a", alt: "#8d8d60" },
+  },
+  wetlands: {
+    ground: { color: "#9ca874", alt: "#919d6b" },
+    difficult: { color: "#747b58", alt: "#69714f" },
+  },
+  underground: {
+    ground: { color: "#8b887d", alt: "#817e74" },
+    difficult: { color: "#68665f", alt: "#5e5c56" },
+  },
+  volcanic: {
+    ground: { color: "#5f615d", alt: "#565955" },
+    difficult: { color: "#414744", alt: "#393f3d" },
+  },
+  highlands: {
+    ground: { color: "#a9aa7d", alt: "#9d9f73" },
+    difficult: { color: "#858360", alt: "#797858" },
+  },
+};
+
+function activeTerrainStyle(kind: TerrainKind) {
+  const base = terrainStyle[kind];
+  if (kind === Terrain.Ground) return { ...base, ...biomePalettes[activePreset.mode].ground };
+  if (kind === Terrain.Difficult) return { ...base, ...biomePalettes[activePreset.mode].difficult };
+  return base;
+}
 
 function applyPreset(preset: Preset, useNewSeed = true) {
   activePreset = preset;
@@ -159,16 +205,30 @@ function updateLabels() {
   }
 }
 
-function drawTree(x: number, y: number, size: number) {
-  const centerX = x * size + size / 2;
-  const centerY = y * size + size / 2;
+function drawTree(points: Array<{ x: number; y: number }>, size: number) {
+  const minimumX = Math.min(...points.map(({ x }) => x));
+  const maximumX = Math.max(...points.map(({ x }) => x));
+  const minimumY = Math.min(...points.map(({ y }) => y));
+  const maximumY = Math.max(...points.map(({ y }) => y));
+  const centerX = (minimumX + maximumX + 1) * size / 2;
+  const centerY = (minimumY + maximumY + 1) * size / 2;
+  const radiusX = (maximumX - minimumX + 1) * size * .42;
+  const radiusY = (maximumY - minimumY + 1) * size * .42;
   context.fillStyle = "#344f3e";
   context.beginPath();
-  context.arc(centerX, centerY, size * 0.32, 0, Math.PI * 2);
+  context.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
   context.fill();
   context.fillStyle = "#5e7855";
   context.beginPath();
-  context.arc(centerX - size * 0.08, centerY - size * 0.08, size * 0.2, 0, Math.PI * 2);
+  context.ellipse(
+    centerX - radiusX * .16,
+    centerY - radiusY * .16,
+    radiusX * .62,
+    radiusY * .62,
+    -.15,
+    0,
+    Math.PI * 2,
+  );
   context.fill();
   context.fillStyle = "#d7d3b6";
   context.beginPath();
@@ -215,11 +275,26 @@ function drawGrid(grid: Grid) {
   for (let y = 0; y < rows; y += 1) {
     for (let x = 0; x < columns; x += 1) {
       const tile = grid[y][x];
-      const style = terrainStyle[tile.terrain];
+      const style = activeTerrainStyle(tile.terrain);
       context.fillStyle = (x + y * 3) % 4 === 0 ? style.alt : style.color;
       context.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
 
-      if (tile.terrain === Terrain.Water) {
+      if (tile.terrain === Terrain.Lava) {
+        context.strokeStyle = "rgba(255, 207, 96, .72)";
+        context.lineWidth = Math.max(1, cellSize * .08);
+        context.beginPath();
+        context.moveTo(x * cellSize + cellSize * .12, y * cellSize + cellSize * .62);
+        context.bezierCurveTo(
+          x * cellSize + cellSize * .35,
+          y * cellSize + cellSize * .35,
+          x * cellSize + cellSize * .62,
+          y * cellSize + cellSize * .76,
+          x * cellSize + cellSize * .88,
+          y * cellSize + cellSize * .42,
+        );
+        context.stroke();
+        context.lineWidth = 1;
+      } else if (tile.terrain === Terrain.Water) {
         context.strokeStyle = "rgba(223, 239, 229, .28)";
         context.beginPath();
         context.moveTo(x * cellSize + cellSize * .18, y * cellSize + cellSize * .55);
@@ -284,29 +359,37 @@ function drawGrid(grid: Grid) {
     }
   }
 
+  const treeGroups = new Map<number, Array<{ x: number; y: number }>>();
   for (let y = 0; y < rows; y += 1) {
     for (let x = 0; x < columns; x += 1) {
       const tile = grid[y][x];
-      if (tile.obstacle === Obstacle.Tree) drawTree(x, y, cellSize);
+      if (tile.obstacle === Obstacle.Tree) {
+        const id = tile.obstacleId ?? y * columns + x;
+        const group = treeGroups.get(id) ?? [];
+        group.push({ x, y });
+        treeGroups.set(id, group);
+      }
       if (tile.obstacle === Obstacle.Building) drawBuilding(x, y, cellSize, grid);
       if (tile.obstacle !== Obstacle.None) {
         counts.set(tile.obstacle, (counts.get(tile.obstacle) ?? 0) + 1);
       }
     }
   }
+  for (const points of treeGroups.values()) drawTree(points, cellSize);
 
   const legendItems = [
     ...Object.values(Terrain).map((kind) => ({
       key: kind,
-      label: terrainStyle[kind].label,
+      label: activeTerrainStyle(kind).label,
       className: kind,
+      color: activeTerrainStyle(kind).color,
     })),
-    { key: Obstacle.Tree, label: "Tree · blocks sight", className: "tree" },
-    { key: Obstacle.Building, label: "Building · blocks sight", className: "building" },
+    { key: Obstacle.Tree, label: "Tree · blocks sight", className: "tree", color: "" },
+    { key: Obstacle.Building, label: "Building · blocks sight", className: "building", color: "" },
   ].filter(({ key }) => (counts.get(key) ?? 0) > 0);
 
-  document.querySelector("#legend")!.innerHTML = legendItems.map(({ key, label, className }) =>
-    `<span><i class="swatch ${className}"></i>${label}<small>${counts.get(key)}</small></span>`,
+  document.querySelector("#legend")!.innerHTML = legendItems.map(({ key, label, className, color }) =>
+    `<span><i class="swatch ${className}"${color ? ` style="background:${color}"` : ""}></i>${label}<small>${counts.get(key)}</small></span>`,
   ).join("");
   document.querySelector("#dimensions")!.textContent = `${columns} × ${rows} cells`;
 }
@@ -351,6 +434,28 @@ document.querySelector("#download")!.addEventListener("click", () => {
   link.download = `terra-${seedInput.value.trim() || "terrain"}.png`;
   link.href = canvas.toDataURL("image/png");
   link.click();
+});
+document.querySelector("#copy")!.addEventListener("click", async () => {
+  const button = document.querySelector<HTMLButtonElement>("#copy")!;
+  const defaultLabel = "Copy to clipboard";
+  try {
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((result) => {
+        if (result) resolve(result);
+        else reject(new Error("Unable to create PNG"));
+      }, "image/png");
+    });
+    if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+      throw new Error("Image clipboard is not supported");
+    }
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+    button.textContent = "Copied!";
+  } catch {
+    button.textContent = "Copy failed";
+  }
+  window.setTimeout(() => {
+    button.textContent = defaultLabel;
+  }, 1800);
 });
 for (const input of [widthInput, heightInput, scaleInput, ...Object.values(inputs)]) {
   input.addEventListener("input", updateLabels);

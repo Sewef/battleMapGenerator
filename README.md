@@ -24,6 +24,10 @@ Each map type has its own pipeline:
 - open countryside: pond and road;
 - river valley: river, banks, road, and bridge;
 - coastline: sea, beach, and coastal road;
+- wetlands: shallow pools, channels, muddy ground, and no generated roads;
+- underground: tight connected passages, rare chambers, rough ground, a
+  guaranteed entrance, an optional exit, and occasional pools;
+- volcanic wastes: lava lakes and rivers, ash fields, broken ridges, and rocks;
 - highlands: ridge, ravine, and mountain pass.
 
 A separate second pass populates trees, rocks, and buildings without changing

@@ -5,6 +5,7 @@ export const Terrain = {
   Ground: "ground",
   Difficult: "difficult",
   Water: "water",
+  Lava: "lava",
   Beach: "beach",
   Road: "road",
   Bridge: "bridge",
@@ -21,7 +22,14 @@ export const Obstacle = {
 
 export type TerrainKind = (typeof Terrain)[keyof typeof Terrain];
 export type ObstacleKind = (typeof Obstacle)[keyof typeof Obstacle];
-export type LandscapeMode = "countryside" | "river" | "coast" | "highlands";
+export type LandscapeMode =
+  | "countryside"
+  | "river"
+  | "coast"
+  | "wetlands"
+  | "underground"
+  | "volcanic"
+  | "highlands";
 
 export interface Tile {
   terrain: TerrainKind;
@@ -71,6 +79,27 @@ export const PRESETS: Preset[] = [
     rockRatio: 0.03, treeRatio: 0.06, buildingCount: 1,
   },
   {
+    id: "wetlands",
+    name: "Wetlands",
+    description: "Shallow pools, muddy ground, and winding channels.",
+    width: 36, height: 24, seed: "", scale: 8, mode: "wetlands",
+    rockRatio: 0.005, treeRatio: 0.045, buildingCount: 0,
+  },
+  {
+    id: "underground",
+    name: "Underground",
+    description: "Tight passages, rare chambers, rough ground, and underground pools.",
+    width: 36, height: 24, seed: "", scale: 7, mode: "underground",
+    rockRatio: 0, treeRatio: 0, buildingCount: 0,
+  },
+  {
+    id: "volcanic",
+    name: "Volcanic wastes",
+    description: "Lava lakes and flows, ash fields, and broken ridges.",
+    width: 36, height: 24, seed: "", scale: 7, mode: "volcanic",
+    rockRatio: 0.07, treeRatio: 0, buildingCount: 0,
+  },
+  {
     id: "highlands",
     name: "Highlands",
     description: "Continuous ridges, a ravine, and a mountain pass.",
@@ -87,6 +116,7 @@ export const TERRAIN_RULES: Record<
   [Terrain.Ground]: { label: "Ground", movement: "normal", blocksSight: false },
   [Terrain.Difficult]: { label: "Difficult terrain", movement: "slow", blocksSight: false },
   [Terrain.Water]: { label: "Water", movement: "slow", blocksSight: false },
+  [Terrain.Lava]: { label: "Lava", movement: "blocked", blocksSight: false },
   [Terrain.Beach]: { label: "Beach", movement: "slow", blocksSight: false },
   [Terrain.Road]: { label: "Road", movement: "normal", blocksSight: false },
   [Terrain.Bridge]: { label: "Bridge", movement: "normal", blocksSight: false },
@@ -289,7 +319,13 @@ function drawRegionPath(
       for (let offsetY = -thickness; offsetY <= thickness; offsetY += 1) {
         for (let offsetX = -thickness; offsetX <= thickness; offsetX += 1) {
           const tile = grid[y + offsetY]?.[x + offsetX];
-          if (tile) tile.terrain = terrain;
+          if (
+            tile &&
+            tile.terrain !== Terrain.Water &&
+            tile.terrain !== Terrain.Lava
+          ) {
+            tile.terrain = terrain;
+          }
         }
       }
     }
@@ -312,18 +348,19 @@ function pathAcrossMap(
   return shortestRegionPath(map, start, end, random, allowed);
 }
 
-function paintShore(grid: Grid) {
-  const shore: Point[] = [];
+function paintShore(grid: Grid, random: Random, maxDepth: number) {
+  const waterDistance = cellDistancesFromWater(grid);
+  const beach: Point[] = [];
   for (let y = 0; y < grid.length; y += 1) {
     for (let x = 0; x < grid[0].length; x += 1) {
       if (grid[y][x].terrain !== Terrain.Ground) continue;
-      const touchesWater = [
-        grid[y - 1]?.[x], grid[y + 1]?.[x], grid[y]?.[x - 1], grid[y]?.[x + 1],
-      ].some((tile) => tile?.terrain === Terrain.Water);
-      if (touchesWater) shore.push({ x, y });
+      const distance = waterDistance[y][x];
+      if (distance === 1 || (distance <= maxDepth && random() < .78 / distance)) {
+        beach.push({ x, y });
+      }
     }
   }
-  for (const { x, y } of shore) grid[y][x].terrain = Terrain.Beach;
+  for (const { x, y } of beach) grid[y][x].terrain = Terrain.Beach;
 }
 
 /**
@@ -335,29 +372,37 @@ function meanderingCrossing(
   grid: Grid,
   horizontal: boolean,
   random: Random,
-  width: number,
+  width: number | [number, number],
   paint: (tile: Tile) => TerrainKind,
 ): Point[] {
   const longSize = horizontal ? grid[0].length : grid.length;
   const shortSize = horizontal ? grid.length : grid[0].length;
+  const [minimumWidth, maximumWidth] = Array.isArray(width) ? width : [width, width];
+  let currentWidth = minimumWidth;
+  let targetWidth = minimumWidth;
   let across = shortSize * (.3 + random() * .4);
   let velocity = (random() - .5) * .25;
   const centerline: Point[] = [];
 
   for (let along = -2; along <= longSize + 1; along += 1) {
+    if (along % 6 === 0) {
+      targetWidth = minimumWidth + Math.floor(random() * (maximumWidth - minimumWidth + 1));
+    }
+    currentWidth += Math.sign(targetWidth - currentWidth) * Math.min(.34, Math.abs(targetWidth - currentWidth));
+    const paintedWidth = Math.round(currentWidth);
     if (random() < .28) velocity += (random() - .5) * .22;
     velocity *= .82;
     velocity = Math.max(-.42, Math.min(.42, velocity));
     across += velocity;
-    if (across < width + 1 || across > shortSize - width - 2) {
+    if (across < maximumWidth + 1 || across > shortSize - maximumWidth - 2) {
       velocity *= -1;
-      across = Math.max(width + 1, Math.min(shortSize - width - 2, across));
+      across = Math.max(maximumWidth + 1, Math.min(shortSize - maximumWidth - 2, across));
     }
     const center = horizontal
       ? { x: along, y: Math.round(across) }
       : { x: Math.round(across), y: along };
     centerline.push(center);
-    for (let offset = -width; offset <= width; offset += 1) {
+    for (let offset = -paintedWidth; offset <= paintedWidth; offset += 1) {
       const point = horizontal
         ? { x: center.x, y: center.y + offset }
         : { x: center.x + offset, y: center.y };
@@ -387,6 +432,144 @@ function drawCoastalRoad(grid: Grid) {
     const tile = grid[y]?.[Math.round(smoothedX)];
     if (tile && tile.terrain !== Terrain.Water) tile.terrain = Terrain.Road;
   }
+}
+
+type MapEdge = "top" | "right" | "bottom" | "left";
+
+function connectCavernAccess(
+  grid: Grid,
+  carved: Set<string>,
+  edge: MapEdge,
+  random: Random,
+) {
+  const floor = [...carved].map((key) => {
+    const [x, y] = key.split(",").map(Number);
+    return { x, y };
+  });
+  const distanceToEdge = (point: Point) => {
+    if (edge === "top") return point.y;
+    if (edge === "bottom") return grid.length - 1 - point.y;
+    if (edge === "left") return point.x;
+    return grid[0].length - 1 - point.x;
+  };
+  floor.sort((a, b) => distanceToEdge(a) - distanceToEdge(b));
+  const nearest = floor.slice(0, Math.max(1, Math.min(12, floor.length)));
+  const target = nearest[Math.floor(random() * nearest.length)];
+  const border = {
+    x: edge === "left" ? 0 : edge === "right" ? grid[0].length - 1 : target.x,
+    y: edge === "top" ? 0 : edge === "bottom" ? grid.length - 1 : target.y,
+  };
+  let point = { ...border };
+
+  while (point.x !== target.x || point.y !== target.y) {
+    grid[point.y][point.x].terrain = Terrain.Ground;
+    carved.add(`${point.x},${point.y}`);
+    const deltaX = target.x - point.x;
+    const deltaY = target.y - point.y;
+    if (deltaX !== 0 && deltaY !== 0) {
+      if (random() < Math.abs(deltaX) / (Math.abs(deltaX) + Math.abs(deltaY))) {
+        point.x += Math.sign(deltaX);
+      } else {
+        point.y += Math.sign(deltaY);
+      }
+    } else if (deltaX !== 0) {
+      point.x += Math.sign(deltaX);
+    } else {
+      point.y += Math.sign(deltaY);
+    }
+  }
+  grid[target.y][target.x].terrain = Terrain.Ground;
+}
+
+function generateCavern(grid: Grid, random: Random) {
+  for (const row of grid) {
+    for (const tile of row) tile.terrain = Terrain.Rock;
+  }
+
+  const width = grid[0].length;
+  const height = grid.length;
+  const targetFloor = Math.round(width * height * (.4 + random() * .07));
+  const carved = new Set<string>();
+  const walkers: Array<Point & { dx: number; dy: number }> = [
+    { x: Math.floor(width / 2), y: Math.floor(height / 2), dx: 1, dy: 0 },
+  ];
+  let attempts = 0;
+
+  const carveBrush = (center: Point, radius: number) => {
+    for (let offsetY = -radius; offsetY <= radius; offsetY += 1) {
+      for (let offsetX = -radius; offsetX <= radius; offsetX += 1) {
+        if (offsetX * offsetX + offsetY * offsetY > radius * radius + 1) continue;
+        const x = center.x + offsetX;
+        const y = center.y + offsetY;
+        if (x <= 0 || y <= 0 || x >= width - 1 || y >= height - 1) continue;
+        grid[y][x].terrain = Terrain.Ground;
+        carved.add(`${x},${y}`);
+      }
+    }
+  };
+
+  while (carved.size < targetFloor && attempts < width * height * 30) {
+    attempts += 1;
+    const walker = walkers[Math.floor(random() * walkers.length)];
+    const chamberRoll = random();
+    carveBrush(walker, chamberRoll < .035 ? 2 : chamberRoll < .24 ? 1 : 0);
+    const directions = [
+      { x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 },
+    ];
+    if (random() < .28) {
+      const direction = directions[Math.floor(random() * directions.length)];
+      walker.dx = direction.x;
+      walker.dy = direction.y;
+    }
+    walker.x = Math.max(2, Math.min(width - 3, walker.x + walker.dx));
+    walker.y = Math.max(2, Math.min(height - 3, walker.y + walker.dy));
+    if (walker.x === 2 || walker.x === width - 3) walker.dx *= -1;
+    if (walker.y === 2 || walker.y === height - 3) walker.dy *= -1;
+
+    if (walkers.length < 3 && random() < .014 && carved.size > 30) {
+      const points = [...carved];
+      const [x, y] = points[Math.floor(random() * points.length)].split(",").map(Number);
+      const direction = directions[Math.floor(random() * directions.length)];
+      walkers.push({ x, y, dx: direction.x, dy: direction.y });
+    }
+  }
+
+  // A rare, compact underground pool is carved only inside existing floor.
+  if (random() < .38 && carved.size > 30) {
+    const floor = [...carved];
+    let [x, y] = floor[Math.floor(random() * floor.length)].split(",").map(Number);
+    const poolSize = 4 + Math.floor(random() * 10);
+    for (let index = 0; index < poolSize; index += 1) {
+      if (grid[y]?.[x].terrain === Terrain.Ground) grid[y][x].terrain = Terrain.Water;
+      const directions = [
+        { x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 },
+      ];
+      const direction = directions[Math.floor(random() * directions.length)];
+      const nextX = x + direction.x;
+      const nextY = y + direction.y;
+      if (grid[nextY]?.[nextX].terrain === Terrain.Ground) {
+        x = nextX;
+        y = nextY;
+      }
+    }
+  }
+
+  const edges: MapEdge[] = ["top", "right", "bottom", "left"];
+  const entranceEdge = edges[Math.floor(random() * edges.length)];
+  connectCavernAccess(grid, carved, entranceEdge, random);
+
+  if (random() < .58) {
+    const exitEdges = edges.filter((edge) => edge !== entranceEdge);
+    const exitEdge = exitEdges[Math.floor(random() * exitEdges.length)];
+    connectCavernAccess(grid, carved, exitEdge, random);
+  }
+
+  scatterDifficultTerrain(
+    grid,
+    Math.round(carved.size * (.13 + random() * .07)),
+    cellDistancesFromWater(grid),
+    random,
+  );
 }
 
 function cellDistancesFromWater(grid: Grid): number[][] {
@@ -488,16 +671,29 @@ function scatterRocks(grid: Grid, target: number, random: Random) {
   const placed: Point[] = [];
 
   for (const candidate of candidates) {
-    // Outcrops remain distinct. A few pairs are allowed, but never a large
-    // rectangular rock mass.
-    const adjacent = placed.filter((rock) =>
-      Math.abs(rock.x - candidate.x) <= 1 && Math.abs(rock.y - candidate.y) <= 1,
-    ).length;
-    if (adjacent === 0 || (adjacent === 1 && random() < .16)) {
-      grid[candidate.y][candidate.x].terrain = Terrain.Rock;
-      placed.push({ x: candidate.x, y: candidate.y });
-      if (placed.length >= target) break;
+    const nearExisting = placed.some((rock) =>
+      Math.abs(rock.x - candidate.x) <= 2 && Math.abs(rock.y - candidate.y) <= 2,
+    );
+    if (nearExisting) continue;
+
+    const outcropSize = random() < .18 ? 2 + Math.floor(random() * 3) : 1;
+    let point = { x: candidate.x, y: candidate.y };
+    for (let index = 0; index < outcropSize && placed.length < target; index += 1) {
+      const tile = grid[point.y]?.[point.x];
+      if (
+        tile &&
+        (tile.terrain === Terrain.Ground || tile.terrain === Terrain.Difficult)
+      ) {
+        tile.terrain = Terrain.Rock;
+        placed.push(point);
+      }
+      const directions = [
+        { x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 },
+      ];
+      const direction = directions[Math.floor(random() * directions.length)];
+      point = { x: point.x + direction.x, y: point.y + direction.y };
     }
+    if (placed.length >= target) break;
   }
 }
 
@@ -549,13 +745,50 @@ function placeTrees(
     })
     .sort((a, b) => a.score - b.score);
   const placed: Point[] = [];
+  let treeId = 0;
   for (const { x, y } of ranked) {
     const hasCloseTree = placed.some((tree) =>
       Math.abs(tree.x - x) <= 1 && Math.abs(tree.y - y) <= 1,
     );
     if (hasCloseTree) continue;
-    grid[y][x].obstacle = Obstacle.Tree;
-    placed.push({ x, y });
+
+    let footprint = [{ x, y }];
+    const sizeRoll = random();
+    if (sizeRoll < .1) {
+      const directionX = x < grid[0].length - 1 ? 1 : -1;
+      const directionY = y < grid.length - 1 ? 1 : -1;
+      footprint = [
+        { x, y },
+        { x: x + directionX, y },
+        { x, y: y + directionY },
+        { x: x + directionX, y: y + directionY },
+      ];
+    } else if (sizeRoll < .24) {
+      const horizontal = random() > .5;
+      footprint = [
+        { x, y },
+        horizontal
+          ? { x: x + (x < grid[0].length - 1 ? 1 : -1), y }
+          : { x, y: y + (y < grid.length - 1 ? 1 : -1) },
+      ];
+    }
+    const validFootprint = footprint.every((point) => {
+      const tile = grid[point.y]?.[point.x];
+      return tile &&
+        tile.obstacle === Obstacle.None &&
+        (tile.terrain === Terrain.Ground || tile.terrain === Terrain.Difficult) &&
+        !placed.some((tree) =>
+          Math.abs(tree.x - point.x) <= 1 && Math.abs(tree.y - point.y) <= 1
+        );
+    });
+    if (!validFootprint) footprint = [{ x, y }];
+
+    treeId += 1;
+    for (const point of footprint) {
+      grid[point.y][point.x].obstacle = Obstacle.Tree;
+      grid[point.y][point.x].obstacleId = treeId;
+      placed.push(point);
+    }
     if (placed.length >= target) break;
   }
 }
@@ -605,7 +838,7 @@ export function generateTerrain(options: TerrainOptions): Grid {
       map, Math.round(total * .035), seededRandom(`${seed}:pond`), () => true,
     );
     paintRegions(grid, map, pond, Terrain.Water);
-    paintShore(grid);
+    paintShore(grid, seededRandom(`${seed}:pond-shore`), 2);
     drawRoadCrossing(grid, true, seededRandom(`${seed}:road`));
   }
 
@@ -616,10 +849,10 @@ export function generateTerrain(options: TerrainOptions): Grid {
       grid,
       riverIsHorizontal,
       riverRandom,
-      1,
+      [1, 2],
       () => Terrain.Water,
     );
-    paintShore(grid);
+    paintShore(grid, seededRandom(`${seed}:river-shore`), 2);
     drawRoadCrossing(
       grid,
       !riverIsHorizontal,
@@ -637,8 +870,108 @@ export function generateTerrain(options: TerrainOptions): Grid {
       coastSeeds,
     );
     paintRegions(grid, map, sea, Terrain.Water);
-    paintShore(grid);
+    paintShore(grid, seededRandom(`${seed}:coast-shore`), 3);
     drawCoastalRoad(grid);
+  }
+
+  if (options.mode === "wetlands") {
+    const wetlandRandom = seededRandom(`${seed}:wetlands`);
+    const firstPool = selectConnectedRegions(
+      map,
+      Math.round(total * .16),
+      wetlandRandom,
+      () => true,
+    );
+    paintRegions(grid, map, firstPool, Terrain.Water);
+
+    const secondPool = selectConnectedRegions(
+      map,
+      Math.round(total * .08),
+      seededRandom(`${seed}:wetlands-pool`),
+      (region) => !firstPool.has(region),
+    );
+    paintRegions(grid, map, secondPool, Terrain.Water);
+
+    // Narrow channels connect the wetland visually to the landscape beyond the
+    // map without turning it into a single broad river.
+    meanderingCrossing(
+      grid,
+      wetlandRandom() > .5,
+      seededRandom(`${seed}:wetlands-channel`),
+      [0, 1],
+      () => Terrain.Water,
+    );
+    const wetlandDistance = cellDistancesFromWater(grid);
+    scatterDifficultTerrain(
+      grid,
+      Math.round(total * .18),
+      wetlandDistance,
+      seededRandom(`${seed}:wetland-mud`),
+    );
+  }
+
+  if (options.mode === "underground") {
+    generateCavern(grid, seededRandom(`${seed}:cavern`));
+  }
+
+  if (options.mode === "volcanic") {
+    const volcanicRandom = seededRandom(`${seed}:volcanic`);
+    const morphology = volcanicRandom();
+    const hasRiver = morphology >= .27;
+    const hasLake = morphology < .68 || morphology > .86;
+    let lavaPath: Point[] = [];
+
+    if (hasRiver) {
+      lavaPath = meanderingCrossing(
+        grid,
+        volcanicRandom() > .5,
+        seededRandom(`${seed}:lava-river`),
+        [0, 1],
+        () => Terrain.Lava,
+      );
+    }
+    if (hasLake) {
+      const visiblePath = lavaPath.filter(({ x, y }) =>
+        x >= 0 && x < width && y >= 0 && y < height,
+      );
+      const preferred = visiblePath.length
+        ? [map.cellRegion[
+          visiblePath[Math.floor(visiblePath.length / 2)].y
+        ][visiblePath[Math.floor(visiblePath.length / 2)].x]]
+        : undefined;
+      const lavaLake = selectConnectedRegions(
+        map,
+        Math.round(total * (.08 + volcanicRandom() * .07)),
+        seededRandom(`${seed}:lava-lake`),
+        () => true,
+        preferred,
+      );
+      paintRegions(grid, map, lavaLake, Terrain.Lava);
+    }
+
+    scatterDifficultTerrain(
+      grid,
+      Math.round(total * (.18 + volcanicRandom() * .08)),
+      grid.map((row) => row.map(() => Infinity)),
+      seededRandom(`${seed}:ash-fields`),
+    );
+
+    const ridgeRandom = seededRandom(`${seed}:volcanic-ridge`);
+    const ridgeStart = Math.floor(ridgeRandom() * map.centers.length);
+    const ridgeDistances = distanceFromRegions(map, new Set([ridgeStart]));
+    const ridgeEnds = ridgeDistances
+      .map((distance, region) => ({ distance, region }))
+      .filter(({ distance }) => distance >= 3 && distance <= 6);
+    if (ridgeEnds.length) {
+      const ridgeEnd = ridgeEnds[Math.floor(ridgeRandom() * ridgeEnds.length)].region;
+      drawRegionPath(
+        grid,
+        map,
+        shortestRegionPath(map, ridgeStart, ridgeEnd, ridgeRandom),
+        Terrain.Cliff,
+        0,
+      );
+    }
   }
 
   if (options.mode === "highlands") {
@@ -671,13 +1004,17 @@ export function generateTerrain(options: TerrainOptions): Grid {
 
   // Second pass: obstacles do not participate in terrain morphology.
   const waterDistance = cellDistancesFromWater(grid);
-  scatterRocks(grid, Math.round(total * options.rockRatio), seededRandom(`${seed}:rocks`));
-  placeBuildings(grid, options.buildingCount, seededRandom(`${seed}:buildings`));
-  placeTrees(
-    grid,
-    Math.round(total * options.treeRatio),
-    waterDistance,
-    seededRandom(`${seed}:groves`),
-  );
+  if (options.mode !== "underground") {
+    scatterRocks(grid, Math.round(total * options.rockRatio), seededRandom(`${seed}:rocks`));
+  }
+  if (options.mode !== "underground" && options.mode !== "volcanic") {
+    placeBuildings(grid, options.buildingCount, seededRandom(`${seed}:buildings`));
+    placeTrees(
+      grid,
+      Math.round(total * options.treeRatio),
+      waterDistance,
+      seededRandom(`${seed}:groves`),
+    );
+  }
   return grid;
 }
