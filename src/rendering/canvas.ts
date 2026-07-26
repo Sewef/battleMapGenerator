@@ -149,6 +149,16 @@ function drawTerrainDetail(
     context.moveTo(x * cellSize + cellSize * .18, y * cellSize + cellSize * .55);
     context.lineTo(x * cellSize + cellSize * .78, y * cellSize + cellSize * .55);
     context.stroke();
+  } else if (tile.terrain === Terrain.Ice) {
+    context.strokeStyle = "rgba(239, 250, 248, .55)";
+    context.lineWidth = Math.max(1, cellSize * .025);
+    context.beginPath();
+    context.moveTo(x * cellSize + cellSize * .2, y * cellSize + cellSize * .25);
+    context.lineTo(x * cellSize + cellSize * .48, y * cellSize + cellSize * .52);
+    context.lineTo(x * cellSize + cellSize * .38, y * cellSize + cellSize * .78);
+    context.moveTo(x * cellSize + cellSize * .48, y * cellSize + cellSize * .52);
+    context.lineTo(x * cellSize + cellSize * .78, y * cellSize + cellSize * .38);
+    context.stroke();
   } else if (tile.terrain === Terrain.Beach) {
     context.fillStyle = "rgba(111, 92, 59, .25)";
     context.beginPath();

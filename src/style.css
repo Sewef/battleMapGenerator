@@ -36,6 +36,26 @@ h1 em { font-family: "Newsreader", serif; font-weight: 500; color: #617553; }
 .preset-card small { max-width: 220px; color: #737b76; font-size: 9px; line-height: 1.4; }
 .preset-icon { position: relative; flex: 0 0 40px; width: 40px; height: 40px; overflow: hidden; border-radius: 50%; background: #aabe85; }
 .preset-icon::before, .preset-icon::after { content: ""; position: absolute; }
+.preset-icon.desert-canyon { background: #cf9661; }
+.preset-icon.desert-canyon::before { width: 12px; height: 42px; left: 14px; top: -1px; background: #8d4f38; transform: rotate(18deg); }
+.preset-icon.ancient-forest { background: #647d53; }
+.preset-icon.ancient-forest::before { width: 15px; height: 28px; left: 5px; top: 7px; border-radius: 50%; background: #314d39; box-shadow: 14px -4px #3d5b40, 24px 5px #294535; }
+.preset-icon.frozen-lake { background: #cbd9d9; }
+.preset-icon.frozen-lake::before { inset: 8px 4px; border-radius: 50%; background: #88afb8; border: 3px solid #edf2ef; }
+.preset-icon.badlands { background: #b66f4e; }
+.preset-icon.badlands::before { inset: 5px; background: #754335; clip-path: polygon(0 100%, 24% 25%, 43% 67%, 66% 10%, 100% 100%); }
+.preset-icon.ruined-battlefield { background: #81775e; }
+.preset-icon.ruined-battlefield::before { width: 13px; height: 13px; left: 6px; top: 8px; border: 3px solid #4e493e; border-radius: 50%; box-shadow: 15px 11px 0 -2px #4e493e; }
+.preset-icon.farmland { background: repeating-linear-gradient(90deg, #a5b46d 0 8px, #c7b979 8px 15px); }
+.preset-icon.farmland::before { width: 46px; height: 5px; left: -3px; top: 18px; background: #846e4d; transform: rotate(-12deg); }
+.preset-icon.archipelago { background: #6f9fa4; }
+.preset-icon.archipelago::before { width: 17px; height: 11px; left: 4px; top: 8px; border-radius: 50%; background: #9dbb74; box-shadow: 16px 14px #b2c47d; }
+.preset-icon.mountain-pass { background: #99998a; }
+.preset-icon.mountain-pass::before { inset: 4px; background: #555b55; clip-path: polygon(0 100%, 34% 10%, 48% 68%, 67% 8%, 100% 100%); }
+.preset-icon.sewer { background: #4f5752; }
+.preset-icon.sewer::before { width: 28px; height: 24px; left: 6px; top: 9px; border: 4px solid #8a8b7f; border-bottom: 0; border-radius: 50% 50% 0 0; }
+.preset-icon.ancient-ruins { background: #aaa184; }
+.preset-icon.ancient-ruins::before { width: 7px; height: 27px; left: 7px; bottom: 5px; background: #6e6959; box-shadow: 10px -4px #817969, 22px 3px #625e52; }
 .preset-icon.countryside::before { width: 30px; height: 10px; left: 5px; bottom: 8px; border-radius: 50%; background: #718651; }
 .preset-icon.river { background: #b5c58b; }
 .preset-icon.river::before { width: 9px; height: 46px; left: 15px; top: -3px; background: #6b9b9f; transform: rotate(18deg); }
@@ -109,6 +129,7 @@ canvas { display: block; max-width: 100%; height: auto !important; box-shadow: 0
 .swatch.void { background: #263334; }
 .swatch.difficult { background: #9fa96c; }
 .swatch.water { background: #7ea7a7; }
+.swatch.ice { background: #a9ced3; }
 .swatch.lava { background: #d7542f; }
 .swatch.beach { background: #d8c68f; }
 .swatch.road { background: #aa9475; }

@@ -17,6 +17,12 @@ import {
   scatterRocks,
 } from "./obstacles";
 import { generateCity } from "./city";
+import {
+  generateAncientRuins,
+  generateBattlefield,
+  generateFarmland,
+  generateSewer,
+} from "./special-biomes";
 
 interface RegionMap {
   centers: Point[];
@@ -494,6 +500,139 @@ export function generateTerrain(options: TerrainOptions): Grid {
     paintRegions(grid, map, sea, Terrain.Water);
     paintShore(grid, seededRandom(`${seed}:coast-shore`), 3);
     drawCoastalRoad(grid);
+  }
+
+  if (options.mode === "desert-canyon") {
+    const canyonRandom = seededRandom(`${seed}:desert-canyon`);
+    const ravine = pathAcrossMap(map, width, height, canyonRandom() > .5, canyonRandom);
+    drawRegionPath(
+      grid, map, ravine, Terrain.Ravine,
+      Math.max(0, Math.round(options.reliefWeight) - 1),
+    );
+    const mesa = selectConnectedRegions(
+      map, Math.round(total * .13 * options.reliefWeight), canyonRandom,
+      (region) => !ravine.includes(region),
+    );
+    paintRegions(grid, map, mesa, Terrain.Cliff);
+    const oasis = selectConnectedRegions(
+      map, Math.round(total * .025 * options.waterWeight), canyonRandom,
+      (region) => !mesa.has(region),
+    );
+    paintRegions(grid, map, oasis, Terrain.Water);
+    scatterDifficultTerrain(
+      grid, Math.round(total * .14 * options.difficultWeight),
+      cellDistancesFromWater(grid), seededRandom(`${seed}:desert-scree`),
+    );
+    drawRoadCrossing(grid, canyonRandom() > .5, seededRandom(`${seed}:desert-trail`));
+  }
+
+  if (options.mode === "ancient-forest") {
+    const forestRandom = seededRandom(`${seed}:ancient-forest`);
+    if (options.waterWeight > 0) {
+      meanderingCrossing(
+        grid, forestRandom() > .5, seededRandom(`${seed}:forest-stream`),
+        [0, Math.max(0, Math.round(options.waterWeight))], () => Terrain.Water,
+      );
+    }
+    scatterDifficultTerrain(
+      grid, Math.round(total * .2 * options.difficultWeight),
+      cellDistancesFromWater(grid), seededRandom(`${seed}:undergrowth`),
+    );
+  }
+
+  if (options.mode === "frozen-lake") {
+    const frozenLake = selectConnectedRegions(
+      map, Math.round(total * .34 * options.waterWeight),
+      seededRandom(`${seed}:frozen-lake`), () => true,
+    );
+    paintRegions(grid, map, frozenLake, Terrain.Ice);
+    const openWater = selectConnectedRegions(
+      map, Math.round(total * .045 * options.waterWeight),
+      seededRandom(`${seed}:open-water`),
+      (region) => frozenLake.has(region),
+    );
+    paintRegions(grid, map, openWater, Terrain.Water);
+    scatterDifficultTerrain(
+      grid, Math.round(total * .16 * options.difficultWeight),
+      cellDistancesFromWater(grid), seededRandom(`${seed}:snowdrifts`),
+    );
+  }
+
+  if (options.mode === "badlands") {
+    const badlandsRandom = seededRandom(`${seed}:badlands`);
+    for (let index = 0; index < Math.max(1, Math.round(options.reliefWeight * 2)); index += 1) {
+      const path = pathAcrossMap(
+        map, width, height, badlandsRandom() > .5,
+        seededRandom(`${seed}:badlands-ridge:${index}`),
+      );
+      drawRegionPath(grid, map, path, index % 2 ? Terrain.Ravine : Terrain.Cliff, 0);
+    }
+    scatterDifficultTerrain(
+      grid, Math.round(total * .22 * options.difficultWeight),
+      grid.map((row) => row.map(() => Infinity)),
+      seededRandom(`${seed}:badlands-floor`),
+    );
+  }
+
+  if (options.mode === "ruined-battlefield") {
+    generateBattlefield(
+      grid, seededRandom(`${seed}:battlefield`), options.difficultWeight,
+    );
+    drawRoadCrossing(grid, true, seededRandom(`${seed}:battlefield-road`));
+  }
+
+  if (options.mode === "farmland") {
+    generateFarmland(
+      grid, seededRandom(`${seed}:farmland`), options.difficultWeight,
+    );
+  }
+
+  if (options.mode === "archipelago") {
+    for (const row of grid) for (const tile of row) tile.terrain = Terrain.Water;
+    const islandRandom = seededRandom(`${seed}:archipelago`);
+    const occupied = new Set<number>();
+    const landTarget = total * Math.max(.2, .55 - options.waterWeight * .22);
+    for (let index = 0; index < 4; index += 1) {
+      const island = selectConnectedRegions(
+        map, Math.round(landTarget / 4), islandRandom,
+        (region) => !occupied.has(region),
+      );
+      for (const region of island) occupied.add(region);
+      paintRegions(grid, map, island, Terrain.Ground);
+    }
+    paintShore(grid, seededRandom(`${seed}:island-beaches`), 2);
+  }
+
+  if (options.mode === "mountain-pass") {
+    const passRandom = seededRandom(`${seed}:mountain-pass`);
+    const leftMass = selectConnectedRegions(
+      map, Math.round(total * .22 * options.reliefWeight), passRandom,
+      () => true, edgeRegions(map, width, height, "left"),
+    );
+    const rightMass = selectConnectedRegions(
+      map, Math.round(total * .22 * options.reliefWeight), passRandom,
+      (region) => !leftMass.has(region), edgeRegions(map, width, height, "right"),
+    );
+    paintRegions(grid, map, leftMass, Terrain.Cliff);
+    paintRegions(grid, map, rightMass, Terrain.Cliff);
+    scatterDifficultTerrain(
+      grid, Math.round(total * .12 * options.difficultWeight),
+      grid.map((row) => row.map(() => Infinity)),
+      seededRandom(`${seed}:mountain-scree`),
+    );
+    drawRoadCrossing(grid, true, seededRandom(`${seed}:mountain-road`));
+  }
+
+  if (options.mode === "sewer") {
+    generateSewer(grid, seededRandom(`${seed}:sewer`), options.waterWeight);
+  }
+
+  if (options.mode === "ancient-ruins") {
+    generateAncientRuins(grid, seededRandom(`${seed}:ancient-ruins`));
+    scatterDifficultTerrain(
+      grid, Math.round(total * .1 * options.difficultWeight),
+      cellDistancesFromWater(grid), seededRandom(`${seed}:ruin-overgrowth`),
+    );
   }
 
   if (options.mode === "wetlands") {

@@ -3,6 +3,7 @@ export const Terrain = {
   Ground: "ground",
   Difficult: "difficult",
   Water: "water",
+  Ice: "ice",
   Lava: "lava",
   Beach: "beach",
   Road: "road",
@@ -28,7 +29,17 @@ export type LandscapeMode =
   | "underground"
   | "volcanic"
   | "highlands"
-  | "city";
+  | "city"
+  | "desert-canyon"
+  | "ancient-forest"
+  | "frozen-lake"
+  | "badlands"
+  | "ruined-battlefield"
+  | "farmland"
+  | "archipelago"
+  | "mountain-pass"
+  | "sewer"
+  | "ancient-ruins";
 
 export interface Tile {
   terrain: TerrainKind;
@@ -66,6 +77,7 @@ export const TERRAIN_RULES: Record<
   [Terrain.Ground]: { label: "Ground", movement: "normal", blocksSight: false },
   [Terrain.Difficult]: { label: "Difficult terrain", movement: "slow", blocksSight: false },
   [Terrain.Water]: { label: "Water", movement: "slow", blocksSight: false },
+  [Terrain.Ice]: { label: "Ice", movement: "normal", blocksSight: false },
   [Terrain.Lava]: { label: "Lava", movement: "blocked", blocksSight: false },
   [Terrain.Beach]: { label: "Beach", movement: "slow", blocksSight: false },
   [Terrain.Road]: { label: "Road", movement: "normal", blocksSight: false },
