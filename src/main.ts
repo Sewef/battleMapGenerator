@@ -5,7 +5,7 @@ import {
   type Grid,
   type Preset,
 } from "./generator";
-import { drawGrid, terrainTilesetReady } from "./rendering/canvas";
+import { drawGrid } from "./rendering/canvas";
 import { PARAMETER_FIELDS, renderApp } from "./ui/template";
 import { downloadWebp } from "./export/webp";
 
@@ -20,7 +20,6 @@ const widthInput = document.querySelector<HTMLInputElement>("#width")!;
 const heightInput = document.querySelector<HTMLInputElement>("#height")!;
 const scaleInput = document.querySelector<HTMLInputElement>("#scale")!;
 const showGridInput = document.querySelector<HTMLInputElement>("#show-grid")!;
-const useTilesetInput = document.querySelector<HTMLInputElement>("#use-tileset")!;
 const inputs = Object.fromEntries(
   PARAMETER_FIELDS.map(({ id }) => [
     id,
@@ -71,7 +70,6 @@ function renderMap(grid: Grid, targetCanvas = previewCanvas, cellSize?: number) 
     updateInterface: targetCanvas === previewCanvas,
     hiddenItems: hiddenLegendItems,
     showGrid: showGridInput.checked,
-    useTileset: useTilesetInput.checked,
   });
 }
 
@@ -121,11 +119,9 @@ document.querySelector("#download")!.addEventListener("click", () => {
     seedInput.value.trim(),
     hiddenLegendItems,
     showGridInput.checked,
-    useTilesetInput.checked,
   );
 });
 showGridInput.addEventListener("change", () => renderMap(currentGrid));
-useTilesetInput.addEventListener("change", () => renderMap(currentGrid));
 document.querySelector("#legend")!.addEventListener("click", (event) => {
   const groupButton = (event.target as HTMLElement).closest<HTMLButtonElement>(
     "[data-legend-group-items]",
@@ -156,6 +152,3 @@ window.addEventListener("resize", () => renderMap(currentGrid));
 
 applyPreset(PRESETS[0]);
 generate();
-terrainTilesetReady.then(() => {
-  if (currentGrid.length) renderMap(currentGrid);
-});

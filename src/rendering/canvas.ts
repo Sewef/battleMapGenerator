@@ -6,24 +6,6 @@ import {
   type TerrainKind,
 } from "../domain/map";
 import { getTerrainStyle } from "./palettes";
-import {
-  atlasTile,
-  SOURCE_TILE_SIZE,
-  terrainTileset,
-  tilesetFiles,
-  type TerrainTiles,
-} from "./tilesets";
-
-const terrainTilesets = new Map<string, HTMLImageElement>();
-export const terrainTilesetReady = Promise.all(tilesetFiles.map((file) =>
-  new Promise<void>((resolve) => {
-    const image = new Image();
-    image.addEventListener("load", () => resolve(), { once: true });
-    image.addEventListener("error", () => resolve(), { once: true });
-    image.src = `/assets/tilesets/${file}`;
-    terrainTilesets.set(file, image);
-  })
-)).then(() => undefined);
 
 export interface RenderOptions {
   targetCanvas: HTMLCanvasElement;
@@ -35,7 +17,6 @@ export interface RenderOptions {
   hiddenOpacity?: number;
   transparentBackground?: boolean;
   showGrid?: boolean;
-  useTileset?: boolean;
 }
 
 const terrainPriority: Record<TerrainKind, number> = {
@@ -76,91 +57,6 @@ const terrainPaintOrder: TerrainKind[] = [
   Terrain.Cliff,
   Terrain.Void,
 ];
-
-function createTerrainPattern(
-  mode: LandscapeMode,
-  terrain: TerrainKind,
-  cellSize: number,
-  context: CanvasRenderingContext2D,
-) {
-  const definition = terrainTileset(mode, terrain);
-  const block = definition?.tiles.block;
-  const image = definition && terrainTilesets.get(definition.file);
-  if (!block || !image?.complete || !image.naturalWidth) return null;
-  const source = atlasTile(block);
-  const tile = document.createElement("canvas");
-  tile.width = cellSize;
-  tile.height = cellSize;
-  const tileContext = tile.getContext("2d")!;
-  tileContext.imageSmoothingEnabled = false;
-  tileContext.drawImage(
-    image,
-    source.x * SOURCE_TILE_SIZE,
-    source.y * SOURCE_TILE_SIZE,
-    SOURCE_TILE_SIZE,
-    SOURCE_TILE_SIZE,
-    0,
-    0,
-    cellSize,
-    cellSize,
-  );
-  return context.createPattern(tile, "repeat");
-}
-
-function drawTransitionTerrain(
-  grid: Grid,
-  terrain: TerrainKind,
-  tiles: TerrainTiles,
-  image: HTMLImageElement,
-  cellSize: number,
-  context: CanvasRenderingContext2D,
-) {
-  const quarters = tiles.quarters;
-  if (!quarters) return;
-  const same = (x: number, y: number) =>
-    grid[y]?.[x] !== undefined && underlyingTerrain(grid, x, y) === terrain;
-  const quadrants = [
-    { qx: 0, qy: 0, dx: -1, dy: -1 },
-    { qx: 1, qy: 0, dx: 1, dy: -1 },
-    { qx: 0, qy: 1, dx: -1, dy: 1 },
-    { qx: 1, qy: 1, dx: 1, dy: 1 },
-  ];
-  context.imageSmoothingEnabled = false;
-
-  for (let y = 0; y < grid.length; y += 1) {
-    for (let x = 0; x < grid[y].length; x += 1) {
-      if (underlyingTerrain(grid, x, y) !== terrain) continue;
-      for (const { qx, qy, dx, dy } of quadrants) {
-        const horizontal = same(x + dx, y);
-        const vertical = same(x, y + dy);
-        const sourceTile = atlasTile(
-          tiles.block,
-          horizontal ? 1 : qx === 0 ? 0 : 2,
-          vertical ? 1 : qy === 0 ? 0 : 2,
-        );
-        const sourceQuadrantX = horizontal ? qx : 1 - qx;
-        const sourceQuadrantY = vertical ? qy : 1 - qy;
-        const sourceX = sourceTile.x * SOURCE_TILE_SIZE +
-          sourceQuadrantX * SOURCE_TILE_SIZE / 2;
-        const sourceY = sourceTile.y * SOURCE_TILE_SIZE +
-          sourceQuadrantY * SOURCE_TILE_SIZE / 2;
-        const destinationX = x * cellSize + qx * cellSize / 2;
-        const destinationY = y * cellSize + qy * cellSize / 2;
-        context.drawImage(
-          image,
-          sourceX,
-          sourceY,
-          SOURCE_TILE_SIZE / 2,
-          SOURCE_TILE_SIZE / 2,
-          destinationX,
-          destinationY,
-          cellSize / 2,
-          cellSize / 2,
-        );
-      }
-    }
-  }
-}
 
 function underlyingTerrain(grid: Grid, x: number, y: number): TerrainKind {
   const terrain = grid[y][x].terrain;
@@ -224,29 +120,16 @@ function drawTerrainLayers(
   mode: LandscapeMode,
   hiddenItems: ReadonlySet<string>,
   hiddenOpacity: number,
-  useTileset: boolean,
   width: number,
   height: number,
   context: CanvasRenderingContext2D,
 ) {
   const present = new Set<TerrainKind>();
-  if (useTileset) {
-    const groundPattern = createTerrainPattern(
-      mode,
-      Terrain.Ground,
-      cellSize,
-      context,
-    );
-    context.fillStyle = groundPattern ??
-      getTerrainStyle(Terrain.Ground, mode).color;
-    context.fillRect(0, 0, width, height);
-  }
   for (let y = 0; y < grid.length; y += 1) {
     for (let x = 0; x < grid[y].length; x += 1) {
       const terrain = underlyingTerrain(grid, x, y);
       const style = getTerrainStyle(terrain, mode);
       present.add(terrain);
-      if (useTileset) continue;
       context.globalAlpha = hiddenItems.has(terrain) ? hiddenOpacity : 1;
       context.fillStyle = style.color;
       context.fillRect(
@@ -267,48 +150,23 @@ function drawTerrainLayers(
     layer.height = height;
     const layerContext = layer.getContext("2d")!;
     const style = getTerrainStyle(terrain, mode);
-    const definition = useTileset ? terrainTileset(mode, terrain) : undefined;
-    const image = definition && terrainTilesets.get(definition.file);
-    const hasTransitions = Boolean(
-      definition?.tiles.quarters &&
-      image?.complete &&
-      image.naturalWidth,
-    );
-    const terrainPattern = useTileset && !hasTransitions
-      ? createTerrainPattern(mode, terrain, cellSize, layerContext)
-      : null;
-    if (hasTransitions && definition && image) {
-      drawTransitionTerrain(
-        grid,
-        terrain,
-        definition.tiles,
-        image,
-        cellSize,
-        layerContext,
-      );
-    } else {
-      layerContext.fillStyle = terrainPattern ?? style.color;
-      layerContext.fillRect(0, 0, width, height);
-    }
+    layerContext.fillStyle = style.color;
+    layerContext.fillRect(0, 0, width, height);
 
-    if (!terrainPattern && !hasTransitions) {
-      const gradient = layerContext.createLinearGradient(0, 0, width, height);
-      gradient.addColorStop(0, "rgba(255,255,255,.09)");
-      gradient.addColorStop(.48, "rgba(255,255,255,0)");
-      gradient.addColorStop(1, "rgba(19,31,25,.10)");
-      layerContext.fillStyle = gradient;
-      layerContext.fillRect(0, 0, width, height);
-    }
+    const gradient = layerContext.createLinearGradient(0, 0, width, height);
+    gradient.addColorStop(0, "rgba(255,255,255,.09)");
+    gradient.addColorStop(.48, "rgba(255,255,255,0)");
+    gradient.addColorStop(1, "rgba(19,31,25,.10)");
+    layerContext.fillStyle = gradient;
+    layerContext.fillRect(0, 0, width, height);
 
     layerContext.globalCompositeOperation = "destination-in";
-    const maskBlur = useTileset
-      ? 0
-      : terrain === Terrain.Ravine
-        ? Math.max(.75, cellSize * .035)
-        : terrain === Terrain.Cliff
-          ? Math.max(1, cellSize * .055)
-          : Math.max(1.5, cellSize * .11);
-    if (maskBlur) layerContext.filter = `blur(${maskBlur}px)`;
+    const maskBlur = terrain === Terrain.Ravine
+      ? Math.max(.75, cellSize * .035)
+      : terrain === Terrain.Cliff
+        ? Math.max(1, cellSize * .055)
+        : Math.max(1.5, cellSize * .11);
+    layerContext.filter = `blur(${maskBlur}px)`;
     layerContext.drawImage(mask, 0, 0);
     layerContext.filter = "none";
     layerContext.globalCompositeOperation = "source-over";
@@ -902,7 +760,6 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   const hiddenItems = options.hiddenItems ?? new Set<string>();
   const hiddenOpacity = options.hiddenOpacity ?? .14;
   const showGrid = options.showGrid ?? true;
-  const useTileset = options.useTileset ?? false;
   const width = columns * cellSize;
   const height = rows * cellSize;
 
@@ -932,24 +789,21 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     mode,
     hiddenItems,
     hiddenOpacity,
-    useTileset,
     width,
     height,
     context,
   );
-  if (!useTileset) {
-    drawGlobalTexture(width, height, context);
-    drawReliefBevels(
-      grid,
-      cellSize,
-      hiddenItems,
-      hiddenOpacity,
-      width,
-      height,
-      context,
-    );
-    drawShorelines(grid, cellSize, hiddenItems, hiddenOpacity, context);
-  }
+  drawGlobalTexture(width, height, context);
+  drawReliefBevels(
+    grid,
+    cellSize,
+    hiddenItems,
+    hiddenOpacity,
+    width,
+    height,
+    context,
+  );
+  drawShorelines(grid, cellSize, hiddenItems, hiddenOpacity, context);
   drawRoadNetwork(grid, cellSize, mode, hiddenItems, hiddenOpacity, context);
 
   for (let y = 0; y < rows; y += 1) {
@@ -957,7 +811,6 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
       const tile = grid[y][x];
       context.globalAlpha = hiddenItems.has(tile.terrain) ? hiddenOpacity : 1;
       if (
-        !useTileset &&
         !overlayTerrains.has(tile.terrain) &&
         tile.terrain !== Terrain.Water &&
         tile.terrain !== Terrain.Cliff &&

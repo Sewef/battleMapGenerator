@@ -9,7 +9,6 @@ function renderExportCanvas(
   cellSize: number,
   hiddenItems: ReadonlySet<string>,
   showGrid: boolean,
-  useTileset: boolean,
 ) {
   const canvas = document.createElement("canvas");
   drawGrid(grid, {
@@ -22,7 +21,6 @@ function renderExportCanvas(
     hiddenOpacity: 0,
     transparentBackground: true,
     showGrid,
-    useTileset,
   });
   return canvas;
 }
@@ -40,7 +38,6 @@ export function downloadWebp(
   seed: string,
   hiddenItems: ReadonlySet<string>,
   showGrid = true,
-  useTileset = false,
   cellSize = 64,
 ) {
   const link = document.createElement("a");
@@ -51,7 +48,6 @@ export function downloadWebp(
     cellSize,
     hiddenItems,
     showGrid,
-    useTileset,
   ).toDataURL(
     "image/webp",
     WEBP_QUALITY,
