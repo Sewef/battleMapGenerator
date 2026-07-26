@@ -7,6 +7,13 @@ import {
 } from "../domain/map";
 import { getTerrainStyle } from "./palettes";
 
+const terrainTileset = new Image();
+export const terrainTilesetReady = new Promise<void>((resolve) => {
+  terrainTileset.addEventListener("load", () => resolve(), { once: true });
+  terrainTileset.addEventListener("error", () => resolve(), { once: true });
+});
+terrainTileset.src = "/assets/tilesets/1.png";
+
 export interface RenderOptions {
   targetCanvas: HTMLCanvasElement;
   mode: LandscapeMode;
@@ -17,6 +24,7 @@ export interface RenderOptions {
   hiddenOpacity?: number;
   transparentBackground?: boolean;
   showGrid?: boolean;
+  useTileset?: boolean;
 }
 
 const terrainPriority: Record<TerrainKind, number> = {
@@ -57,6 +65,41 @@ const terrainPaintOrder: TerrainKind[] = [
   Terrain.Cliff,
   Terrain.Void,
 ];
+
+const grassModes = new Set<LandscapeMode>([
+  "countryside",
+  "river",
+  "coast",
+  "wetlands",
+  "ancient-forest",
+  "farmland",
+  "archipelago",
+]);
+
+function createGrassPattern(
+  cellSize: number,
+  context: CanvasRenderingContext2D,
+) {
+  if (!terrainTileset.complete || !terrainTileset.naturalWidth) return null;
+  const tile = document.createElement("canvas");
+  tile.width = cellSize;
+  tile.height = cellSize;
+  const tileContext = tile.getContext("2d")!;
+  tileContext.imageSmoothingEnabled = false;
+  // User-facing coordinates are one-based: tile 2;2 starts at pixel 32;32.
+  tileContext.drawImage(
+    terrainTileset,
+    32,
+    32,
+    32,
+    32,
+    0,
+    0,
+    cellSize,
+    cellSize,
+  );
+  return context.createPattern(tile, "repeat");
+}
 
 function underlyingTerrain(grid: Grid, x: number, y: number): TerrainKind {
   const terrain = grid[y][x].terrain;
@@ -117,6 +160,7 @@ function drawTerrainLayers(
   mode: LandscapeMode,
   hiddenItems: ReadonlySet<string>,
   hiddenOpacity: number,
+  useTileset: boolean,
   width: number,
   height: number,
   context: CanvasRenderingContext2D,
@@ -147,7 +191,12 @@ function drawTerrainLayers(
     layer.height = height;
     const layerContext = layer.getContext("2d")!;
     const style = getTerrainStyle(terrain, mode);
-    layerContext.fillStyle = style.color;
+    const grassPattern = useTileset &&
+        terrain === Terrain.Ground &&
+        grassModes.has(mode)
+      ? createGrassPattern(cellSize, layerContext)
+      : null;
+    layerContext.fillStyle = grassPattern ?? style.color;
     layerContext.fillRect(0, 0, width, height);
 
     const gradient = layerContext.createLinearGradient(0, 0, width, height);
@@ -757,6 +806,7 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   const hiddenItems = options.hiddenItems ?? new Set<string>();
   const hiddenOpacity = options.hiddenOpacity ?? .14;
   const showGrid = options.showGrid ?? true;
+  const useTileset = options.useTileset ?? false;
   const width = columns * cellSize;
   const height = rows * cellSize;
 
@@ -786,6 +836,7 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     mode,
     hiddenItems,
     hiddenOpacity,
+    useTileset,
     width,
     height,
     context,

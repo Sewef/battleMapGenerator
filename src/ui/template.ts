@@ -83,6 +83,10 @@ export function renderApp(root: HTMLElement) {
             <div><strong>Map preview</strong><span id="dimensions"></span></div>
             <div class="export-actions">
               <label class="grid-option">
+                <input id="use-tileset" type="checkbox" />
+                <span>Use tileset</span>
+              </label>
+              <label class="grid-option">
                 <input id="show-grid" type="checkbox" checked />
                 <span>Show grid</span>
               </label>
