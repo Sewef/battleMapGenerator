@@ -93,6 +93,7 @@ export function scatterRocks(grid: Grid, target: number, random: Random) {
       ),
   ).sort((a, b) => a.score - b.score);
   const placed: Point[] = [];
+  let rockId = 0;
 
   for (const candidate of candidates) {
     const nearExisting = placed.some((rock) =>
@@ -100,14 +101,17 @@ export function scatterRocks(grid: Grid, target: number, random: Random) {
     );
     if (nearExisting) continue;
     const outcropSize = random() < .18 ? 2 + Math.floor(random() * 3) : 1;
+    rockId += 1;
     let point = { x: candidate.x, y: candidate.y };
     for (let index = 0; index < outcropSize && placed.length < target; index += 1) {
       const tile = grid[point.y]?.[point.x];
       if (
         tile &&
+        tile.obstacle === Obstacle.None &&
         (tile.terrain === Terrain.Ground || tile.terrain === Terrain.Difficult)
       ) {
-        tile.terrain = Terrain.Rock;
+        tile.obstacle = Obstacle.Rock;
+        tile.obstacleId = rockId;
         placed.push(point);
       }
       const directions = [

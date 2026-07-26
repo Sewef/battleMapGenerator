@@ -114,7 +114,7 @@ canvas { display: block; max-width: 100%; height: auto !important; box-shadow: 0
 .swatch.road { background: #aa9475; }
 .swatch.bridge { background: #876d4f; }
 .swatch.rock { background: #85877c; }
-.swatch.cliff { background: #6f7165; }
+.swatch.cliff { background: #161614; }
 .swatch.ravine { background: #776b59; }
 .swatch.tree { border-radius: 50%; background: #344f3e; }
 .swatch.building { background: #b66347; }

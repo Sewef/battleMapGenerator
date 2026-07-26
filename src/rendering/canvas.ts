@@ -78,6 +78,51 @@ function drawBuilding(
   }
 }
 
+function drawRock(
+  x: number,
+  y: number,
+  size: number,
+  mode: LandscapeMode,
+  context: CanvasRenderingContext2D,
+) {
+  const colors = mode === "volcanic"
+    ? { fill: "#24282a", highlight: "#8f7d6b", stroke: "#d0a45f" }
+    : mode === "underground"
+      ? { fill: "#4a4742", highlight: "#bbb2a2", stroke: "#ded4c0" }
+      : { fill: "#555a59", highlight: "#a9aaa2", stroke: "#343837" };
+  context.fillStyle = "rgba(20, 22, 22, .3)";
+  context.beginPath();
+  context.ellipse(
+    x * size + size * .52,
+    y * size + size * .76,
+    size * .4,
+    size * .14,
+    0,
+    0,
+    Math.PI * 2,
+  );
+  context.fill();
+  context.fillStyle = colors.fill;
+  context.strokeStyle = colors.stroke;
+  context.lineWidth = Math.max(1.5, size * .045);
+  context.beginPath();
+  context.moveTo(x * size + size * .1, y * size + size * .76);
+  context.lineTo(x * size + size * .26, y * size + size * .24);
+  context.lineTo(x * size + size * .65, y * size + size * .11);
+  context.lineTo(x * size + size * .91, y * size + size * .69);
+  context.lineTo(x * size + size * .64, y * size + size * .88);
+  context.closePath();
+  context.fill();
+  context.stroke();
+  context.fillStyle = colors.highlight;
+  context.beginPath();
+  context.moveTo(x * size + size * .26, y * size + size * .24);
+  context.lineTo(x * size + size * .65, y * size + size * .11);
+  context.lineTo(x * size + size * .51, y * size + size * .47);
+  context.closePath();
+  context.fill();
+}
+
 function drawTerrainDetail(
   grid: Grid,
   x: number,
@@ -131,15 +176,6 @@ function drawTerrainDetail(
     context.fillStyle = "rgba(64, 75, 49, .35)";
     context.fillRect(x * cellSize + cellSize * .2, y * cellSize + cellSize * .68, cellSize * .08, cellSize * .16);
     context.fillRect(x * cellSize + cellSize * .7, y * cellSize + cellSize * .22, cellSize * .07, cellSize * .13);
-  } else if (tile.terrain === Terrain.Rock) {
-    context.fillStyle = "rgba(238, 233, 216, .34)";
-    context.beginPath();
-    context.moveTo(x * cellSize + cellSize * .18, y * cellSize + cellSize * .72);
-    context.lineTo(x * cellSize + cellSize * .32, y * cellSize + cellSize * .3);
-    context.lineTo(x * cellSize + cellSize * .68, y * cellSize + cellSize * .2);
-    context.lineTo(x * cellSize + cellSize * .84, y * cellSize + cellSize * .67);
-    context.closePath();
-    context.fill();
   } else if (tile.terrain === Terrain.Ravine) {
     context.strokeStyle = "rgba(35, 37, 31, .55)";
     context.beginPath();
@@ -220,6 +256,12 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
         drawBuilding(x, y, cellSize, grid, context);
         context.globalAlpha = 1;
       }
+      if (tile.obstacle === Obstacle.Rock) {
+        context.globalAlpha =
+          hiddenItems.has(Obstacle.Rock) ? hiddenOpacity : 1;
+        drawRock(x, y, cellSize, mode, context);
+        context.globalAlpha = 1;
+      }
       if (tile.obstacle !== Obstacle.None) {
         counts.set(tile.obstacle, (counts.get(tile.obstacle) ?? 0) + 1);
       }
@@ -238,6 +280,14 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     })).filter(({ key }) => (counts.get(key) ?? 0) > 0);
   const obstacleItems = [
     { key: Obstacle.Tree, label: "Tree", className: "tree", color: "" },
+    {
+      key: Obstacle.Rock,
+      label: "Rock",
+      className: "rock",
+      color: mode === "volcanic"
+        ? "#24282a"
+        : mode === "underground" ? "#4a4742" : "#555a59",
+    },
     { key: Obstacle.Building, label: "Building", className: "building", color: "" },
   ].filter(({ key }) => (counts.get(key) ?? 0) > 0);
 

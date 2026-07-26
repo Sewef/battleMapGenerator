@@ -352,7 +352,7 @@ function generateCavern(
   difficultWeight: number,
 ) {
   for (const row of grid) {
-    for (const tile of row) tile.terrain = Terrain.Rock;
+    for (const tile of row) tile.terrain = Terrain.Cliff;
   }
 
   const width = grid[0].length;
@@ -648,7 +648,7 @@ export function generateTerrain(options: TerrainOptions): Grid {
 
   // Second pass: obstacles do not participate in terrain morphology.
   const waterDistance = cellDistancesFromWater(grid);
-  if (options.mode !== "underground" && options.mode !== "city") {
+  if (options.mode !== "city") {
     scatterRocks(grid, Math.round(total * options.rockRatio), seededRandom(`${seed}:rocks`));
   }
   if (

@@ -19,8 +19,7 @@ const terrainStyles: Record<TerrainKind, TerrainStyle> = {
   [Terrain.Beach]: { color: "#d8c68f", alt: "#cfbb80", label: "Beach" },
   [Terrain.Road]: { color: "#aa9475", alt: "#a28b6c", label: "Road" },
   [Terrain.Bridge]: { color: "#876d4f", alt: "#7e6448", label: "Bridge" },
-  [Terrain.Rock]: { color: "#85877c", alt: "#7a7d72", label: "Rock" },
-  [Terrain.Cliff]: { color: "#6f7165", alt: "#64675c", label: "Cliff" },
+  [Terrain.Cliff]: { color: "#44463e", alt: "#292b25", label: "Cliff" },
   [Terrain.Ravine]: { color: "#776b59", alt: "#6c604f", label: "Ravine" },
 };
 
@@ -49,8 +48,8 @@ const biomePalettes: Record<
     difficult: { color: "#68665f", alt: "#5e5c56" },
   },
   volcanic: {
-    ground: { color: "#5f615d", alt: "#565955" },
-    difficult: { color: "#414744", alt: "#3a0b0b" },
+    ground: { color: "#625d57", alt: "#58534e" },
+    difficult: { color: "#84725f", alt: "#786653" },
   },
   city: {
     ground: { color: "#b9b19c", alt: "#afa690" },
@@ -62,9 +61,21 @@ const biomePalettes: Record<
   },
 };
 
+const biomeTerrainOverrides: Partial<
+  Record<LandscapeMode, Partial<Record<TerrainKind, Omit<TerrainStyle, "label">>>>
+> = {
+  volcanic: {
+    [Terrain.Cliff]: { color: "#aaa296", alt: "#989185" },
+    [Terrain.Ravine]: { color: "#4b3b37", alt: "#40312e" },
+  },
+};
+
 export function getTerrainStyle(kind: TerrainKind, mode: LandscapeMode): TerrainStyle {
   const base = terrainStyles[kind];
-  if (kind === Terrain.Ground) return { ...base, ...biomePalettes[mode].ground };
-  if (kind === Terrain.Difficult) return { ...base, ...biomePalettes[mode].difficult };
-  return base;
+  const themedBase = kind === Terrain.Ground
+    ? { ...base, ...biomePalettes[mode].ground }
+    : kind === Terrain.Difficult
+      ? { ...base, ...biomePalettes[mode].difficult }
+      : base;
+  return { ...themedBase, ...biomeTerrainOverrides[mode]?.[kind] };
 }

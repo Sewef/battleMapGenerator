@@ -7,7 +7,6 @@ export const Terrain = {
   Beach: "beach",
   Road: "road",
   Bridge: "bridge",
-  Rock: "rock",
   Cliff: "cliff",
   Ravine: "ravine",
 } as const;
@@ -15,6 +14,7 @@ export const Terrain = {
 export const Obstacle = {
   None: "none",
   Tree: "tree",
+  Rock: "rock",
   Building: "building",
 } as const;
 
@@ -70,7 +70,6 @@ export const TERRAIN_RULES: Record<
   [Terrain.Beach]: { label: "Beach", movement: "slow", blocksSight: false },
   [Terrain.Road]: { label: "Road", movement: "normal", blocksSight: false },
   [Terrain.Bridge]: { label: "Bridge", movement: "normal", blocksSight: false },
-  [Terrain.Rock]: { label: "Rock", movement: "blocked", blocksSight: true },
   [Terrain.Cliff]: { label: "Cliff", movement: "blocked", blocksSight: true },
   [Terrain.Ravine]: { label: "Ravine", movement: "blocked", blocksSight: false },
 };
@@ -80,5 +79,6 @@ export const OBSTACLE_RULES: Record<
   { label: string; movement: "blocked"; blocksSight: true }
 > = {
   [Obstacle.Tree]: { label: "Tree", movement: "blocked", blocksSight: true },
+  [Obstacle.Rock]: { label: "Rock", movement: "blocked", blocksSight: true },
   [Obstacle.Building]: { label: "Building", movement: "blocked", blocksSight: true },
 };
