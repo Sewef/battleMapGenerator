@@ -244,15 +244,20 @@ function meanderingCrossing(
   random: Random,
   width: number | [number, number],
   paint: (tile: Tile) => TerrainKind,
+  widthIsDiameter = false,
 ): Point[] {
   const longSize = horizontal ? grid[0].length : grid.length;
   const shortSize = horizontal ? grid.length : grid[0].length;
   const [minimumWidth, maximumWidth] = Array.isArray(width) ? width : [width, width];
+  const maximumRadius = widthIsDiameter
+    ? Math.ceil((maximumWidth - 1) / 2)
+    : maximumWidth;
   let currentWidth = minimumWidth;
   let targetWidth = minimumWidth;
   let across = shortSize * (.3 + random() * .4);
   let velocity = (random() - .5) * .25;
   const centerline: Point[] = [];
+  let previousCenter: Point | undefined;
 
   for (let along = -2; along <= longSize + 1; along += 1) {
     if (along % 6 === 0) {
@@ -260,47 +265,124 @@ function meanderingCrossing(
     }
     currentWidth += Math.sign(targetWidth - currentWidth) * Math.min(.34, Math.abs(targetWidth - currentWidth));
     const paintedWidth = Math.round(currentWidth);
+    const minimumOffset = widthIsDiameter
+      ? -Math.floor((paintedWidth - 1) / 2)
+      : -paintedWidth;
+    const maximumOffset = widthIsDiameter
+      ? Math.ceil((paintedWidth - 1) / 2)
+      : paintedWidth;
     if (random() < .28) velocity += (random() - .5) * .22;
     velocity *= .82;
     velocity = Math.max(-.42, Math.min(.42, velocity));
     across += velocity;
-    if (across < maximumWidth + 1 || across > shortSize - maximumWidth - 2) {
+    if (across < maximumRadius + 1 || across > shortSize - maximumRadius - 2) {
       velocity *= -1;
-      across = Math.max(maximumWidth + 1, Math.min(shortSize - maximumWidth - 2, across));
+      across = Math.max(
+        maximumRadius + 1,
+        Math.min(shortSize - maximumRadius - 2, across),
+      );
     }
     const center = horizontal
       ? { x: along, y: Math.round(across) }
       : { x: Math.round(across), y: along };
     centerline.push(center);
-    for (let offset = -paintedWidth; offset <= paintedWidth; offset += 1) {
+
+    // When the centerline shifts by one cell, paint the inside of the turn as
+    // well. Without this orthogonal link, consecutive cells only meet at a
+    // corner and both generation and rendering perceive a broken network.
+    if (previousCenter) {
+      if (horizontal && previousCenter.y !== center.y) {
+        const startY = Math.min(previousCenter.y, center.y);
+        const endY = Math.max(previousCenter.y, center.y);
+        for (let connectorY = startY; connectorY <= endY; connectorY += 1) {
+          for (let offset = minimumOffset; offset <= maximumOffset; offset += 1) {
+            const tile = grid[connectorY + offset]?.[center.x];
+            if (tile) tile.terrain = paint(tile);
+          }
+        }
+      } else if (!horizontal && previousCenter.x !== center.x) {
+        const startX = Math.min(previousCenter.x, center.x);
+        const endX = Math.max(previousCenter.x, center.x);
+        for (let connectorX = startX; connectorX <= endX; connectorX += 1) {
+          for (let offset = minimumOffset; offset <= maximumOffset; offset += 1) {
+            const tile = grid[center.y]?.[connectorX + offset];
+            if (tile) tile.terrain = paint(tile);
+          }
+        }
+      }
+    }
+    for (let offset = minimumOffset; offset <= maximumOffset; offset += 1) {
       const point = horizontal
         ? { x: center.x, y: center.y + offset }
         : { x: center.x + offset, y: center.y };
       const tile = grid[point.y]?.[point.x];
       if (tile) tile.terrain = paint(tile);
     }
+    previousCenter = center;
   }
   return centerline;
 }
 
 function drawRoadCrossing(grid: Grid, horizontal: boolean, random: Random) {
-  return meanderingCrossing(grid, horizontal, random, 0, (tile) =>
-    tile.terrain === Terrain.Water || tile.terrain === Terrain.Ravine
-      ? Terrain.Bridge
-      : Terrain.Road,
+  return meanderingCrossing(
+    grid,
+    horizontal,
+    random,
+    [1, 3],
+    (tile) =>
+      tile.terrain === Terrain.Water || tile.terrain === Terrain.Ravine
+        ? Terrain.Bridge
+        : Terrain.Road,
+    true,
   );
 }
 
-function drawCoastalRoad(grid: Grid) {
-  let smoothedX: number | undefined;
-  for (let y = -1; y <= grid.length; y += 1) {
-    const sampleY = Math.max(0, Math.min(grid.length - 1, y));
-    const shoreline = grid[sampleY].findIndex((tile) => tile.terrain !== Terrain.Water);
-    if (shoreline < 0) continue;
-    const targetX = Math.min(grid[0].length - 2, shoreline + 3);
-    smoothedX = smoothedX === undefined ? targetX : smoothedX * .72 + targetX * .28;
-    const tile = grid[y]?.[Math.round(smoothedX)];
-    if (tile && tile.terrain !== Terrain.Water) tile.terrain = Terrain.Road;
+function drawCoastalRoad(grid: Grid, random: Random) {
+  const waterDistance = cellDistancesFromWater(grid);
+  const minimumClearance = 4;
+  const preferredClearance = minimumClearance + 1;
+  const safeTargets = grid.map((row, y) => {
+    const safeX = waterDistance[y].findIndex((distance, x) =>
+      distance >= preferredClearance &&
+      row[x].terrain !== Terrain.Water
+    );
+    return safeX < 0 ? grid[0].length - 2 : safeX;
+  });
+
+  // Build the smallest path that stays inland of every safe target and can
+  // move by at most one cell per row. Looking ahead prevents abrupt shoreline
+  // changes from forcing a disconnected horizontal jump.
+  const centers = safeTargets.map((_, y) => {
+    let requiredX = 0;
+    for (let otherY = 0; otherY < safeTargets.length; otherY += 1) {
+      requiredX = Math.max(
+        requiredX,
+        safeTargets[otherY] - Math.abs(otherY - y),
+      );
+    }
+    return Math.min(grid[0].length - 2, requiredX);
+  });
+
+  let roadWidth = 1;
+  for (let y = 0; y < grid.length; y += 1) {
+    const centerX = centers[y];
+    if (y % 7 === 0 && random() < .55) roadWidth = roadWidth === 1 ? 2 : 1;
+    const connectorStart = y === 0
+      ? centerX
+      : Math.min(centers[y - 1], centerX);
+    const connectorEnd = y === 0
+      ? centerX
+      : Math.max(centers[y - 1], centerX);
+    for (let x = connectorStart; x <= connectorEnd + roadWidth - 1; x += 1) {
+      const tile = grid[y][x];
+      if (
+        tile &&
+        tile.terrain !== Terrain.Water &&
+        waterDistance[y][x] >= minimumClearance
+      ) {
+        tile.terrain = Terrain.Road;
+      }
+    }
   }
 }
 
@@ -499,7 +581,7 @@ export function generateTerrain(options: TerrainOptions): Grid {
     );
     paintRegions(grid, map, sea, Terrain.Water);
     paintShore(grid, seededRandom(`${seed}:coast-shore`), 3);
-    drawCoastalRoad(grid);
+    drawCoastalRoad(grid, seededRandom(`${seed}:coastal-road`));
   }
 
   if (options.mode === "desert-canyon") {

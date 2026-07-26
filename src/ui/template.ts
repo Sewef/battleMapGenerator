@@ -82,6 +82,10 @@ export function renderApp(root: HTMLElement) {
           <div class="map-toolbar">
             <div><strong>Map preview</strong><span id="dimensions"></span></div>
             <div class="export-actions">
+              <label class="grid-option">
+                <input id="show-grid" type="checkbox" checked />
+                <span>Show grid</span>
+              </label>
               <button id="download" class="download-button" type="button">Export WebP ↓</button>
             </div>
           </div>

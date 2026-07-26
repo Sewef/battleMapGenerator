@@ -3,6 +3,7 @@ import {
   Terrain,
   type Grid,
   type LandscapeMode,
+  type TerrainKind,
 } from "../domain/map";
 import { getTerrainStyle } from "./palettes";
 
@@ -15,6 +16,338 @@ export interface RenderOptions {
   hiddenItems?: ReadonlySet<string>;
   hiddenOpacity?: number;
   transparentBackground?: boolean;
+  showGrid?: boolean;
+}
+
+const terrainPriority: Record<TerrainKind, number> = {
+  [Terrain.Void]: 120,
+  [Terrain.Ground]: 10,
+  [Terrain.Difficult]: 30,
+  [Terrain.Water]: 80,
+  [Terrain.Ice]: 85,
+  [Terrain.Lava]: 75,
+  [Terrain.Beach]: 70,
+  [Terrain.Road]: 100,
+  [Terrain.Bridge]: 110,
+  [Terrain.Cliff]: 90,
+  [Terrain.Ravine]: 95,
+};
+
+function terrainVariation(x: number, y: number, salt: number) {
+  let value = Math.imul(x + 101, 374761393) ^
+    Math.imul(y + 53, 668265263) ^
+    Math.imul(salt + 17, 1274126177);
+  value = Math.imul(value ^ (value >>> 13), 1274126177);
+  return ((value ^ (value >>> 16)) >>> 0) / 4294967295;
+}
+
+const overlayTerrains = new Set<TerrainKind>([
+  Terrain.Road,
+  Terrain.Bridge,
+]);
+
+const terrainPaintOrder: TerrainKind[] = [
+  Terrain.Ground,
+  Terrain.Difficult,
+  Terrain.Beach,
+  Terrain.Water,
+  Terrain.Ice,
+  Terrain.Lava,
+  Terrain.Ravine,
+  Terrain.Cliff,
+  Terrain.Void,
+];
+
+function underlyingTerrain(grid: Grid, x: number, y: number): TerrainKind {
+  const terrain = grid[y][x].terrain;
+  if (!overlayTerrains.has(terrain)) return terrain;
+
+  for (let radius = 1; radius <= 3; radius += 1) {
+    const candidates = [
+      grid[y - radius]?.[x]?.terrain,
+      grid[y + radius]?.[x]?.terrain,
+      grid[y]?.[x - radius]?.terrain,
+      grid[y]?.[x + radius]?.terrain,
+    ].filter((kind): kind is TerrainKind =>
+      kind !== undefined && !overlayTerrains.has(kind)
+    );
+    if (candidates.length) {
+      return candidates.sort((a, b) =>
+        terrainPriority[a] - terrainPriority[b]
+      )[0];
+    }
+  }
+  return Terrain.Ground;
+}
+
+function createTerrainMask(
+  grid: Grid,
+  terrain: TerrainKind,
+  cellSize: number,
+  width: number,
+  height: number,
+) {
+  const mask = document.createElement("canvas");
+  mask.width = width;
+  mask.height = height;
+  const maskContext = mask.getContext("2d")!;
+  maskContext.fillStyle = "#fff";
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      if (underlyingTerrain(grid, x, y) === terrain) {
+        maskContext.fillRect(
+          x * cellSize,
+          y * cellSize,
+          cellSize,
+          cellSize,
+        );
+      }
+    }
+  }
+  return mask;
+}
+
+function drawTerrainLayers(
+  grid: Grid,
+  cellSize: number,
+  mode: LandscapeMode,
+  hiddenItems: ReadonlySet<string>,
+  hiddenOpacity: number,
+  width: number,
+  height: number,
+  context: CanvasRenderingContext2D,
+) {
+  const present = new Set<TerrainKind>();
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      const terrain = underlyingTerrain(grid, x, y);
+      const style = getTerrainStyle(terrain, mode);
+      present.add(terrain);
+      context.globalAlpha = hiddenItems.has(terrain) ? hiddenOpacity : 1;
+      context.fillStyle = style.color;
+      context.fillRect(
+        x * cellSize,
+        y * cellSize,
+        cellSize,
+        cellSize,
+      );
+    }
+  }
+  context.globalAlpha = 1;
+
+  for (const terrain of terrainPaintOrder) {
+    if (!present.has(terrain)) continue;
+    const mask = createTerrainMask(grid, terrain, cellSize, width, height);
+    const layer = document.createElement("canvas");
+    layer.width = width;
+    layer.height = height;
+    const layerContext = layer.getContext("2d")!;
+    const style = getTerrainStyle(terrain, mode);
+    layerContext.fillStyle = style.color;
+    layerContext.fillRect(0, 0, width, height);
+
+    const gradient = layerContext.createLinearGradient(0, 0, width, height);
+    gradient.addColorStop(0, "rgba(255,255,255,.09)");
+    gradient.addColorStop(.48, "rgba(255,255,255,0)");
+    gradient.addColorStop(1, "rgba(19,31,25,.10)");
+    layerContext.fillStyle = gradient;
+    layerContext.fillRect(0, 0, width, height);
+
+    layerContext.globalCompositeOperation = "destination-in";
+    layerContext.filter = `blur(${Math.max(1.5, cellSize * .11)}px)`;
+    layerContext.drawImage(mask, 0, 0);
+    layerContext.filter = "none";
+    layerContext.globalCompositeOperation = "source-over";
+
+    context.globalAlpha = hiddenItems.has(terrain) ? hiddenOpacity : 1;
+    context.drawImage(layer, 0, 0);
+  }
+  context.globalAlpha = 1;
+}
+
+function drawGlobalTexture(
+  width: number,
+  height: number,
+  context: CanvasRenderingContext2D,
+) {
+  context.save();
+  context.globalCompositeOperation = "soft-light";
+  for (let y = 0; y < height; y += 7) {
+    for (let x = 0; x < width; x += 7) {
+      const value = terrainVariation(x, y, 31);
+      if (value < .46) continue;
+      context.globalAlpha = .018 + value * .022;
+      context.fillStyle = value > .75 ? "#fff" : "#243329";
+      context.fillRect(x, y, 1.2, 1.2);
+    }
+  }
+  context.restore();
+}
+
+function drawRoadNetwork(
+  grid: Grid,
+  cellSize: number,
+  mode: LandscapeMode,
+  hiddenItems: ReadonlySet<string>,
+  hiddenOpacity: number,
+  context: CanvasRenderingContext2D,
+) {
+  const roadTerrains = new Set<TerrainKind>([Terrain.Road, Terrain.Bridge]);
+  const roadCells: Array<{ x: number; y: number }> = [];
+  const bridgeCells: Array<{ x: number; y: number }> = [];
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      if (roadTerrains.has(grid[y][x].terrain)) roadCells.push({ x, y });
+      if (grid[y][x].terrain === Terrain.Bridge) bridgeCells.push({ x, y });
+    }
+  }
+  if (!roadCells.length) return;
+
+  const roadKeys = new Set(roadCells.map(({ x, y }) => `${x},${y}`));
+  const roadFootprint = new Path2D();
+  for (const { x, y } of roadCells) {
+    roadFootprint.rect(x * cellSize, y * cellSize, cellSize, cellSize);
+  }
+
+  context.save();
+  context.globalAlpha = hiddenItems.has(Terrain.Road) ? hiddenOpacity : 1;
+  context.shadowColor = "rgba(70, 58, 43, .25)";
+  context.shadowBlur = Math.max(1, cellSize * .09);
+  context.fillStyle = getTerrainStyle(Terrain.Road, mode).color;
+  context.fill(roadFootprint);
+  context.shadowColor = "transparent";
+
+  const roadGradient = context.createLinearGradient(
+    0,
+    0,
+    grid[0].length * cellSize,
+    grid.length * cellSize,
+  );
+  roadGradient.addColorStop(0, "rgba(255, 244, 216, .13)");
+  roadGradient.addColorStop(1, "rgba(78, 61, 43, .12)");
+  context.save();
+  context.clip(roadFootprint);
+  context.fillStyle = roadGradient;
+  context.fillRect(
+    0,
+    0,
+    grid[0].length * cellSize,
+    grid.length * cellSize,
+  );
+  context.restore();
+
+  context.strokeStyle = "rgba(70, 58, 43, .34)";
+  context.lineWidth = Math.max(1, cellSize * .055);
+  context.beginPath();
+  for (const { x, y } of roadCells) {
+    const left = x * cellSize;
+    const top = y * cellSize;
+    const right = left + cellSize;
+    const bottom = top + cellSize;
+    if (!roadKeys.has(`${x},${y - 1}`) && y > 0) {
+      context.moveTo(left, top);
+      context.lineTo(right, top);
+    }
+    if (!roadKeys.has(`${x + 1},${y}`) && x < grid[y].length - 1) {
+      context.moveTo(right, top);
+      context.lineTo(right, bottom);
+    }
+    if (!roadKeys.has(`${x},${y + 1}`) && y < grid.length - 1) {
+      context.moveTo(right, bottom);
+      context.lineTo(left, bottom);
+    }
+    if (!roadKeys.has(`${x - 1},${y}`) && x > 0) {
+      context.moveTo(left, bottom);
+      context.lineTo(left, top);
+    }
+  }
+  context.stroke();
+
+  if (bridgeCells.length) {
+    const bridgeKeys = new Set(
+      bridgeCells.map(({ x, y }) => `${x},${y}`),
+    );
+    const bridgeFootprint = new Path2D();
+    for (const { x, y } of bridgeCells) {
+      bridgeFootprint.rect(x * cellSize, y * cellSize, cellSize, cellSize);
+    }
+    context.globalAlpha = hiddenItems.has(Terrain.Bridge) ? hiddenOpacity : 1;
+    context.fillStyle = getTerrainStyle(Terrain.Bridge, mode).color;
+    context.fill(bridgeFootprint);
+    context.strokeStyle = "rgba(61, 43, 30, .48)";
+    context.lineWidth = Math.max(1, cellSize * .06);
+    context.beginPath();
+    for (const { x, y } of bridgeCells) {
+      const left = x * cellSize;
+      const top = y * cellSize;
+      const right = left + cellSize;
+      const bottom = top + cellSize;
+      if (!bridgeKeys.has(`${x},${y - 1}`)) {
+        context.moveTo(left, top);
+        context.lineTo(right, top);
+      }
+      if (!bridgeKeys.has(`${x + 1},${y}`)) {
+        context.moveTo(right, top);
+        context.lineTo(right, bottom);
+      }
+      if (!bridgeKeys.has(`${x},${y + 1}`)) {
+        context.moveTo(right, bottom);
+        context.lineTo(left, bottom);
+      }
+      if (!bridgeKeys.has(`${x - 1},${y}`)) {
+        context.moveTo(left, bottom);
+        context.lineTo(left, top);
+      }
+    }
+    context.stroke();
+  }
+  context.restore();
+}
+
+function drawShorelines(
+  grid: Grid,
+  cellSize: number,
+  hiddenItems: ReadonlySet<string>,
+  hiddenOpacity: number,
+  context: CanvasRenderingContext2D,
+) {
+  context.save();
+  context.globalAlpha = hiddenItems.has(Terrain.Water) ? hiddenOpacity : 1;
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  context.beginPath();
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      if (underlyingTerrain(grid, x, y) !== Terrain.Water) continue;
+      const left = x * cellSize;
+      const top = y * cellSize;
+      const right = left + cellSize;
+      const bottom = top + cellSize;
+      if (y > 0 && underlyingTerrain(grid, x, y - 1) !== Terrain.Water) {
+        context.moveTo(left, top);
+        context.quadraticCurveTo((left + right) / 2, top + cellSize * .08, right, top);
+      }
+      if (x < grid[y].length - 1 && underlyingTerrain(grid, x + 1, y) !== Terrain.Water) {
+        context.moveTo(right, top);
+        context.quadraticCurveTo(right - cellSize * .08, (top + bottom) / 2, right, bottom);
+      }
+      if (y < grid.length - 1 && underlyingTerrain(grid, x, y + 1) !== Terrain.Water) {
+        context.moveTo(right, bottom);
+        context.quadraticCurveTo((left + right) / 2, bottom - cellSize * .08, left, bottom);
+      }
+      if (x > 0 && underlyingTerrain(grid, x - 1, y) !== Terrain.Water) {
+        context.moveTo(left, bottom);
+        context.quadraticCurveTo(left + cellSize * .08, (top + bottom) / 2, left, top);
+      }
+    }
+  }
+  context.strokeStyle = "rgba(38, 74, 75, .26)";
+  context.lineWidth = Math.max(2, cellSize * .13);
+  context.stroke();
+  context.strokeStyle = "rgba(235, 242, 224, .48)";
+  context.lineWidth = Math.max(1, cellSize * .035);
+  context.stroke();
+  context.restore();
 }
 
 function drawTree(
@@ -53,29 +386,89 @@ function drawTree(
 }
 
 function drawBuilding(
-  x: number,
-  y: number,
+  points: Array<{ x: number; y: number }>,
+  id: number,
   size: number,
-  grid: Grid,
   context: CanvasRenderingContext2D,
 ) {
-  const id = grid[y][x].obstacleId;
-  context.fillStyle = (id ?? 0) % 2 === 0 ? "#a85d43" : "#bb6e4b";
-  context.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
-  context.strokeStyle = "rgba(73, 44, 35, .55)";
-  context.lineWidth = 1;
-  if (grid[y - 1]?.[x].obstacleId !== id) {
-    context.beginPath();
-    context.moveTo(x * size, y * size + 1);
-    context.lineTo((x + 1) * size, y * size + 1);
-    context.stroke();
+  const cells = new Set(points.map(({ x, y }) => `${x},${y}`));
+  const minimumX = Math.min(...points.map(({ x }) => x));
+  const maximumX = Math.max(...points.map(({ x }) => x));
+  const minimumY = Math.min(...points.map(({ y }) => y));
+  const maximumY = Math.max(...points.map(({ y }) => y));
+  const footprint = new Path2D();
+  for (const { x, y } of points) {
+    footprint.rect(x * size, y * size, size, size);
   }
-  if (grid[y + 1]?.[x].obstacleId !== id) {
-    context.beginPath();
-    context.moveTo(x * size, (y + 1) * size - 1);
-    context.lineTo((x + 1) * size, (y + 1) * size - 1);
-    context.stroke();
+
+  context.save();
+  context.shadowColor = "rgba(39, 31, 25, .28)";
+  context.shadowBlur = Math.max(2, size * .12);
+  context.shadowOffsetY = Math.max(1, size * .08);
+  context.fillStyle = id % 2 === 0 ? "#a85d43" : "#bb6e4b";
+  context.fill(footprint);
+  context.shadowColor = "transparent";
+
+  context.clip(footprint);
+  const roofGradient = context.createLinearGradient(
+    minimumX * size,
+    minimumY * size,
+    (maximumX + 1) * size,
+    (maximumY + 1) * size,
+  );
+  roofGradient.addColorStop(0, "rgba(255, 222, 181, .28)");
+  roofGradient.addColorStop(.48, "rgba(255, 255, 255, .04)");
+  roofGradient.addColorStop(.52, "rgba(72, 42, 32, .08)");
+  roofGradient.addColorStop(1, "rgba(65, 38, 30, .28)");
+  context.fillStyle = roofGradient;
+  context.fillRect(
+    minimumX * size,
+    minimumY * size,
+    (maximumX - minimumX + 1) * size,
+    (maximumY - minimumY + 1) * size,
+  );
+  context.restore();
+
+  context.strokeStyle = "rgba(67, 40, 32, .72)";
+  context.lineWidth = Math.max(1, size * .045);
+  context.beginPath();
+  for (const { x, y } of points) {
+    const left = x * size;
+    const top = y * size;
+    const right = left + size;
+    const bottom = top + size;
+    if (!cells.has(`${x},${y - 1}`)) {
+      context.moveTo(left, top);
+      context.lineTo(right, top);
+    }
+    if (!cells.has(`${x + 1},${y}`)) {
+      context.moveTo(right, top);
+      context.lineTo(right, bottom);
+    }
+    if (!cells.has(`${x},${y + 1}`)) {
+      context.moveTo(right, bottom);
+      context.lineTo(left, bottom);
+    }
+    if (!cells.has(`${x - 1},${y}`)) {
+      context.moveTo(left, bottom);
+      context.lineTo(left, top);
+    }
   }
+  context.stroke();
+
+  context.strokeStyle = "rgba(255, 226, 190, .22)";
+  context.lineWidth = Math.max(1, size * .025);
+  context.beginPath();
+  if (maximumX > minimumX) {
+    const ridgeY = (minimumY + maximumY + 1) * size / 2;
+    context.moveTo(minimumX * size + size * .14, ridgeY);
+    context.lineTo((maximumX + 1) * size - size * .14, ridgeY);
+  } else if (maximumY > minimumY) {
+    const ridgeX = (minimumX + maximumX + 1) * size / 2;
+    context.moveTo(ridgeX, minimumY * size + size * .14);
+    context.lineTo(ridgeX, (maximumY + 1) * size - size * .14);
+  }
+  context.stroke();
 }
 
 function drawRock(
@@ -218,6 +611,7 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   const updateInterface = options.updateInterface ?? true;
   const hiddenItems = options.hiddenItems ?? new Set<string>();
   const hiddenOpacity = options.hiddenOpacity ?? .14;
+  const showGrid = options.showGrid ?? true;
   const width = columns * cellSize;
   const height = rows * cellSize;
 
@@ -237,20 +631,52 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   for (let y = 0; y < rows; y += 1) {
     for (let x = 0; x < columns; x += 1) {
       const tile = grid[y][x];
-      const style = getTerrainStyle(tile.terrain, mode);
-      context.globalAlpha = hiddenItems.has(tile.terrain) ? hiddenOpacity : 1;
-      context.fillStyle = (x + y * 3) % 4 === 0 ? style.alt : style.color;
-      context.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
-      drawTerrainDetail(grid, x, y, cellSize, context);
-      context.strokeStyle = "rgba(239, 235, 218, 0.14)";
-      context.lineWidth = 1;
-      context.strokeRect(x * cellSize + .5, y * cellSize + .5, cellSize - 1, cellSize - 1);
       counts.set(tile.terrain, (counts.get(tile.terrain) ?? 0) + 1);
+    }
+  }
+
+  drawTerrainLayers(
+    grid,
+    cellSize,
+    mode,
+    hiddenItems,
+    hiddenOpacity,
+    width,
+    height,
+    context,
+  );
+  drawGlobalTexture(width, height, context);
+  drawShorelines(grid, cellSize, hiddenItems, hiddenOpacity, context);
+  drawRoadNetwork(grid, cellSize, mode, hiddenItems, hiddenOpacity, context);
+
+  for (let y = 0; y < rows; y += 1) {
+    for (let x = 0; x < columns; x += 1) {
+      const tile = grid[y][x];
+      context.globalAlpha = hiddenItems.has(tile.terrain) ? hiddenOpacity : 1;
+      if (
+        !overlayTerrains.has(tile.terrain) &&
+        tile.terrain !== Terrain.Water &&
+        tile.terrain !== Terrain.Cliff &&
+        tile.terrain !== Terrain.Ravine
+      ) {
+        drawTerrainDetail(grid, x, y, cellSize, context);
+      }
+      if (showGrid) {
+        context.strokeStyle = "rgba(239, 235, 218, 0.14)";
+        context.lineWidth = 1;
+        context.strokeRect(
+          x * cellSize + .5,
+          y * cellSize + .5,
+          cellSize - 1,
+          cellSize - 1,
+        );
+      }
     }
   }
   context.globalAlpha = 1;
 
   const treeGroups = new Map<number, Array<{ x: number; y: number }>>();
+  const buildingGroups = new Map<number, Array<{ x: number; y: number }>>();
   for (let y = 0; y < rows; y += 1) {
     for (let x = 0; x < columns; x += 1) {
       const tile = grid[y][x];
@@ -261,10 +687,10 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
         treeGroups.set(id, group);
       }
       if (tile.obstacle === Obstacle.Building) {
-        context.globalAlpha =
-          hiddenItems.has(Obstacle.Building) ? hiddenOpacity : 1;
-        drawBuilding(x, y, cellSize, grid, context);
-        context.globalAlpha = 1;
+        const id = tile.obstacleId ?? y * columns + x;
+        const group = buildingGroups.get(id) ?? [];
+        group.push({ x, y });
+        buildingGroups.set(id, group);
       }
       if (tile.obstacle === Obstacle.Rock) {
         context.globalAlpha =
@@ -277,6 +703,12 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
       }
     }
   }
+  context.globalAlpha =
+    hiddenItems.has(Obstacle.Building) ? hiddenOpacity : 1;
+  for (const [id, points] of buildingGroups) {
+    drawBuilding(points, id, cellSize, context);
+  }
+  context.globalAlpha = 1;
   context.globalAlpha = hiddenItems.has(Obstacle.Tree) ? hiddenOpacity : 1;
   for (const points of treeGroups.values()) drawTree(points, cellSize, context);
   context.globalAlpha = 1;

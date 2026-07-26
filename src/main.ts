@@ -19,6 +19,7 @@ const seedInput = document.querySelector<HTMLInputElement>("#seed")!;
 const widthInput = document.querySelector<HTMLInputElement>("#width")!;
 const heightInput = document.querySelector<HTMLInputElement>("#height")!;
 const scaleInput = document.querySelector<HTMLInputElement>("#scale")!;
+const showGridInput = document.querySelector<HTMLInputElement>("#show-grid")!;
 const inputs = Object.fromEntries(
   PARAMETER_FIELDS.map(({ id }) => [
     id,
@@ -67,6 +68,7 @@ function renderMap(grid: Grid, targetCanvas = previewCanvas, cellSize?: number) 
     pixelRatio: targetCanvas === previewCanvas ? undefined : 1,
     updateInterface: targetCanvas === previewCanvas,
     hiddenItems: hiddenLegendItems,
+    showGrid: showGridInput.checked,
   });
 }
 
@@ -115,8 +117,10 @@ document.querySelector("#download")!.addEventListener("click", () => {
     activePreset.mode,
     seedInput.value.trim(),
     hiddenLegendItems,
+    showGridInput.checked,
   );
 });
+showGridInput.addEventListener("change", () => renderMap(currentGrid));
 document.querySelector("#legend")!.addEventListener("click", (event) => {
   const groupButton = (event.target as HTMLElement).closest<HTMLButtonElement>(
     "[data-legend-group-items]",

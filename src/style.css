@@ -108,6 +108,8 @@ input[type="range"]::-webkit-slider-thumb { appearance: none; width: 14px; heigh
 .map-toolbar > div { display: flex; align-items: baseline; gap: 13px; }
 .map-toolbar span { font-family: "DM Mono", monospace; font-size: 9px; text-transform: uppercase; letter-spacing: .09em; color: #747c76; }
 .export-actions { display: flex; gap: 7px; align-items: center; }
+.grid-option { display: flex; align-items: center; gap: 7px; cursor: pointer; font-family: "DM Mono", monospace; font-size: 9px; text-transform: uppercase; letter-spacing: .05em; color: #68716b; }
+.grid-option input { width: 14px; height: 14px; margin: 0; accent-color: #536b51; cursor: pointer; }
 .download-button { padding: 8px 10px; border: 1px solid #cfccbd; background: transparent; cursor: pointer; font-family: "DM Mono", monospace; text-transform: uppercase; font-size: 9px; letter-spacing: .05em; }
 .download-button:hover { background: #e9e7da; }
 .canvas-wrap { flex: 1; min-height: 520px; padding: 24px; display: grid; place-items: center; overflow: auto; background-color: #dad8ca; background-image: radial-gradient(#c1c0b4 1px, transparent 1px); background-size: 12px 12px; border: 1px solid #cfccbc; }
