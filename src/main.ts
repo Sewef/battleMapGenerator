@@ -7,7 +7,7 @@ import {
 } from "./generator";
 import { drawGrid } from "./rendering/canvas";
 import { PARAMETER_FIELDS, renderApp } from "./ui/template";
-import { copyMapForOwlbear, downloadWebp } from "./export/webp";
+import { downloadWebp } from "./export/webp";
 
 const randomSeed = () =>
   `${["moor", "mist", "oak", "flint", "dawn"][Math.floor(Math.random() * 5)]}-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -29,14 +29,6 @@ const inputs = Object.fromEntries(
 let activePreset = PRESETS[0];
 let currentGrid: Grid = [];
 
-function updateOwlbearResolution() {
-  const dpi = Number(document.querySelector<HTMLInputElement>("#owlbear-dpi")?.value || 150);
-  const columns = Number(widthInput.value || 0);
-  const rows = Number(heightInput.value || 0);
-  const label = document.querySelector("#owlbear-resolution");
-  if (label) label.textContent = `${columns * dpi} × ${rows * dpi}px`;
-}
-
 function updateLabels() {
   document.querySelector("#width-value")!.textContent = widthInput.value;
   document.querySelector("#height-value")!.textContent = heightInput.value;
@@ -45,7 +37,6 @@ function updateLabels() {
     document.querySelector(`#${field.id}-value`)!.textContent =
       field.percent ? `${inputs[field.id].value}%` : inputs[field.id].value;
   }
-  updateOwlbearResolution();
 }
 
 function applyPreset(preset: Preset, useNewSeed = true) {
@@ -116,26 +107,6 @@ document.querySelector("#reset")!.addEventListener("click", () => {
 document.querySelector("#download")!.addEventListener("click", () => {
   downloadWebp(currentGrid, activePreset.mode, seedInput.value.trim());
 });
-document.querySelector("#copy")!.addEventListener("click", async () => {
-  const button = document.querySelector<HTMLButtonElement>("#copy")!;
-  const defaultLabel = "Copy map";
-  try {
-    const dpiInput = document.querySelector<HTMLInputElement>("#owlbear-dpi")!;
-    const dpi = Math.max(50, Math.min(300, Number(dpiInput.value) || 150));
-    dpiInput.value = String(dpi);
-    updateOwlbearResolution();
-    await copyMapForOwlbear(currentGrid, activePreset.mode, dpi);
-    button.textContent = "Copied!";
-  } catch (error) {
-    console.error("Unable to copy the map:", error);
-    button.textContent = "Copy failed";
-  }
-  window.setTimeout(() => {
-    button.textContent = defaultLabel;
-  }, 1800);
-});
-
-document.querySelector("#owlbear-dpi")!.addEventListener("input", updateOwlbearResolution);
 for (const input of [widthInput, heightInput, scaleInput, ...Object.values(inputs)]) {
   input.addEventListener("input", updateLabels);
 }

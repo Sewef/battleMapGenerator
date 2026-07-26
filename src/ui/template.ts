@@ -84,15 +84,6 @@ export function renderApp(root: HTMLElement) {
           <div class="map-toolbar">
             <div><strong>Map preview</strong><span id="dimensions"></span></div>
             <div class="export-actions">
-              <div class="owlbear-panel">
-                <span class="owlbear-title">Owlbear export</span>
-                <label class="dpi-field">
-                  <span>DPI</span>
-                  <input id="owlbear-dpi" type="number" min="50" max="300" step="10" value="150" />
-                </label>
-                <span id="owlbear-resolution" class="export-resolution"></span>
-                <button id="copy" class="download-button owlbear-button" type="button">Copy map</button>
-              </div>
               <button id="download" class="download-button" type="button">Export WebP ↓</button>
             </div>
           </div>
