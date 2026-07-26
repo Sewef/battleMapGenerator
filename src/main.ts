@@ -7,7 +7,7 @@ import {
 } from "./generator";
 import { drawGrid } from "./rendering/canvas";
 import { PARAMETER_FIELDS, renderApp } from "./ui/template";
-import { copyWebpForOwlbear, downloadWebp } from "./export/webp";
+import { copyMapForOwlbear, downloadWebp } from "./export/webp";
 
 const randomSeed = () =>
   `${["moor", "mist", "oak", "flint", "dawn"][Math.floor(Math.random() * 5)]}-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -124,9 +124,10 @@ document.querySelector("#copy")!.addEventListener("click", async () => {
     const dpi = Math.max(50, Math.min(300, Number(dpiInput.value) || 150));
     dpiInput.value = String(dpi);
     updateOwlbearResolution();
-    await copyWebpForOwlbear(currentGrid, activePreset.mode, dpi);
+    await copyMapForOwlbear(currentGrid, activePreset.mode, dpi);
     button.textContent = "Copied!";
-  } catch {
+  } catch (error) {
+    console.error("Unable to copy the map:", error);
     button.textContent = "Copy failed";
   }
   window.setTimeout(() => {

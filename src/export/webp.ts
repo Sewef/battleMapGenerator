@@ -31,7 +31,7 @@ export function downloadWebp(
   link.click();
 }
 
-export async function copyWebpForOwlbear(
+export async function copyMapForOwlbear(
   grid: Grid,
   mode: LandscapeMode,
   dpi: number,
@@ -46,11 +46,13 @@ export async function copyWebpForOwlbear(
   }
 
   const canvas = renderExportCanvas(grid, mode, dpi);
+  // PNG is the interoperable image format mandated by the Async Clipboard API.
+  // Browsers may export WebP files while still rejecting image/webp ClipboardItems.
   const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((result) => {
       if (result) resolve(result);
-      else reject(new Error("Unable to create WebP"));
-    }, "image/webp", WEBP_QUALITY);
+      else reject(new Error("Unable to create clipboard image"));
+    }, "image/png");
   });
-  await navigator.clipboard.write([new ClipboardItem({ "image/webp": blob })]);
+  await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
 }
