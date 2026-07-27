@@ -1206,24 +1206,61 @@ function drawRoadNetwork(
     const bridgeKeys = new Set(
       bridgeCells.map(({ x, y }) => `${x},${y}`),
     );
-    const bridgeAxis = (x: number, y: number) => {
-      const bridgeHorizontal =
-        Number(bridgeKeys.has(`${x - 1},${y}`)) +
-        Number(bridgeKeys.has(`${x + 1},${y}`));
-      const bridgeVertical =
-        Number(bridgeKeys.has(`${x},${y - 1}`)) +
-        Number(bridgeKeys.has(`${x},${y + 1}`));
-      if (bridgeHorizontal !== bridgeVertical) {
-        return bridgeHorizontal > bridgeVertical ? "horizontal" : "vertical";
+    const bridgeAxes = new Map<string, "horizontal" | "vertical">();
+    const unvisitedBridges = new Set(bridgeKeys);
+    while (unvisitedBridges.size) {
+      const first = unvisitedBridges.values().next().value as string;
+      const queue = [first];
+      const component: Array<{ x: number; y: number }> = [];
+      unvisitedBridges.delete(first);
+      while (queue.length) {
+        const key = queue.pop()!;
+        const [x, y] = key.split(",").map(Number);
+        component.push({ x, y });
+        for (const [offsetX, offsetY] of [
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+        ]) {
+          const neighborKey = `${x + offsetX},${y + offsetY}`;
+          if (!unvisitedBridges.has(neighborKey)) continue;
+          unvisitedBridges.delete(neighborKey);
+          queue.push(neighborKey);
+        }
       }
-      const roadHorizontal =
-        Number(roadKeys.has(`${x - 1},${y}`)) +
-        Number(roadKeys.has(`${x + 1},${y}`));
-      const roadVertical =
-        Number(roadKeys.has(`${x},${y - 1}`)) +
-        Number(roadKeys.has(`${x},${y + 1}`));
-      return roadVertical > roadHorizontal ? "vertical" : "horizontal";
-    };
+
+      let horizontalConnections = 0;
+      let verticalConnections = 0;
+      for (const { x, y } of component) {
+        if (grid[y]?.[x - 1]?.terrain === Terrain.Road) {
+          horizontalConnections += 1;
+        }
+        if (grid[y]?.[x + 1]?.terrain === Terrain.Road) {
+          horizontalConnections += 1;
+        }
+        if (grid[y - 1]?.[x]?.terrain === Terrain.Road) {
+          verticalConnections += 1;
+        }
+        if (grid[y + 1]?.[x]?.terrain === Terrain.Road) {
+          verticalConnections += 1;
+        }
+      }
+      const componentWidth =
+        Math.max(...component.map(({ x }) => x)) -
+        Math.min(...component.map(({ x }) => x)) + 1;
+      const componentHeight =
+        Math.max(...component.map(({ y }) => y)) -
+        Math.min(...component.map(({ y }) => y)) + 1;
+      const axis = horizontalConnections === verticalConnections
+        ? componentWidth >= componentHeight ? "horizontal" : "vertical"
+        : horizontalConnections > verticalConnections
+          ? "horizontal"
+          : "vertical";
+      for (const { x, y } of component) bridgeAxes.set(`${x},${y}`, axis);
+    }
+    const bridgeAxis = (x: number, y: number) =>
+      bridgeAxes.get(`${x},${y}`) ?? "horizontal";
 
     const bridgeFootprint = new Path2D();
     const horizontalBridgeFootprint = new Path2D();

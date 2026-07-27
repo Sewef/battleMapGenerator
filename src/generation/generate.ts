@@ -394,7 +394,9 @@ function drawRoadCrossing(grid: Grid, horizontal: boolean, random: Random) {
     random,
     [1, 3],
     (tile) =>
-      tile.terrain === Terrain.Water || tile.terrain === Terrain.Ravine
+      tile.terrain === Terrain.Water ||
+        tile.terrain === Terrain.Ravine ||
+        tile.terrain === Terrain.Bridge
         ? Terrain.Bridge
         : Terrain.Road,
     true,
