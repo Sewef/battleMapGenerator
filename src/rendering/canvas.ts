@@ -104,13 +104,15 @@ function createTilesetTilePattern(
   image: CanvasImageSource,
   coordinate: readonly [number, number],
   context: CanvasRenderingContext2D,
+  cellSize: number,
   quarterTurns = 0,
 ) {
   const tile = document.createElement("canvas");
-  tile.width = 32;
-  tile.height = 32;
+  tile.width = cellSize;
+  tile.height = cellSize;
   const tileContext = tile.getContext("2d")!;
-  tileContext.translate(16, 16);
+  tileContext.imageSmoothingEnabled = false;
+  tileContext.translate(cellSize / 2, cellSize / 2);
   tileContext.rotate(quarterTurns * Math.PI / 2);
   tileContext.drawImage(
     image,
@@ -118,10 +120,10 @@ function createTilesetTilePattern(
     coordinate[1] * 32,
     32,
     32,
-    -16,
-    -16,
-    32,
-    32,
+    -cellSize / 2,
+    -cellSize / 2,
+    cellSize,
+    cellSize,
   );
   return context.createPattern(tile, "repeat");
 }
@@ -130,13 +132,19 @@ function createTilesetPatterns(
   image: CanvasImageSource | undefined,
   mode: LandscapeMode,
   context: CanvasRenderingContext2D,
+  cellSize: number,
 ) {
   const patterns = new Map<TerrainKind, CanvasPattern>();
   if (!image) return patterns;
   for (const terrain of terrainPaintOrder) {
     const coordinate = tilesetCoordinate(terrain, mode);
     if (!coordinate) continue;
-    const pattern = createTilesetTilePattern(image, coordinate, context);
+    const pattern = createTilesetTilePattern(
+      image,
+      coordinate,
+      context,
+      cellSize,
+    );
     if (pattern) patterns.set(terrain, pattern);
   }
   return patterns;
@@ -811,7 +819,12 @@ function drawTerrainLayers(
   tilesetImage: CanvasImageSource | undefined,
   context: CanvasRenderingContext2D,
 ) {
-  const tilesetPatterns = createTilesetPatterns(tilesetImage, mode, context);
+  const tilesetPatterns = createTilesetPatterns(
+    tilesetImage,
+    mode,
+    context,
+    cellSize,
+  );
   const terrainFill = (terrain: TerrainKind) =>
     tilesetPatterns.get(terrain) ?? getTerrainStyle(terrain, mode).color;
   const present = new Set<TerrainKind>();
@@ -1154,7 +1167,12 @@ function drawRoadNetwork(
   context.shadowBlur = Math.max(1, cellSize * .09);
   const roadCoordinate = tilesetCoordinate(Terrain.Road, mode);
   const roadPattern = tilesetImage && roadCoordinate
-    ? createTilesetTilePattern(tilesetImage, roadCoordinate, context)
+    ? createTilesetTilePattern(
+      tilesetImage,
+      roadCoordinate,
+      context,
+      cellSize,
+    )
     : undefined;
   context.fillStyle =
     roadPattern ?? getTerrainStyle(Terrain.Road, mode).color;
@@ -1298,7 +1316,12 @@ function drawRoadNetwork(
     context.restore();
     const bridgeCoordinate = tilesetCoordinate(Terrain.Bridge, mode);
     const bridgePattern = tilesetImage && bridgeCoordinate
-      ? createTilesetTilePattern(tilesetImage, bridgeCoordinate, context)
+      ? createTilesetTilePattern(
+        tilesetImage,
+        bridgeCoordinate,
+        context,
+        cellSize,
+      )
       : undefined;
     if (bridgePattern && tilesetImage && bridgeCoordinate) {
       context.fillStyle = bridgePattern;
@@ -1307,6 +1330,7 @@ function drawRoadNetwork(
         tilesetImage,
         bridgeCoordinate,
         context,
+        cellSize,
         1,
       )!;
       context.fill(verticalBridgeFootprint);
