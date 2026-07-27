@@ -160,6 +160,68 @@ function fillCliffMaskCell(
   context.fill();
 }
 
+function fillRavineMaskCell(
+  context: CanvasRenderingContext2D,
+  grid: Grid,
+  x: number,
+  y: number,
+  cellSize: number,
+) {
+  const isRavine = (cellX: number, cellY: number) =>
+    grid[cellY]?.[cellX]?.terrain === Terrain.Ravine;
+  const left = x * cellSize;
+  const top = y * cellSize;
+  const segmentCount = 5;
+  const points: Array<{ x: number; y: number }> = [];
+
+  const addEdge = (
+    side: 0 | 1 | 2 | 3,
+    exposed: boolean,
+  ) => {
+    for (let index = side === 0 ? 0 : 1; index <= segmentCount; index += 1) {
+      const ratio = index / segmentCount;
+      const progress = side === 2 || side === 3 ? 1 - ratio : ratio;
+      const edgeNoise = index === 0 || index === segmentCount || !exposed
+        ? 0
+        : (
+          terrainVariation(
+            x * segmentCount + index,
+            y * 4 + side,
+            733 + side * 41,
+          ) - .5
+        ) * cellSize * .16;
+      if (side === 0) {
+        points.push({ x: left + progress * cellSize, y: top + edgeNoise });
+      } else if (side === 1) {
+        points.push({
+          x: left + cellSize + edgeNoise,
+          y: top + progress * cellSize,
+        });
+      } else if (side === 2) {
+        points.push({
+          x: left + progress * cellSize,
+          y: top + cellSize + edgeNoise,
+        });
+      } else {
+        points.push({ x: left + edgeNoise, y: top + progress * cellSize });
+      }
+    }
+  };
+
+  addEdge(0, !isRavine(x, y - 1));
+  addEdge(1, !isRavine(x + 1, y));
+  addEdge(2, !isRavine(x, y + 1));
+  addEdge(3, !isRavine(x - 1, y));
+
+  context.beginPath();
+  context.moveTo(points[0].x, points[0].y);
+  for (let index = 1; index < points.length; index += 1) {
+    context.lineTo(points[index].x, points[index].y);
+  }
+  context.closePath();
+  context.fill();
+}
+
 function createTerrainMask(
   grid: Grid,
   terrain: TerrainKind,
@@ -181,6 +243,8 @@ function createTerrainMask(
       if (tileTerrain === terrain) {
         if (terrain === Terrain.Cliff) {
           fillCliffMaskCell(maskContext, grid, x, y, cellSize);
+        } else if (terrain === Terrain.Ravine) {
+          fillRavineMaskCell(maskContext, grid, x, y, cellSize);
         } else {
           maskContext.fillRect(
             x * cellSize,
@@ -268,6 +332,83 @@ function drawDifficultTerrainContour(
       if (!isDifficult(x - 1, y)) drawEdge(x, y, 3);
     }
   }
+  context.restore();
+}
+
+function drawRavineUpperEdges(
+  grid: Grid,
+  cellSize: number,
+  opacity: number,
+  context: CanvasRenderingContext2D,
+) {
+  const segmentCount = 5;
+  const effect = document.createElement("canvas");
+  effect.width = context.canvas.width;
+  effect.height = context.canvas.height;
+  const effectContext = effect.getContext("2d")!;
+  effectContext.lineCap = "round";
+  effectContext.lineJoin = "round";
+
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      if (
+        grid[y][x].terrain !== Terrain.Ravine ||
+        grid[y - 1]?.[x]?.terrain === Terrain.Ravine
+      ) {
+        continue;
+      }
+      const points: Array<{ x: number; y: number }> = [];
+      for (let index = 0; index <= segmentCount; index += 1) {
+        const edgeNoise = index === 0 || index === segmentCount
+          ? 0
+          : (
+            terrainVariation(
+              x * segmentCount + index,
+              y * 4,
+              733,
+            ) - .5
+          ) * cellSize * .16;
+        points.push({
+          x: (x + index / segmentCount) * cellSize,
+          y: y * cellSize + edgeNoise,
+        });
+      }
+
+      const strokeEdge = (offsetY: number) => {
+        effectContext.beginPath();
+        effectContext.moveTo(points[0].x, points[0].y + offsetY);
+        for (let index = 1; index < points.length; index += 1) {
+          effectContext.lineTo(points[index].x, points[index].y + offsetY);
+        }
+        effectContext.stroke();
+      };
+
+      effectContext.strokeStyle = "rgba(17, 18, 16, .3)";
+      effectContext.lineWidth = Math.max(4, cellSize * .34);
+      strokeEdge(cellSize * .17);
+      effectContext.strokeStyle = "rgba(17, 18, 16, .62)";
+      effectContext.lineWidth = Math.max(2.5, cellSize * .18);
+      strokeEdge(cellSize * .09);
+      effectContext.strokeStyle = "rgba(232, 215, 182, .48)";
+      effectContext.lineWidth = Math.max(1, cellSize * .035);
+      strokeEdge(0);
+    }
+  }
+
+  const mask = createTerrainMask(
+    grid,
+    Terrain.Ravine,
+    cellSize,
+    effect.width,
+    effect.height,
+    false,
+  );
+  effectContext.globalCompositeOperation = "destination-in";
+  effectContext.drawImage(mask, 0, 0);
+
+  context.save();
+  context.globalAlpha = opacity;
+  context.drawImage(effect, 0, 0);
   context.restore();
 }
 
@@ -981,6 +1122,12 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     hiddenOpacity,
     width,
     height,
+    context,
+  );
+  drawRavineUpperEdges(
+    grid,
+    cellSize,
+    hiddenItems.has(Terrain.Ravine) ? hiddenOpacity : 1,
     context,
   );
   drawShorelines(grid, cellSize, hiddenItems, hiddenOpacity, context);
