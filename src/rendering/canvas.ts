@@ -291,6 +291,76 @@ function fillWaterMaskCell(
   context.fill();
 }
 
+function fillLavaMaskCell(
+  context: CanvasRenderingContext2D,
+  grid: Grid,
+  x: number,
+  y: number,
+  cellSize: number,
+) {
+  const isLava = (cellX: number, cellY: number) =>
+    outsideGrid(grid, cellX, cellY) ||
+    (
+      grid[cellY]?.[cellX] !== undefined &&
+      underlyingTerrain(grid, cellX, cellY) === Terrain.Lava
+    );
+  const left = x * cellSize;
+  const top = y * cellSize;
+  const right = left + cellSize;
+  const bottom = top + cellSize;
+  const radius = cellSize * .2;
+  const topLeftRadius = !isLava(x - 1, y) && !isLava(x, y - 1) ? radius : 0;
+  const topRightRadius = !isLava(x + 1, y) && !isLava(x, y - 1) ? radius : 0;
+  const bottomRightRadius = !isLava(x + 1, y) && !isLava(x, y + 1)
+    ? radius
+    : 0;
+  const bottomLeftRadius = !isLava(x - 1, y) && !isLava(x, y + 1)
+    ? radius
+    : 0;
+  const tension = .32;
+
+  context.beginPath();
+  context.moveTo(left + topLeftRadius, top);
+  context.lineTo(right - topRightRadius, top);
+  context.bezierCurveTo(
+    right - topRightRadius * tension,
+    top,
+    right,
+    top + topRightRadius * tension,
+    right,
+    top + topRightRadius,
+  );
+  context.lineTo(right, bottom - bottomRightRadius);
+  context.bezierCurveTo(
+    right,
+    bottom - bottomRightRadius * tension,
+    right - bottomRightRadius * tension,
+    bottom,
+    right - bottomRightRadius,
+    bottom,
+  );
+  context.lineTo(left + bottomLeftRadius, bottom);
+  context.bezierCurveTo(
+    left + bottomLeftRadius * tension,
+    bottom,
+    left,
+    bottom - bottomLeftRadius * tension,
+    left,
+    bottom - bottomLeftRadius,
+  );
+  context.lineTo(left, top + topLeftRadius);
+  context.bezierCurveTo(
+    left,
+    top + topLeftRadius * tension,
+    left + topLeftRadius * tension,
+    top,
+    left + topLeftRadius,
+    top,
+  );
+  context.closePath();
+  context.fill();
+}
+
 function fillRavineMaskCell(
   context: CanvasRenderingContext2D,
   grid: Grid,
@@ -377,6 +447,8 @@ function createTerrainMask(
           fillCliffMaskCell(maskContext, grid, x, y, cellSize);
         } else if (terrain === Terrain.Water) {
           fillWaterMaskCell(maskContext, grid, x, y, cellSize);
+        } else if (terrain === Terrain.Lava) {
+          fillLavaMaskCell(maskContext, grid, x, y, cellSize);
         } else if (terrain === Terrain.Ravine) {
           fillRavineMaskCell(maskContext, grid, x, y, cellSize);
         } else {
@@ -646,6 +718,88 @@ function drawLiquidUpperEdges(
   context.restore();
 }
 
+function drawLavaRockEdges(
+  grid: Grid,
+  cellSize: number,
+  opacity: number,
+  context: CanvasRenderingContext2D,
+) {
+  const effect = document.createElement("canvas");
+  effect.width = context.canvas.width;
+  effect.height = context.canvas.height;
+  const effectContext = effect.getContext("2d")!;
+  const edgePath = new Path2D();
+  const segmentCount = 6;
+  const isLava = (x: number, y: number) =>
+    outsideGrid(grid, x, y) ||
+    (
+      grid[y]?.[x] !== undefined &&
+      underlyingTerrain(grid, x, y) === Terrain.Lava
+    );
+
+  const addEdge = (x: number, y: number, side: 0 | 1 | 2 | 3) => {
+    for (let index = 0; index <= segmentCount; index += 1) {
+      const ratio = index / segmentCount;
+      const progress = side === 2 || side === 3 ? 1 - ratio : ratio;
+      const jitter = index === 0 || index === segmentCount
+        ? 0
+        : (
+          terrainVariation(
+            x * segmentCount + index,
+            y * 4 + side,
+            1423 + side * 61,
+          ) - .5
+        ) * cellSize * .08;
+      const point = side === 0
+        ? { x: (x + progress) * cellSize, y: y * cellSize + jitter }
+        : side === 1
+          ? { x: (x + 1) * cellSize + jitter, y: (y + progress) * cellSize }
+          : side === 2
+            ? {
+              x: (x + progress) * cellSize,
+              y: (y + 1) * cellSize + jitter,
+            }
+            : { x: x * cellSize + jitter, y: (y + progress) * cellSize };
+      if (index === 0) edgePath.moveTo(point.x, point.y);
+      else edgePath.lineTo(point.x, point.y);
+    }
+  };
+
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      if (!isLava(x, y)) continue;
+      if (!isLava(x, y - 1)) addEdge(x, y, 0);
+      if (!isLava(x + 1, y)) addEdge(x, y, 1);
+      if (!isLava(x, y + 1)) addEdge(x, y, 2);
+      if (!isLava(x - 1, y)) addEdge(x, y, 3);
+    }
+  }
+
+  effectContext.lineCap = "round";
+  effectContext.lineJoin = "round";
+  effectContext.strokeStyle = "rgba(48, 32, 27, .76)";
+  effectContext.lineWidth = Math.max(4, cellSize * .24);
+  effectContext.stroke(edgePath);
+  effectContext.strokeStyle = "rgba(25, 22, 20, .62)";
+  effectContext.lineWidth = Math.max(1.5, cellSize * .075);
+  effectContext.stroke(edgePath);
+
+  const mask = createTerrainMask(
+    grid,
+    Terrain.Lava,
+    cellSize,
+    effect.width,
+    effect.height,
+  );
+  effectContext.globalCompositeOperation = "destination-in";
+  effectContext.drawImage(mask, 0, 0);
+
+  context.save();
+  context.globalAlpha = opacity;
+  context.drawImage(effect, 0, 0);
+  context.restore();
+}
+
 function drawTerrainLayers(
   grid: Grid,
   cellSize: number,
@@ -668,7 +822,9 @@ function drawTerrainLayers(
         ? terrainBackdropTerrain(grid, x, y, Terrain.Cliff)
         : tileTerrain === Terrain.Water
           ? terrainBackdropTerrain(grid, x, y, Terrain.Water)
-        : tileTerrain;
+          : tileTerrain === Terrain.Lava
+            ? terrainBackdropTerrain(grid, x, y, Terrain.Lava)
+            : tileTerrain;
       present.add(tileTerrain);
       context.globalAlpha = hiddenItems.has(terrain) ? hiddenOpacity : 1;
       context.fillStyle = terrainFill(terrain);
@@ -1558,6 +1714,12 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     grid,
     cellSize,
     Terrain.Lava,
+    hiddenItems.has(Terrain.Lava) ? hiddenOpacity : 1,
+    context,
+  );
+  drawLavaRockEdges(
+    grid,
+    cellSize,
     hiddenItems.has(Terrain.Lava) ? hiddenOpacity : 1,
     context,
   );
