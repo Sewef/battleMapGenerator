@@ -54,8 +54,8 @@ const terrainPaintOrder: TerrainKind[] = [
   Terrain.Ice,
   Terrain.Lava,
   Terrain.Ravine,
-  Terrain.Cliff,
   Terrain.Void,
+  Terrain.Cliff,
 ];
 
 function underlyingTerrain(grid: Grid, x: number, y: number): TerrainKind {
@@ -195,6 +195,82 @@ function createTerrainMask(
   return mask;
 }
 
+function drawDifficultTerrainContour(
+  grid: Grid,
+  cellSize: number,
+  mode: LandscapeMode,
+  opacity: number,
+  context: CanvasRenderingContext2D,
+) {
+  const isDifficult = (x: number, y: number) =>
+    grid[y]?.[x] !== undefined &&
+    underlyingTerrain(grid, x, y) === Terrain.Difficult;
+  const segmentCount = 6;
+
+  const drawEdge = (
+    x: number,
+    y: number,
+    side: 0 | 1 | 2 | 3,
+  ) => {
+    const horizontal = side === 0 || side === 2;
+    const reverse = side === 2 || side === 3;
+    const baseX = x * cellSize;
+    const baseY = y * cellSize;
+    const points: Array<{ x: number; y: number }> = [];
+
+    for (let index = 0; index <= segmentCount; index += 1) {
+      const ratio = index / segmentCount;
+      const progress = reverse ? 1 - ratio : ratio;
+      const jitter = (
+        terrainVariation(
+          x * segmentCount + index,
+          y * 4 + side,
+          211 + side * 37,
+        ) - .5
+      ) * cellSize * .075;
+      const edgeX = horizontal
+        ? baseX + progress * cellSize
+        : baseX + (side === 1 ? cellSize : 0);
+      const edgeY = horizontal
+        ? baseY + (side === 2 ? cellSize : 0)
+        : baseY + progress * cellSize;
+      points.push({
+        x: edgeX + (horizontal ? 0 : jitter),
+        y: edgeY + (horizontal ? jitter : 0),
+      });
+    }
+
+    for (let index = 0; index < segmentCount; index += 1) {
+      const alphaNoise = terrainVariation(
+        x * segmentCount + index,
+        y * 4 + side,
+        419 + side * 53,
+      );
+      context.globalAlpha = opacity * (.48 + alphaNoise * .42);
+      context.beginPath();
+      context.moveTo(points[index].x, points[index].y);
+      context.lineTo(points[index + 1].x, points[index + 1].y);
+      context.stroke();
+    }
+  };
+
+  context.save();
+  context.strokeStyle = getTerrainStyle(Terrain.Difficult, mode).color;
+  context.lineWidth = Math.max(1.5, cellSize * .075);
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      if (!isDifficult(x, y)) continue;
+      if (!isDifficult(x, y - 1)) drawEdge(x, y, 0);
+      if (!isDifficult(x + 1, y)) drawEdge(x, y, 1);
+      if (!isDifficult(x, y + 1)) drawEdge(x, y, 2);
+      if (!isDifficult(x - 1, y)) drawEdge(x, y, 3);
+    }
+  }
+  context.restore();
+}
+
 function drawTerrainLayers(
   grid: Grid,
   cellSize: number,
@@ -266,6 +342,15 @@ function drawTerrainLayers(
       context.drawImage(createMaskEdge(mask, depth, 0, blur, color), 0, 0);
       context.drawImage(createMaskEdge(mask, -depth, 0, blur, color), 0, 0);
       context.drawImage(createMaskEdge(mask, 0, -depth, blur, color), 0, 0);
+    }
+    if (terrain === Terrain.Difficult) {
+      drawDifficultTerrainContour(
+        grid,
+        cellSize,
+        mode,
+        hiddenItems.has(Terrain.Difficult) ? hiddenOpacity : 1,
+        context,
+      );
     }
   }
   context.globalAlpha = 1;
