@@ -20,6 +20,11 @@ const widthInput = document.querySelector<HTMLInputElement>("#width")!;
 const heightInput = document.querySelector<HTMLInputElement>("#height")!;
 const scaleInput = document.querySelector<HTMLInputElement>("#scale")!;
 const showGridInput = document.querySelector<HTMLInputElement>("#show-grid")!;
+const useTilesetInput =
+  document.querySelector<HTMLInputElement>("#use-tileset")!;
+const tilesetImage = new Image();
+tilesetImage.src = "/assets/tilesets/terrain.png";
+const tilesetReady = () => tilesetImage.naturalWidth > 0;
 const inputs = Object.fromEntries(
   PARAMETER_FIELDS.map(({ id }) => [
     id,
@@ -70,6 +75,8 @@ function renderMap(grid: Grid, targetCanvas = previewCanvas, cellSize?: number) 
     updateInterface: targetCanvas === previewCanvas,
     hiddenItems: hiddenLegendItems,
     showGrid: showGridInput.checked,
+    useTileset: useTilesetInput.checked && tilesetReady(),
+    tilesetImage,
   });
 }
 
@@ -119,9 +126,15 @@ document.querySelector("#download")!.addEventListener("click", () => {
     seedInput.value.trim(),
     hiddenLegendItems,
     showGridInput.checked,
+    useTilesetInput.checked && tilesetReady(),
+    tilesetImage,
   );
 });
 showGridInput.addEventListener("change", () => renderMap(currentGrid));
+useTilesetInput.addEventListener("change", () => renderMap(currentGrid));
+tilesetImage.addEventListener("load", () => {
+  if (useTilesetInput.checked) renderMap(currentGrid);
+});
 document.querySelector("#legend")!.addEventListener("click", (event) => {
   const groupButton = (event.target as HTMLElement).closest<HTMLButtonElement>(
     "[data-legend-group-items]",

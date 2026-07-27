@@ -17,6 +17,8 @@ export interface RenderOptions {
   hiddenOpacity?: number;
   transparentBackground?: boolean;
   showGrid?: boolean;
+  useTileset?: boolean;
+  tilesetImage?: CanvasImageSource;
 }
 
 const terrainPriority: Record<TerrainKind, number> = {
@@ -61,6 +63,64 @@ const terrainPaintOrder: TerrainKind[] = [
   Terrain.Void,
   Terrain.Cliff,
 ];
+
+const sandyTilesetModes = new Set<LandscapeMode>([
+  "desert-canyon",
+  "badlands",
+]);
+
+const mountainousTilesetModes = new Set<LandscapeMode>([
+  "mountain-pass",
+  "highlands",
+]);
+
+function tilesetCoordinate(
+  terrain: TerrainKind,
+  mode: LandscapeMode,
+): readonly [number, number] | undefined {
+  const sandy = sandyTilesetModes.has(mode);
+  const mountainous = mountainousTilesetModes.has(mode);
+  if (terrain === Terrain.Ground) {
+    return mountainous ? [0, 2] : sandy ? [0, 1] : [0, 0];
+  }
+  if (terrain === Terrain.Difficult) {
+    return mountainous ? [1, 2] : sandy ? [1, 1] : [1, 0];
+  }
+  if (terrain === Terrain.Beach) return [2, 0];
+  if (terrain === Terrain.Water) return [0, 3];
+  if (terrain === Terrain.Lava) return [0, 4];
+  return undefined;
+}
+
+function createTilesetPatterns(
+  image: CanvasImageSource | undefined,
+  mode: LandscapeMode,
+  context: CanvasRenderingContext2D,
+) {
+  const patterns = new Map<TerrainKind, CanvasPattern>();
+  if (!image) return patterns;
+  for (const terrain of terrainPaintOrder) {
+    const coordinate = tilesetCoordinate(terrain, mode);
+    if (!coordinate) continue;
+    const tile = document.createElement("canvas");
+    tile.width = 32;
+    tile.height = 32;
+    tile.getContext("2d")!.drawImage(
+      image,
+      coordinate[0] * 32,
+      coordinate[1] * 32,
+      32,
+      32,
+      0,
+      0,
+      32,
+      32,
+    );
+    const pattern = context.createPattern(tile, "repeat");
+    if (pattern) patterns.set(terrain, pattern);
+  }
+  return patterns;
+}
 
 function underlyingTerrain(grid: Grid, x: number, y: number): TerrainKind {
   const terrain = grid[y][x].terrain;
@@ -566,8 +626,12 @@ function drawTerrainLayers(
   hiddenOpacity: number,
   width: number,
   height: number,
+  tilesetImage: CanvasImageSource | undefined,
   context: CanvasRenderingContext2D,
 ) {
+  const tilesetPatterns = createTilesetPatterns(tilesetImage, mode, context);
+  const terrainFill = (terrain: TerrainKind) =>
+    tilesetPatterns.get(terrain) ?? getTerrainStyle(terrain, mode).color;
   const present = new Set<TerrainKind>();
   for (let y = 0; y < grid.length; y += 1) {
     for (let x = 0; x < grid[y].length; x += 1) {
@@ -577,10 +641,9 @@ function drawTerrainLayers(
         : tileTerrain === Terrain.Water
           ? terrainBackdropTerrain(grid, x, y, Terrain.Water)
         : tileTerrain;
-      const style = getTerrainStyle(terrain, mode);
       present.add(tileTerrain);
       context.globalAlpha = hiddenItems.has(terrain) ? hiddenOpacity : 1;
-      context.fillStyle = style.color;
+      context.fillStyle = terrainFill(terrain);
       context.fillRect(
         x * cellSize,
         y * cellSize,
@@ -598,8 +661,7 @@ function drawTerrainLayers(
     layer.width = width;
     layer.height = height;
     const layerContext = layer.getContext("2d")!;
-    const style = getTerrainStyle(terrain, mode);
-    layerContext.fillStyle = style.color;
+    layerContext.fillStyle = terrainFill(terrain);
     layerContext.fillRect(0, 0, width, height);
 
     if (terrain !== Terrain.Cliff) {
@@ -1260,6 +1322,7 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     hiddenOpacity,
     width,
     height,
+    options.useTileset ? options.tilesetImage : undefined,
     context,
   );
   drawGlobalTexture(width, height, context);
