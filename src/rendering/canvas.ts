@@ -104,18 +104,22 @@ function createTilesetTilePattern(
   image: CanvasImageSource,
   coordinate: readonly [number, number],
   context: CanvasRenderingContext2D,
+  quarterTurns = 0,
 ) {
   const tile = document.createElement("canvas");
   tile.width = 32;
   tile.height = 32;
-  tile.getContext("2d")!.drawImage(
+  const tileContext = tile.getContext("2d")!;
+  tileContext.translate(16, 16);
+  tileContext.rotate(quarterTurns * Math.PI / 2);
+  tileContext.drawImage(
     image,
     coordinate[0] * 32,
     coordinate[1] * 32,
     32,
     32,
-    0,
-    0,
+    -16,
+    -16,
     32,
     32,
   );
@@ -1048,9 +1052,13 @@ function drawRoadNetwork(
     };
 
     const bridgeFootprint = new Path2D();
+    const horizontalBridgeFootprint = new Path2D();
+    const verticalBridgeFootprint = new Path2D();
     const bridgeShadow = new Path2D();
     const bridgeLightEdge = new Path2D();
     const bridgeDarkEdge = new Path2D();
+    const bridgeRampSeams = new Path2D();
+    const bridgeRampLips = new Path2D();
     for (const { x, y } of bridgeCells) {
       const left = x * cellSize;
       const top = y * cellSize;
@@ -1059,6 +1067,11 @@ function drawRoadNetwork(
       const axis = bridgeAxis(x, y);
       const shadowOffset = cellSize * .12;
       bridgeFootprint.rect(left, top, cellSize, cellSize);
+      if (axis === "horizontal") {
+        horizontalBridgeFootprint.rect(left, top, cellSize, cellSize);
+      } else {
+        verticalBridgeFootprint.rect(left, top, cellSize, cellSize);
+      }
       bridgeShadow.rect(
         left + (axis === "vertical" ? shadowOffset : 0),
         top + (axis === "horizontal" ? shadowOffset : 0),
@@ -1074,6 +1087,24 @@ function drawRoadNetwork(
           bridgeDarkEdge.moveTo(left, bottom);
           bridgeDarkEdge.lineTo(right, bottom);
         }
+        if (
+          !bridgeKeys.has(`${x - 1},${y}`) &&
+          grid[y]?.[x - 1]?.terrain === Terrain.Road
+        ) {
+          bridgeRampSeams.moveTo(left, top);
+          bridgeRampSeams.lineTo(left, bottom);
+          bridgeRampLips.moveTo(left + cellSize * .1, top);
+          bridgeRampLips.lineTo(left + cellSize * .1, bottom);
+        }
+        if (
+          !bridgeKeys.has(`${x + 1},${y}`) &&
+          grid[y]?.[x + 1]?.terrain === Terrain.Road
+        ) {
+          bridgeRampSeams.moveTo(right, top);
+          bridgeRampSeams.lineTo(right, bottom);
+          bridgeRampLips.moveTo(right - cellSize * .1, top);
+          bridgeRampLips.lineTo(right - cellSize * .1, bottom);
+        }
       } else {
         if (!bridgeKeys.has(`${x - 1},${y}`)) {
           bridgeLightEdge.moveTo(left, bottom);
@@ -1082,6 +1113,24 @@ function drawRoadNetwork(
         if (!bridgeKeys.has(`${x + 1},${y}`)) {
           bridgeDarkEdge.moveTo(right, top);
           bridgeDarkEdge.lineTo(right, bottom);
+        }
+        if (
+          !bridgeKeys.has(`${x},${y - 1}`) &&
+          grid[y - 1]?.[x]?.terrain === Terrain.Road
+        ) {
+          bridgeRampSeams.moveTo(left, top);
+          bridgeRampSeams.lineTo(right, top);
+          bridgeRampLips.moveTo(left, top + cellSize * .1);
+          bridgeRampLips.lineTo(right, top + cellSize * .1);
+        }
+        if (
+          !bridgeKeys.has(`${x},${y + 1}`) &&
+          grid[y + 1]?.[x]?.terrain === Terrain.Road
+        ) {
+          bridgeRampSeams.moveTo(left, bottom);
+          bridgeRampSeams.lineTo(right, bottom);
+          bridgeRampLips.moveTo(left, bottom - cellSize * .1);
+          bridgeRampLips.lineTo(right, bottom - cellSize * .1);
         }
       }
     }
@@ -1095,18 +1144,35 @@ function drawRoadNetwork(
     const bridgePattern = tilesetImage && bridgeCoordinate
       ? createTilesetTilePattern(tilesetImage, bridgeCoordinate, context)
       : undefined;
-    context.fillStyle =
-      bridgePattern ?? getTerrainStyle(Terrain.Bridge, mode).color;
-    context.fill(bridgeFootprint);
+    if (bridgePattern && tilesetImage && bridgeCoordinate) {
+      context.fillStyle = bridgePattern;
+      context.fill(horizontalBridgeFootprint);
+      context.fillStyle = createTilesetTilePattern(
+        tilesetImage,
+        bridgeCoordinate,
+        context,
+        1,
+      )!;
+      context.fill(verticalBridgeFootprint);
+    } else {
+      context.fillStyle = getTerrainStyle(Terrain.Bridge, mode).color;
+      context.fill(bridgeFootprint);
+    }
     context.lineCap = "round";
-    context.strokeStyle = "rgba(245, 226, 188, .42)";
-    context.lineWidth = Math.max(1, cellSize * .045);
+    context.strokeStyle = "rgba(245, 226, 188, .58)";
+    context.lineWidth = Math.max(1.5, cellSize * .065);
     context.stroke(bridgeLightEdge);
-    context.strokeStyle = "rgba(54, 39, 28, .58)";
-    context.lineWidth = Math.max(1.5, cellSize * .075);
+    context.strokeStyle = "rgba(54, 39, 28, .72)";
+    context.lineWidth = Math.max(2, cellSize * .105);
     context.stroke(bridgeDarkEdge);
+    context.strokeStyle = "rgba(48, 34, 25, .62)";
+    context.lineWidth = Math.max(2, cellSize * .085);
+    context.stroke(bridgeRampSeams);
+    context.strokeStyle = "rgba(246, 224, 181, .52)";
+    context.lineWidth = Math.max(1, cellSize * .04);
+    context.stroke(bridgeRampLips);
     context.strokeStyle = "rgba(61, 43, 30, .48)";
-    context.lineWidth = Math.max(1, cellSize * .06);
+    context.lineWidth = Math.max(1.5, cellSize * .075);
     context.beginPath();
     for (const { x, y } of bridgeCells) {
       const left = x * cellSize;
