@@ -83,7 +83,12 @@ function underlyingTerrain(grid: Grid, x: number, y: number): TerrainKind {
   return Terrain.Ground;
 }
 
-function cliffBackdropTerrain(grid: Grid, x: number, y: number): TerrainKind {
+function terrainBackdropTerrain(
+  grid: Grid,
+  x: number,
+  y: number,
+  excludedTerrain: TerrainKind,
+): TerrainKind {
   for (let radius = 1; radius <= 3; radius += 1) {
     const candidates = [
       grid[y - radius]?.[x]?.terrain,
@@ -92,7 +97,7 @@ function cliffBackdropTerrain(grid: Grid, x: number, y: number): TerrainKind {
       grid[y]?.[x + radius]?.terrain,
     ].filter((kind): kind is TerrainKind =>
       kind !== undefined &&
-      kind !== Terrain.Cliff &&
+      kind !== excludedTerrain &&
       !overlayTerrains.has(kind)
     );
     if (candidates.length) {
@@ -156,6 +161,44 @@ function fillCliffMaskCell(
     left + topLeftRadius,
     top,
   );
+  context.closePath();
+  context.fill();
+}
+
+function fillWaterMaskCell(
+  context: CanvasRenderingContext2D,
+  grid: Grid,
+  x: number,
+  y: number,
+  cellSize: number,
+) {
+  const isWater = (cellX: number, cellY: number) =>
+    grid[cellY]?.[cellX] !== undefined &&
+    underlyingTerrain(grid, cellX, cellY) === Terrain.Water;
+  const left = x * cellSize;
+  const top = y * cellSize;
+  const right = left + cellSize;
+  const bottom = top + cellSize;
+  const radius = cellSize * .14;
+  const topLeftRadius = !isWater(x - 1, y) && !isWater(x, y - 1) ? radius : 0;
+  const topRightRadius = !isWater(x + 1, y) && !isWater(x, y - 1) ? radius : 0;
+  const bottomRightRadius = !isWater(x + 1, y) && !isWater(x, y + 1)
+    ? radius
+    : 0;
+  const bottomLeftRadius = !isWater(x - 1, y) && !isWater(x, y + 1)
+    ? radius
+    : 0;
+
+  context.beginPath();
+  context.moveTo(left + topLeftRadius, top);
+  context.lineTo(right - topRightRadius, top);
+  context.quadraticCurveTo(right, top, right, top + topRightRadius);
+  context.lineTo(right, bottom - bottomRightRadius);
+  context.quadraticCurveTo(right, bottom, right - bottomRightRadius, bottom);
+  context.lineTo(left + bottomLeftRadius, bottom);
+  context.quadraticCurveTo(left, bottom, left, bottom - bottomLeftRadius);
+  context.lineTo(left, top + topLeftRadius);
+  context.quadraticCurveTo(left, top, left + topLeftRadius, top);
   context.closePath();
   context.fill();
 }
@@ -243,6 +286,8 @@ function createTerrainMask(
       if (tileTerrain === terrain) {
         if (terrain === Terrain.Cliff) {
           fillCliffMaskCell(maskContext, grid, x, y, cellSize);
+        } else if (terrain === Terrain.Water) {
+          fillWaterMaskCell(maskContext, grid, x, y, cellSize);
         } else if (terrain === Terrain.Ravine) {
           fillRavineMaskCell(maskContext, grid, x, y, cellSize);
         } else {
@@ -412,6 +457,84 @@ function drawRavineUpperEdges(
   context.restore();
 }
 
+function drawWaterUpperEdges(
+  grid: Grid,
+  cellSize: number,
+  opacity: number,
+  context: CanvasRenderingContext2D,
+) {
+  const segmentCount = 5;
+  const effect = document.createElement("canvas");
+  effect.width = context.canvas.width;
+  effect.height = context.canvas.height;
+  const effectContext = effect.getContext("2d")!;
+  effectContext.lineCap = "round";
+  effectContext.lineJoin = "round";
+  const isWater = (x: number, y: number) =>
+    grid[y]?.[x] !== undefined &&
+    underlyingTerrain(grid, x, y) === Terrain.Water;
+
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      if (!isWater(x, y) || isWater(x, y - 1)) continue;
+
+      const points: Array<{ x: number; y: number }> = [];
+      for (let index = 0; index <= segmentCount; index += 1) {
+        const edgeNoise = index === 0 || index === segmentCount
+          ? 0
+          : (
+            terrainVariation(
+              x * segmentCount + index,
+              y * 4,
+              947,
+            ) - .5
+          ) * cellSize * .07;
+        points.push({
+          x: (x + index / segmentCount) * cellSize,
+          y: y * cellSize + edgeNoise,
+        });
+      }
+
+      const strokeEdge = (offsetY: number) => {
+        effectContext.beginPath();
+        effectContext.moveTo(points[0].x, points[0].y + offsetY);
+        for (let index = 1; index < points.length; index += 1) {
+          effectContext.lineTo(points[index].x, points[index].y + offsetY);
+        }
+        effectContext.stroke();
+      };
+
+      effectContext.filter = `blur(${Math.max(1, cellSize * .06)}px)`;
+      effectContext.strokeStyle = "rgba(30, 65, 68, .13)";
+      effectContext.lineWidth = Math.max(5, cellSize * .38);
+      strokeEdge(cellSize * .19);
+      effectContext.filter = `blur(${Math.max(.75, cellSize * .035)}px)`;
+      effectContext.strokeStyle = "rgba(35, 72, 75, .23)";
+      effectContext.lineWidth = Math.max(3, cellSize * .2);
+      strokeEdge(cellSize * .1);
+      effectContext.filter = "none";
+      effectContext.strokeStyle = "rgba(216, 235, 228, .22)";
+      effectContext.lineWidth = Math.max(.75, cellSize * .025);
+      strokeEdge(0);
+    }
+  }
+
+  const mask = createTerrainMask(
+    grid,
+    Terrain.Water,
+    cellSize,
+    effect.width,
+    effect.height,
+  );
+  effectContext.globalCompositeOperation = "destination-in";
+  effectContext.drawImage(mask, 0, 0);
+
+  context.save();
+  context.globalAlpha = opacity;
+  context.drawImage(effect, 0, 0);
+  context.restore();
+}
+
 function drawTerrainLayers(
   grid: Grid,
   cellSize: number,
@@ -427,7 +550,9 @@ function drawTerrainLayers(
     for (let x = 0; x < grid[y].length; x += 1) {
       const tileTerrain = underlyingTerrain(grid, x, y);
       const terrain = tileTerrain === Terrain.Cliff
-        ? cliffBackdropTerrain(grid, x, y)
+        ? terrainBackdropTerrain(grid, x, y, Terrain.Cliff)
+        : tileTerrain === Terrain.Water
+          ? terrainBackdropTerrain(grid, x, y, Terrain.Water)
         : tileTerrain;
       const style = getTerrainStyle(terrain, mode);
       present.add(tileTerrain);
@@ -1128,6 +1253,12 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     grid,
     cellSize,
     hiddenItems.has(Terrain.Ravine) ? hiddenOpacity : 1,
+    context,
+  );
+  drawWaterUpperEdges(
+    grid,
+    cellSize,
+    hiddenItems.has(Terrain.Water) ? hiddenOpacity : 1,
     context,
   );
   drawShorelines(grid, cellSize, hiddenItems, hiddenOpacity, context);
