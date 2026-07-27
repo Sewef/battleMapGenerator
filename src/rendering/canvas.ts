@@ -41,6 +41,10 @@ function terrainVariation(x: number, y: number, salt: number) {
   return ((value ^ (value >>> 16)) >>> 0) / 4294967295;
 }
 
+function outsideGrid(grid: Grid, x: number, y: number) {
+  return y < 0 || y >= grid.length || x < 0 || x >= grid[0].length;
+}
+
 const overlayTerrains = new Set<TerrainKind>([
   Terrain.Road,
   Terrain.Bridge,
@@ -117,6 +121,7 @@ function fillCliffMaskCell(
   cellSize: number,
 ) {
   const isCliff = (cellX: number, cellY: number) =>
+    outsideGrid(grid, cellX, cellY) ||
     grid[cellY]?.[cellX]?.terrain === Terrain.Cliff;
   const left = x * cellSize;
   const top = y * cellSize;
@@ -173,8 +178,11 @@ function fillWaterMaskCell(
   cellSize: number,
 ) {
   const isWater = (cellX: number, cellY: number) =>
-    grid[cellY]?.[cellX] !== undefined &&
-    underlyingTerrain(grid, cellX, cellY) === Terrain.Water;
+    outsideGrid(grid, cellX, cellY) ||
+    (
+      grid[cellY]?.[cellX] !== undefined &&
+      underlyingTerrain(grid, cellX, cellY) === Terrain.Water
+    );
   const left = x * cellSize;
   const top = y * cellSize;
   const right = left + cellSize;
@@ -211,6 +219,7 @@ function fillRavineMaskCell(
   cellSize: number,
 ) {
   const isRavine = (cellX: number, cellY: number) =>
+    outsideGrid(grid, cellX, cellY) ||
     grid[cellY]?.[cellX]?.terrain === Terrain.Ravine;
   const left = x * cellSize;
   const top = y * cellSize;
@@ -315,6 +324,8 @@ function drawDifficultTerrainContour(
     grid[y]?.[x] !== undefined &&
     underlyingTerrain(grid, x, y) === Terrain.Difficult;
   const segmentCount = 6;
+  const outsideIsDifficult = (x: number, y: number) =>
+    outsideGrid(grid, x, y);
 
   const drawEdge = (
     x: number,
@@ -371,10 +382,18 @@ function drawDifficultTerrainContour(
   for (let y = 0; y < grid.length; y += 1) {
     for (let x = 0; x < grid[y].length; x += 1) {
       if (!isDifficult(x, y)) continue;
-      if (!isDifficult(x, y - 1)) drawEdge(x, y, 0);
-      if (!isDifficult(x + 1, y)) drawEdge(x, y, 1);
-      if (!isDifficult(x, y + 1)) drawEdge(x, y, 2);
-      if (!isDifficult(x - 1, y)) drawEdge(x, y, 3);
+      if (!outsideIsDifficult(x, y - 1) && !isDifficult(x, y - 1)) {
+        drawEdge(x, y, 0);
+      }
+      if (!outsideIsDifficult(x + 1, y) && !isDifficult(x + 1, y)) {
+        drawEdge(x, y, 1);
+      }
+      if (!outsideIsDifficult(x, y + 1) && !isDifficult(x, y + 1)) {
+        drawEdge(x, y, 2);
+      }
+      if (!outsideIsDifficult(x - 1, y) && !isDifficult(x - 1, y)) {
+        drawEdge(x, y, 3);
+      }
     }
   }
   context.restore();
@@ -398,6 +417,7 @@ function drawRavineUpperEdges(
     for (let x = 0; x < grid[y].length; x += 1) {
       if (
         grid[y][x].terrain !== Terrain.Ravine ||
+        y === 0 ||
         grid[y - 1]?.[x]?.terrain === Terrain.Ravine
       ) {
         continue;
@@ -471,8 +491,11 @@ function drawWaterUpperEdges(
   effectContext.lineCap = "round";
   effectContext.lineJoin = "round";
   const isWater = (x: number, y: number) =>
-    grid[y]?.[x] !== undefined &&
-    underlyingTerrain(grid, x, y) === Terrain.Water;
+    outsideGrid(grid, x, y) ||
+    (
+      grid[y]?.[x] !== undefined &&
+      underlyingTerrain(grid, x, y) === Terrain.Water
+    );
 
   for (let y = 0; y < grid.length; y += 1) {
     for (let x = 0; x < grid[y].length; x += 1) {
