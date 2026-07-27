@@ -72,6 +72,9 @@ const sandyTilesetModes = new Set<LandscapeMode>([
 const mountainousTilesetModes = new Set<LandscapeMode>([
   "mountain-pass",
   "highlands",
+  "sewer",
+  "underground",
+  "volcanic",
 ]);
 
 function tilesetCoordinate(
@@ -86,10 +89,36 @@ function tilesetCoordinate(
   if (terrain === Terrain.Difficult) {
     return mountainous ? [1, 2] : sandy ? [1, 1] : [1, 0];
   }
+  if (terrain === Terrain.Road) {
+    return mountainous ? [4, 0] : [3, 0];
+  }
   if (terrain === Terrain.Beach) return [2, 0];
   if (terrain === Terrain.Water) return [0, 3];
   if (terrain === Terrain.Lava) return [0, 4];
+  if (terrain === Terrain.Cliff) return [3, 1];
   return undefined;
+}
+
+function createTilesetTilePattern(
+  image: CanvasImageSource,
+  coordinate: readonly [number, number],
+  context: CanvasRenderingContext2D,
+) {
+  const tile = document.createElement("canvas");
+  tile.width = 32;
+  tile.height = 32;
+  tile.getContext("2d")!.drawImage(
+    image,
+    coordinate[0] * 32,
+    coordinate[1] * 32,
+    32,
+    32,
+    0,
+    0,
+    32,
+    32,
+  );
+  return context.createPattern(tile, "repeat");
 }
 
 function createTilesetPatterns(
@@ -102,21 +131,7 @@ function createTilesetPatterns(
   for (const terrain of terrainPaintOrder) {
     const coordinate = tilesetCoordinate(terrain, mode);
     if (!coordinate) continue;
-    const tile = document.createElement("canvas");
-    tile.width = 32;
-    tile.height = 32;
-    tile.getContext("2d")!.drawImage(
-      image,
-      coordinate[0] * 32,
-      coordinate[1] * 32,
-      32,
-      32,
-      0,
-      0,
-      32,
-      32,
-    );
-    const pattern = context.createPattern(tile, "repeat");
+    const pattern = createTilesetTilePattern(image, coordinate, context);
     if (pattern) patterns.set(terrain, pattern);
   }
   return patterns;
@@ -869,6 +884,7 @@ function drawRoadNetwork(
   mode: LandscapeMode,
   hiddenItems: ReadonlySet<string>,
   hiddenOpacity: number,
+  tilesetImage: CanvasImageSource | undefined,
   context: CanvasRenderingContext2D,
 ) {
   const roadTerrains = new Set<TerrainKind>([Terrain.Road, Terrain.Bridge]);
@@ -883,16 +899,96 @@ function drawRoadNetwork(
   if (!roadCells.length) return;
 
   const roadKeys = new Set(roadCells.map(({ x, y }) => `${x},${y}`));
+  const roadEdgePoints = (
+    x: number,
+    y: number,
+    side: 0 | 1 | 2 | 3,
+    exposed: boolean,
+  ) => {
+    const points: Array<{ x: number; y: number }> = [];
+    const segmentCount = 6;
+    for (let index = 0; index <= segmentCount; index += 1) {
+      const ratio = index / segmentCount;
+      const progress = side === 2 || side === 3 ? 1 - ratio : ratio;
+      const erosion = exposed
+        ? cellSize * (
+          .025 +
+          terrainVariation(
+            x * segmentCount + index,
+            y * 4 + side,
+            1201 + side * 47,
+          ) * .11
+        )
+        : 0;
+      if (side === 0) {
+        points.push({
+          x: (x + progress) * cellSize,
+          y: y * cellSize + erosion,
+        });
+      } else if (side === 1) {
+        points.push({
+          x: (x + 1) * cellSize - erosion,
+          y: (y + progress) * cellSize,
+        });
+      } else if (side === 2) {
+        points.push({
+          x: (x + progress) * cellSize,
+          y: (y + 1) * cellSize - erosion,
+        });
+      } else {
+        points.push({
+          x: x * cellSize + erosion,
+          y: (y + progress) * cellSize,
+        });
+      }
+    }
+    return points;
+  };
+
   const roadFootprint = new Path2D();
+  const roadEdges = new Path2D();
   for (const { x, y } of roadCells) {
-    roadFootprint.rect(x * cellSize, y * cellSize, cellSize, cellSize);
+    if (grid[y][x].terrain === Terrain.Bridge) {
+      roadFootprint.rect(x * cellSize, y * cellSize, cellSize, cellSize);
+      continue;
+    }
+    const exposed = [
+      y > 0 && !roadKeys.has(`${x},${y - 1}`),
+      x < grid[y].length - 1 && !roadKeys.has(`${x + 1},${y}`),
+      y < grid.length - 1 && !roadKeys.has(`${x},${y + 1}`),
+      x > 0 && !roadKeys.has(`${x - 1},${y}`),
+    ];
+    const sides = exposed.map((isExposed, side) =>
+      roadEdgePoints(x, y, side as 0 | 1 | 2 | 3, isExposed)
+    );
+    roadFootprint.moveTo(sides[0][0].x, sides[0][0].y);
+    for (const points of sides) {
+      for (let index = 1; index < points.length; index += 1) {
+        roadFootprint.lineTo(points[index].x, points[index].y);
+      }
+    }
+    roadFootprint.closePath();
+
+    for (let side = 0; side < sides.length; side += 1) {
+      if (!exposed[side]) continue;
+      const points = sides[side];
+      roadEdges.moveTo(points[0].x, points[0].y);
+      for (let index = 1; index < points.length; index += 1) {
+        roadEdges.lineTo(points[index].x, points[index].y);
+      }
+    }
   }
 
   context.save();
   context.globalAlpha = hiddenItems.has(Terrain.Road) ? hiddenOpacity : 1;
   context.shadowColor = "rgba(70, 58, 43, .25)";
   context.shadowBlur = Math.max(1, cellSize * .09);
-  context.fillStyle = getTerrainStyle(Terrain.Road, mode).color;
+  const roadCoordinate = tilesetCoordinate(Terrain.Road, mode);
+  const roadPattern = tilesetImage && roadCoordinate
+    ? createTilesetTilePattern(tilesetImage, roadCoordinate, context)
+    : undefined;
+  context.fillStyle =
+    roadPattern ?? getTerrainStyle(Terrain.Road, mode).color;
   context.fill(roadFootprint);
   context.shadowColor = "transparent";
 
@@ -917,30 +1013,7 @@ function drawRoadNetwork(
 
   context.strokeStyle = "rgba(70, 58, 43, .34)";
   context.lineWidth = Math.max(1, cellSize * .055);
-  context.beginPath();
-  for (const { x, y } of roadCells) {
-    const left = x * cellSize;
-    const top = y * cellSize;
-    const right = left + cellSize;
-    const bottom = top + cellSize;
-    if (!roadKeys.has(`${x},${y - 1}`) && y > 0) {
-      context.moveTo(left, top);
-      context.lineTo(right, top);
-    }
-    if (!roadKeys.has(`${x + 1},${y}`) && x < grid[y].length - 1) {
-      context.moveTo(right, top);
-      context.lineTo(right, bottom);
-    }
-    if (!roadKeys.has(`${x},${y + 1}`) && y < grid.length - 1) {
-      context.moveTo(right, bottom);
-      context.lineTo(left, bottom);
-    }
-    if (!roadKeys.has(`${x - 1},${y}`) && x > 0) {
-      context.moveTo(left, bottom);
-      context.lineTo(left, top);
-    }
-  }
-  context.stroke();
+  context.stroke(roadEdges);
 
   if (bridgeCells.length) {
     const bridgeKeys = new Set(
@@ -1348,7 +1421,15 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     context,
   );
   drawShorelines(grid, cellSize, hiddenItems, hiddenOpacity, context);
-  drawRoadNetwork(grid, cellSize, mode, hiddenItems, hiddenOpacity, context);
+  drawRoadNetwork(
+    grid,
+    cellSize,
+    mode,
+    hiddenItems,
+    hiddenOpacity,
+    options.useTileset ? options.tilesetImage : undefined,
+    context,
+  );
 
   for (let y = 0; y < rows; y += 1) {
     for (let x = 0; x < columns; x += 1) {
