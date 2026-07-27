@@ -64,50 +64,67 @@ const terrainPaintOrder: TerrainKind[] = [
   Terrain.Cliff,
 ];
 
-const sandyTilesetModes = new Set<LandscapeMode>([
-  "desert-canyon",
-  "badlands",
-]);
+type TilesetCoordinate = readonly [column: number, row: number];
+type TilesetProfileName = "grass" | "sand" | "mountain" | "snow";
+type TilesetTerrainMap =
+  Partial<Record<TerrainKind, TilesetCoordinate>>;
 
-const mountainousTilesetModes = new Set<LandscapeMode>([
-  "mountain-pass",
-  "highlands",
-  "sewer",
-  "underground",
-  "volcanic",
-]);
+const sharedTilesetCoordinates: TilesetTerrainMap = {
+  [Terrain.Beach]: [2, 0],
+  [Terrain.Water]: [0, 3],
+  [Terrain.Lava]: [0, 4],
+  [Terrain.Cliff]: [3, 1],
+  [Terrain.Bridge]: [5, 0],
+};
 
-const snowyTilesetModes = new Set<LandscapeMode>([
-  "frozen-lake",
-]);
+const tilesetProfiles: Record<TilesetProfileName, TilesetTerrainMap> = {
+  grass: {
+    [Terrain.Ground]: [0, 0],
+    [Terrain.Difficult]: [1, 0],
+    [Terrain.Road]: [3, 0],
+  },
+  sand: {
+    [Terrain.Ground]: [0, 1],
+    [Terrain.Difficult]: [1, 1],
+    [Terrain.Road]: [3, 0],
+  },
+  mountain: {
+    [Terrain.Ground]: [0, 2],
+    [Terrain.Difficult]: [1, 2],
+    [Terrain.Road]: [4, 0],
+  },
+  snow: {
+    [Terrain.Ground]: [2, 2],
+    [Terrain.Difficult]: [3, 2],
+    [Terrain.Road]: [3, 0],
+  },
+};
+
+const tilesetProfileByMode: Partial<
+  Record<LandscapeMode, TilesetProfileName>
+> = {
+  "desert-canyon": "sand",
+  badlands: "sand",
+  "mountain-pass": "mountain",
+  highlands: "mountain",
+  sewer: "mountain",
+  underground: "mountain",
+  volcanic: "mountain",
+  "frozen-lake": "snow",
+};
 
 function tilesetCoordinate(
   terrain: TerrainKind,
   mode: LandscapeMode,
-): readonly [number, number] | undefined {
-  const sandy = sandyTilesetModes.has(mode);
-  const mountainous = mountainousTilesetModes.has(mode);
-  const snowy = snowyTilesetModes.has(mode);
-  if (terrain === Terrain.Ground) {
-    return mountainous ? [0, 2] : sandy ? [0, 1] : snowy ? [2, 2] : [0, 0];
-  }
-  if (terrain === Terrain.Difficult) {
-    return mountainous ? [1, 2] : sandy ? [1, 1] : snowy ? [3, 2] : [1, 0];
-  }
-  if (terrain === Terrain.Road) {
-    return mountainous ? [4, 0] : [3, 0];
-  }
-  if (terrain === Terrain.Beach) return [2, 0];
-  if (terrain === Terrain.Water) return [0, 3];
-  if (terrain === Terrain.Lava) return [0, 4];
-  if (terrain === Terrain.Cliff) return [3, 1];
-  if (terrain === Terrain.Bridge) return [5, 0];
-  return undefined;
+): TilesetCoordinate | undefined {
+  const profileName = tilesetProfileByMode[mode] ?? "grass";
+  return tilesetProfiles[profileName][terrain] ??
+    sharedTilesetCoordinates[terrain];
 }
 
 function createTilesetTilePattern(
   image: CanvasImageSource,
-  coordinate: readonly [number, number],
+  coordinate: TilesetCoordinate,
   context: CanvasRenderingContext2D,
   cellSize: number,
   quarterTurns = 0,
