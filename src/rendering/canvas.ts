@@ -1861,7 +1861,11 @@ function drawRock(
   size: number,
   mode: LandscapeMode,
   context: CanvasRenderingContext2D,
+  span = 1,
 ) {
+  const left = x * size;
+  const top = y * size;
+  const rockSize = size * span;
   const colors = mode === "volcanic"
     ? { fill: "#24282a", highlight: "#8f7d6b", stroke: "#d0a45f" }
     : mode === "underground"
@@ -1870,10 +1874,10 @@ function drawRock(
   context.fillStyle = "rgba(20, 22, 22, .3)";
   context.beginPath();
   context.ellipse(
-    x * size + size * .52,
-    y * size + size * .76,
-    size * .4,
-    size * .14,
+    left + rockSize * .52,
+    top + rockSize * .76,
+    rockSize * .4,
+    rockSize * .14,
     0,
     0,
     Math.PI * 2,
@@ -1881,21 +1885,21 @@ function drawRock(
   context.fill();
   context.fillStyle = colors.fill;
   context.strokeStyle = colors.stroke;
-  context.lineWidth = Math.max(1.5, size * .045);
+  context.lineWidth = Math.max(1.5, rockSize * .045);
   context.beginPath();
-  context.moveTo(x * size + size * .1, y * size + size * .76);
-  context.lineTo(x * size + size * .26, y * size + size * .24);
-  context.lineTo(x * size + size * .65, y * size + size * .11);
-  context.lineTo(x * size + size * .91, y * size + size * .69);
-  context.lineTo(x * size + size * .64, y * size + size * .88);
+  context.moveTo(left + rockSize * .1, top + rockSize * .76);
+  context.lineTo(left + rockSize * .26, top + rockSize * .24);
+  context.lineTo(left + rockSize * .65, top + rockSize * .11);
+  context.lineTo(left + rockSize * .91, top + rockSize * .69);
+  context.lineTo(left + rockSize * .64, top + rockSize * .88);
   context.closePath();
   context.fill();
   context.stroke();
   context.fillStyle = colors.highlight;
   context.beginPath();
-  context.moveTo(x * size + size * .26, y * size + size * .24);
-  context.lineTo(x * size + size * .65, y * size + size * .11);
-  context.lineTo(x * size + size * .51, y * size + size * .47);
+  context.moveTo(left + rockSize * .26, top + rockSize * .24);
+  context.lineTo(left + rockSize * .65, top + rockSize * .11);
+  context.lineTo(left + rockSize * .51, top + rockSize * .47);
   context.closePath();
   context.fill();
 }
@@ -2100,6 +2104,7 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
 
   const treeGroups = new Map<number, Array<{ x: number; y: number }>>();
   const buildingGroups = new Map<number, Array<{ x: number; y: number }>>();
+  const rockCells = new Set<string>();
   for (let y = 0; y < rows; y += 1) {
     for (let x = 0; x < columns; x += 1) {
       const tile = grid[y][x];
@@ -2116,16 +2121,39 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
         buildingGroups.set(id, group);
       }
       if (tile.obstacle === Obstacle.Rock) {
-        context.globalAlpha =
-          hiddenItems.has(Obstacle.Rock) ? hiddenOpacity : 1;
-        drawRock(x, y, cellSize, mode, context);
-        context.globalAlpha = 1;
+        rockCells.add(`${x},${y}`);
       }
       if (tile.obstacle !== Obstacle.None) {
         counts.set(tile.obstacle, (counts.get(tile.obstacle) ?? 0) + 1);
       }
     }
   }
+  context.globalAlpha =
+    hiddenItems.has(Obstacle.Rock) ? hiddenOpacity : 1;
+  const renderedRockCells = new Set<string>();
+  for (let y = 0; y < rows - 1; y += 1) {
+    for (let x = 0; x < columns - 1; x += 1) {
+      const formation = [
+        `${x},${y}`,
+        `${x + 1},${y}`,
+        `${x},${y + 1}`,
+        `${x + 1},${y + 1}`,
+      ];
+      if (
+        formation.every((key) => rockCells.has(key)) &&
+        formation.every((key) => !renderedRockCells.has(key))
+      ) {
+        drawRock(x, y, cellSize, mode, context, 2);
+        for (const key of formation) renderedRockCells.add(key);
+      }
+    }
+  }
+  for (const key of rockCells) {
+    if (renderedRockCells.has(key)) continue;
+    const [x, y] = key.split(",").map(Number);
+    drawRock(x, y, cellSize, mode, context);
+  }
+  context.globalAlpha = 1;
   context.globalAlpha =
     hiddenItems.has(Obstacle.Building) ? hiddenOpacity : 1;
   for (const [id, points] of buildingGroups) {
