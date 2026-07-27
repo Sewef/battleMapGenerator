@@ -49,6 +49,9 @@ export interface Tile {
   obstacleId?: number;
   elevation?: number;
   height?: number;
+  transition?: "slope" | "stairs";
+  transitionNormalX?: number;
+  transitionNormalY?: number;
 }
 
 export function tileSurface(tile: Tile): SurfaceKind | undefined {

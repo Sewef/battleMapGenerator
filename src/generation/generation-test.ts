@@ -39,6 +39,27 @@ function assertGrid(grid: Grid, label: string) {
           `${label}: bridge without a crossing`,
         );
       }
+      assert(
+        surface !== Terrain.Road || tile.terrain !== Terrain.Cliff,
+        `${label}: road crosses an uncarved cliff`,
+      );
+      if (tile.transition) {
+        assert(
+          surface === Terrain.Road &&
+            (tile.terrain === Terrain.Ground ||
+              tile.terrain === Terrain.Difficult),
+          `${label}: invalid elevation transition`,
+        );
+        assert(
+          Number.isFinite(tile.transitionNormalX) &&
+            Number.isFinite(tile.transitionNormalY) &&
+            Math.hypot(
+              tile.transitionNormalX ?? 0,
+              tile.transitionNormalY ?? 0,
+            ) > .9,
+          `${label}: invalid transition normal (${tile.transitionNormalX}, ${tile.transitionNormalY})`,
+        );
+      }
       if (
         tile.obstacle !== Obstacle.None &&
         tile.terrain !== Terrain.Ground &&

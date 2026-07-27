@@ -1514,6 +1514,62 @@ function drawRoadNetwork(
   );
   context.restore();
 
+  context.save();
+  context.clip(roadFootprint);
+  context.lineCap = "round";
+  for (const { x, y } of roadCells) {
+    const transition = grid[y][x].transition;
+    if (!transition || tileSurface(grid[y][x]) !== Terrain.Road) continue;
+    let normalX = grid[y][x].transitionNormalX ?? 0;
+    let normalY = grid[y][x].transitionNormalY ?? 0;
+    if (Math.hypot(normalX, normalY) < .01) {
+      const horizontalConnections =
+        Number(roadKeys.has(`${x - 1},${y}`)) +
+        Number(roadKeys.has(`${x + 1},${y}`));
+      const verticalConnections =
+        Number(roadKeys.has(`${x},${y - 1}`)) +
+        Number(roadKeys.has(`${x},${y + 1}`));
+      normalX = horizontalConnections >= verticalConnections ? 1 : 0;
+      normalY = verticalConnections > horizontalConnections ? 1 : 0;
+    }
+    const normalLength = Math.hypot(normalX, normalY) || 1;
+    normalX /= normalLength;
+    normalY /= normalLength;
+    const tangentX = -normalY;
+    const tangentY = normalX;
+    const centerX = (x + .5) * cellSize;
+    const centerY = (y + .5) * cellSize;
+    const steps = transition === "stairs" ? 6 : 3;
+    for (let index = 1; index <= steps; index += 1) {
+      const ratio = index / (steps + 1) - .5;
+      const bandX = centerX + normalX * ratio * cellSize * .88;
+      const bandY = centerY + normalY * ratio * cellSize * .88;
+      const halfLength = cellSize * .43;
+      const curve = cellSize * (transition === "stairs" ? .035 : .07);
+      context.strokeStyle = transition === "stairs"
+        ? index % 2
+          ? "rgba(55, 48, 40, .56)"
+          : "rgba(230, 216, 183, .3)"
+        : "rgba(77, 67, 52, .2)";
+      context.lineWidth = transition === "stairs"
+        ? Math.max(1, cellSize * .035)
+        : Math.max(1.5, cellSize * .07);
+      context.beginPath();
+      context.moveTo(
+        bandX - tangentX * halfLength,
+        bandY - tangentY * halfLength,
+      );
+      context.quadraticCurveTo(
+        bandX + normalX * curve,
+        bandY + normalY * curve,
+        bandX + tangentX * halfLength,
+        bandY + tangentY * halfLength,
+      );
+      context.stroke();
+    }
+  }
+  context.restore();
+
   context.strokeStyle = "rgba(70, 58, 43, .34)";
   context.lineWidth = Math.max(1, cellSize * .055);
   context.stroke(roadEdges);

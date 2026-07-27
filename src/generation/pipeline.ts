@@ -279,6 +279,7 @@ function isPassable(tile: Tile) {
 
 export interface ValidationReport {
   repairedBridgeCells: number;
+  carvedCliffCrossings: number;
   removedInvalidObstacles: number;
   connectedComponents: number;
 }
@@ -288,13 +289,82 @@ export function validateAndRepairGrid(
   mode?: LandscapeMode,
 ): ValidationReport {
   let repairedBridgeCells = 0;
+  let carvedCliffCrossings = 0;
   let removedInvalidObstacles = 0;
-  for (const row of grid) {
-    for (const tile of row) {
+  const cliffTransitionNormal = (x: number, y: number) => {
+    const elevation = grid[y][x].elevation ?? 1;
+    let normalX = 0;
+    let normalY = 0;
+    for (const direction of directions) {
+      const neighbor = grid[y + direction.y]?.[x + direction.x];
+      const neighborElevation = neighbor?.terrain === Terrain.Cliff
+        ? neighbor.elevation ?? 1
+        : 0;
+      const drop = Math.max(0, elevation - neighborElevation);
+      normalX += direction.x * drop;
+      normalY += direction.y * drop;
+    }
+    if (Math.hypot(normalX, normalY) < .01) {
+      const horizontal =
+        Number(
+          grid[y]?.[x - 1] &&
+            tileSurface(grid[y][x - 1]) === Terrain.Road,
+        ) +
+        Number(
+          grid[y]?.[x + 1] &&
+            tileSurface(grid[y][x + 1]) === Terrain.Road,
+        );
+      const vertical =
+        Number(
+          grid[y - 1]?.[x] &&
+            tileSurface(grid[y - 1][x]) === Terrain.Road,
+        ) +
+        Number(
+          grid[y + 1]?.[x] &&
+            tileSurface(grid[y + 1][x]) === Terrain.Road,
+        );
+      normalX = horizontal >= vertical ? 1 : 0;
+      normalY = vertical > horizontal ? 1 : 0;
+    }
+    const length = Math.hypot(normalX, normalY) || 1;
+    const normalized = { x: normalX / length, y: normalY / length };
+    return Math.hypot(normalized.x, normalized.y) > .9
+      ? normalized
+      : { x: 1, y: 0 };
+  };
+  const transitionNormals = new Map<string, { x: number; y: number }>();
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      if (
+        tileSurface(grid[y][x]) === Terrain.Road &&
+        grid[y][x].terrain === Terrain.Cliff
+      ) {
+        transitionNormals.set(`${x},${y}`, cliffTransitionNormal(x, y));
+      }
+    }
+  }
+  for (let y = 0; y < grid.length; y += 1) {
+    const row = grid[y];
+    for (let x = 0; x < row.length; x += 1) {
+      const tile = row[x];
       if (tile.obstacle === Obstacle.Building && tileSurface(tile)) {
         delete tile.surface;
       }
       const surface = tileSurface(tile);
+      if (surface === Terrain.Road && tile.terrain === Terrain.Cliff) {
+        const elevation = tile.elevation ?? 1;
+        const normal = transitionNormals.get(`${x},${y}`) ?? { x: 1, y: 0 };
+        tile.transition = elevation >= 2 ? "stairs" : "slope";
+        tile.transitionNormalX = normal.x;
+        tile.transitionNormalY = normal.y;
+        tile.terrain = elevation >= 2 ? Terrain.Ground : Terrain.Difficult;
+        delete tile.elevation;
+        carvedCliffCrossings += 1;
+      } else if (surface !== Terrain.Road) {
+        delete tile.transition;
+        delete tile.transitionNormalX;
+        delete tile.transitionNormalY;
+      }
       const needsBridge =
         tile.terrain === Terrain.Water || tile.terrain === Terrain.Ravine;
       if (surface === Terrain.Road && needsBridge) {
@@ -356,8 +426,14 @@ export function validateAndRepairGrid(
     if (!path) continue;
     for (const point of path) {
       const tile = grid[point.y][point.x];
-      if (
-        tile.terrain === Terrain.Cliff ||
+      if (tile.terrain === Terrain.Cliff) {
+        const normal = cliffTransitionNormal(point.x, point.y);
+        tile.transition = "stairs";
+        tile.transitionNormalX = normal.x;
+        tile.transitionNormalY = normal.y;
+        tile.terrain = Terrain.Ground;
+        carvedCliffCrossings += 1;
+      } else if (
         tile.terrain === Terrain.Lava ||
         tile.terrain === Terrain.Void
       ) {
@@ -374,6 +450,7 @@ export function validateAndRepairGrid(
   }
   return {
     repairedBridgeCells,
+    carvedCliffCrossings,
     removedInvalidObstacles,
     connectedComponents: components.length,
   };

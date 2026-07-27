@@ -1074,6 +1074,7 @@ export function generateTerrain(options: TerrainOptions): Grid {
     );
   }
   connectPointsOfInterest(grid, options.mode);
+  assignCliffElevations(grid);
   validateAndRepairGrid(grid, options.mode);
   assignCliffElevations(grid);
   return grid;
