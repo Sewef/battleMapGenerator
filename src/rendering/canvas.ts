@@ -940,6 +940,19 @@ function drawTerrainLayers(
     layerContext.globalCompositeOperation = "source-over";
 
     context.globalAlpha = hiddenItems.has(terrain) ? hiddenOpacity : 1;
+    if (terrain === Terrain.Cliff) {
+      context.drawImage(
+        createOuterMaskShadow(
+          mask,
+          Math.max(2, cellSize * .09),
+          Math.max(3, cellSize * .15),
+          Math.max(2, cellSize * .09),
+          "rgba(18, 20, 18, .34)",
+        ),
+        0,
+        0,
+      );
+    }
     context.drawImage(layer, 0, 0);
     if (terrain === Terrain.Cliff) {
       const sideDepth = Math.max(2, cellSize * .12);
@@ -1020,6 +1033,17 @@ function drawTerrainLayers(
         tierContext.fillRect(0, 0, width, height);
         tierContext.globalCompositeOperation = "destination-in";
         tierContext.drawImage(tierMask, 0, 0);
+        context.drawImage(
+          createOuterMaskShadow(
+            tierMask,
+            Math.max(2, cellSize * .075),
+            Math.max(3, cellSize * .13),
+            Math.max(1.5, cellSize * .07),
+            "rgba(14, 16, 14, .4)",
+          ),
+          0,
+          0,
+        );
         context.drawImage(tier, 0, 0);
         context.drawImage(
           createMaskEdge(
@@ -1107,6 +1131,28 @@ function createMaskEdge(
   edgeContext.fillStyle = color;
   edgeContext.fillRect(0, 0, edge.width, edge.height);
   return edge;
+}
+
+function createOuterMaskShadow(
+  mask: HTMLCanvasElement,
+  offsetX: number,
+  offsetY: number,
+  blur: number,
+  color: string,
+) {
+  const shadow = document.createElement("canvas");
+  shadow.width = mask.width;
+  shadow.height = mask.height;
+  const shadowContext = shadow.getContext("2d")!;
+  shadowContext.filter = `blur(${blur}px)`;
+  shadowContext.drawImage(mask, offsetX, offsetY);
+  shadowContext.filter = "none";
+  shadowContext.globalCompositeOperation = "destination-out";
+  shadowContext.drawImage(mask, 0, 0);
+  shadowContext.globalCompositeOperation = "source-in";
+  shadowContext.fillStyle = color;
+  shadowContext.fillRect(0, 0, shadow.width, shadow.height);
+  return shadow;
 }
 
 function createCliffRockFace(
@@ -1747,10 +1793,16 @@ function drawTree(
   const centerY = (minimumY + maximumY + 1) * size / 2;
   const radiusX = (maximumX - minimumX + 1) * size * .42;
   const radiusY = (maximumY - minimumY + 1) * size * .42;
+  context.save();
+  context.shadowColor = "rgba(20, 25, 20, .38)";
+  context.shadowBlur = Math.max(2, size * .12);
+  context.shadowOffsetX = Math.max(1, size * .07);
+  context.shadowOffsetY = Math.max(2, size * .13);
   context.fillStyle = "#344f3e";
   context.beginPath();
   context.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
   context.fill();
+  context.restore();
   context.fillStyle = "#5e7855";
   context.beginPath();
   context.ellipse(
@@ -1786,9 +1838,10 @@ function drawBuilding(
   }
 
   context.save();
-  context.shadowColor = "rgba(39, 31, 25, .28)";
-  context.shadowBlur = Math.max(2, size * .12);
-  context.shadowOffsetY = Math.max(1, size * .08);
+  context.shadowColor = "rgba(39, 31, 25, .38)";
+  context.shadowBlur = Math.max(2, size * .14);
+  context.shadowOffsetX = Math.max(1, size * .065);
+  context.shadowOffsetY = Math.max(2, size * .12);
   context.fillStyle = id % 2 === 0 ? "#a85d43" : "#bb6e4b";
   context.fill(footprint);
   context.shadowColor = "transparent";
@@ -1867,10 +1920,22 @@ function drawRock(
   const top = y * size;
   const rockSize = size * span;
   const colors = mode === "volcanic"
-    ? { fill: "#24282a", highlight: "#8f7d6b", stroke: "#d0a45f" }
+    ? {
+      fill: "#24282a",
+      highlight: "#776c62",
+      stroke: "rgba(16, 19, 19, .68)",
+    }
     : mode === "underground"
-      ? { fill: "#4a4742", highlight: "#bbb2a2", stroke: "#ded4c0" }
-      : { fill: "#555a59", highlight: "#a9aaa2", stroke: "#343837" };
+      ? {
+        fill: "#4a4742",
+        highlight: "#918a80",
+        stroke: "rgba(35, 34, 31, .62)",
+      }
+      : {
+        fill: "#555a59",
+        highlight: "#92958f",
+        stroke: "rgba(42, 45, 44, .58)",
+      };
   context.fillStyle = "rgba(20, 22, 22, .3)";
   context.beginPath();
   context.ellipse(
@@ -1883,9 +1948,12 @@ function drawRock(
     Math.PI * 2,
   );
   context.fill();
+  context.save();
+  context.shadowColor = "rgba(18, 20, 20, .42)";
+  context.shadowBlur = Math.max(2, rockSize * .09);
+  context.shadowOffsetX = Math.max(1, rockSize * .055);
+  context.shadowOffsetY = Math.max(2, rockSize * .1);
   context.fillStyle = colors.fill;
-  context.strokeStyle = colors.stroke;
-  context.lineWidth = Math.max(1.5, rockSize * .045);
   context.beginPath();
   context.moveTo(left + rockSize * .1, top + rockSize * .76);
   context.lineTo(left + rockSize * .26, top + rockSize * .24);
@@ -1894,6 +1962,11 @@ function drawRock(
   context.lineTo(left + rockSize * .64, top + rockSize * .88);
   context.closePath();
   context.fill();
+  context.restore();
+  context.strokeStyle = colors.stroke;
+  context.lineWidth = Math.max(1, rockSize * .03);
+  context.lineCap = "round";
+  context.lineJoin = "round";
   context.stroke();
   context.fillStyle = colors.highlight;
   context.beginPath();
