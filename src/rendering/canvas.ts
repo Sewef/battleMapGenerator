@@ -96,6 +96,7 @@ function tilesetCoordinate(
   if (terrain === Terrain.Water) return [0, 3];
   if (terrain === Terrain.Lava) return [0, 4];
   if (terrain === Terrain.Cliff) return [3, 1];
+  if (terrain === Terrain.Bridge) return [5, 0];
   return undefined;
 }
 
@@ -552,9 +553,10 @@ function drawRavineUpperEdges(
   context.restore();
 }
 
-function drawWaterUpperEdges(
+function drawLiquidUpperEdges(
   grid: Grid,
   cellSize: number,
+  terrain: typeof Terrain.Water | typeof Terrain.Lava,
   opacity: number,
   context: CanvasRenderingContext2D,
 ) {
@@ -565,16 +567,17 @@ function drawWaterUpperEdges(
   const effectContext = effect.getContext("2d")!;
   effectContext.lineCap = "round";
   effectContext.lineJoin = "round";
-  const isWater = (x: number, y: number) =>
+  const isLiquid = (x: number, y: number) =>
     outsideGrid(grid, x, y) ||
     (
       grid[y]?.[x] !== undefined &&
-      underlyingTerrain(grid, x, y) === Terrain.Water
+      underlyingTerrain(grid, x, y) === terrain
     );
+  const lava = terrain === Terrain.Lava;
 
   for (let y = 0; y < grid.length; y += 1) {
     for (let x = 0; x < grid[y].length; x += 1) {
-      if (!isWater(x, y) || isWater(x, y - 1)) continue;
+      if (!isLiquid(x, y) || isLiquid(x, y - 1)) continue;
 
       const points: Array<{ x: number; y: number }> = [];
       for (let index = 0; index <= segmentCount; index += 1) {
@@ -584,7 +587,7 @@ function drawWaterUpperEdges(
             terrainVariation(
               x * segmentCount + index,
               y * 4,
-              947,
+              lava ? 1031 : 947,
             ) - .5
           ) * cellSize * .07;
         points.push({
@@ -603,15 +606,21 @@ function drawWaterUpperEdges(
       };
 
       effectContext.filter = `blur(${Math.max(1, cellSize * .06)}px)`;
-      effectContext.strokeStyle = "rgba(30, 65, 68, .13)";
+      effectContext.strokeStyle = lava
+        ? "rgba(91, 29, 20, .16)"
+        : "rgba(30, 65, 68, .13)";
       effectContext.lineWidth = Math.max(5, cellSize * .38);
       strokeEdge(cellSize * .19);
       effectContext.filter = `blur(${Math.max(.75, cellSize * .035)}px)`;
-      effectContext.strokeStyle = "rgba(35, 72, 75, .23)";
+      effectContext.strokeStyle = lava
+        ? "rgba(105, 31, 20, .27)"
+        : "rgba(35, 72, 75, .23)";
       effectContext.lineWidth = Math.max(3, cellSize * .2);
       strokeEdge(cellSize * .1);
       effectContext.filter = "none";
-      effectContext.strokeStyle = "rgba(216, 235, 228, .22)";
+      effectContext.strokeStyle = lava
+        ? "rgba(255, 190, 91, .25)"
+        : "rgba(216, 235, 228, .22)";
       effectContext.lineWidth = Math.max(.75, cellSize * .025);
       strokeEdge(0);
     }
@@ -619,7 +628,7 @@ function drawWaterUpperEdges(
 
   const mask = createTerrainMask(
     grid,
-    Terrain.Water,
+    terrain,
     cellSize,
     effect.width,
     effect.height,
@@ -1019,13 +1028,83 @@ function drawRoadNetwork(
     const bridgeKeys = new Set(
       bridgeCells.map(({ x, y }) => `${x},${y}`),
     );
+    const bridgeAxis = (x: number, y: number) => {
+      const bridgeHorizontal =
+        Number(bridgeKeys.has(`${x - 1},${y}`)) +
+        Number(bridgeKeys.has(`${x + 1},${y}`));
+      const bridgeVertical =
+        Number(bridgeKeys.has(`${x},${y - 1}`)) +
+        Number(bridgeKeys.has(`${x},${y + 1}`));
+      if (bridgeHorizontal !== bridgeVertical) {
+        return bridgeHorizontal > bridgeVertical ? "horizontal" : "vertical";
+      }
+      const roadHorizontal =
+        Number(roadKeys.has(`${x - 1},${y}`)) +
+        Number(roadKeys.has(`${x + 1},${y}`));
+      const roadVertical =
+        Number(roadKeys.has(`${x},${y - 1}`)) +
+        Number(roadKeys.has(`${x},${y + 1}`));
+      return roadVertical > roadHorizontal ? "vertical" : "horizontal";
+    };
+
     const bridgeFootprint = new Path2D();
+    const bridgeShadow = new Path2D();
+    const bridgeLightEdge = new Path2D();
+    const bridgeDarkEdge = new Path2D();
     for (const { x, y } of bridgeCells) {
-      bridgeFootprint.rect(x * cellSize, y * cellSize, cellSize, cellSize);
+      const left = x * cellSize;
+      const top = y * cellSize;
+      const right = left + cellSize;
+      const bottom = top + cellSize;
+      const axis = bridgeAxis(x, y);
+      const shadowOffset = cellSize * .12;
+      bridgeFootprint.rect(left, top, cellSize, cellSize);
+      bridgeShadow.rect(
+        left + (axis === "vertical" ? shadowOffset : 0),
+        top + (axis === "horizontal" ? shadowOffset : 0),
+        cellSize,
+        cellSize,
+      );
+      if (axis === "horizontal") {
+        if (!bridgeKeys.has(`${x},${y - 1}`)) {
+          bridgeLightEdge.moveTo(left, top);
+          bridgeLightEdge.lineTo(right, top);
+        }
+        if (!bridgeKeys.has(`${x},${y + 1}`)) {
+          bridgeDarkEdge.moveTo(left, bottom);
+          bridgeDarkEdge.lineTo(right, bottom);
+        }
+      } else {
+        if (!bridgeKeys.has(`${x - 1},${y}`)) {
+          bridgeLightEdge.moveTo(left, bottom);
+          bridgeLightEdge.lineTo(left, top);
+        }
+        if (!bridgeKeys.has(`${x + 1},${y}`)) {
+          bridgeDarkEdge.moveTo(right, top);
+          bridgeDarkEdge.lineTo(right, bottom);
+        }
+      }
     }
     context.globalAlpha = hiddenItems.has(Terrain.Bridge) ? hiddenOpacity : 1;
-    context.fillStyle = getTerrainStyle(Terrain.Bridge, mode).color;
+    context.save();
+    context.filter = `blur(${Math.max(1, cellSize * .055)}px)`;
+    context.fillStyle = "rgba(28, 24, 20, .38)";
+    context.fill(bridgeShadow);
+    context.restore();
+    const bridgeCoordinate = tilesetCoordinate(Terrain.Bridge, mode);
+    const bridgePattern = tilesetImage && bridgeCoordinate
+      ? createTilesetTilePattern(tilesetImage, bridgeCoordinate, context)
+      : undefined;
+    context.fillStyle =
+      bridgePattern ?? getTerrainStyle(Terrain.Bridge, mode).color;
     context.fill(bridgeFootprint);
+    context.lineCap = "round";
+    context.strokeStyle = "rgba(245, 226, 188, .42)";
+    context.lineWidth = Math.max(1, cellSize * .045);
+    context.stroke(bridgeLightEdge);
+    context.strokeStyle = "rgba(54, 39, 28, .58)";
+    context.lineWidth = Math.max(1.5, cellSize * .075);
+    context.stroke(bridgeDarkEdge);
     context.strokeStyle = "rgba(61, 43, 30, .48)";
     context.lineWidth = Math.max(1, cellSize * .06);
     context.beginPath();
@@ -1276,19 +1355,7 @@ function drawTerrainDetail(
   context: CanvasRenderingContext2D,
 ) {
   const tile = grid[y][x];
-  if (tile.terrain === Terrain.Lava) {
-    context.strokeStyle = "rgba(255, 207, 96, .72)";
-    context.lineWidth = Math.max(1, cellSize * .08);
-    context.beginPath();
-    context.moveTo(x * cellSize + cellSize * .12, y * cellSize + cellSize * .62);
-    context.bezierCurveTo(
-      x * cellSize + cellSize * .35, y * cellSize + cellSize * .35,
-      x * cellSize + cellSize * .62, y * cellSize + cellSize * .76,
-      x * cellSize + cellSize * .88, y * cellSize + cellSize * .42,
-    );
-    context.stroke();
-    context.lineWidth = 1;
-  } else if (tile.terrain === Terrain.Water) {
+  if (tile.terrain === Terrain.Water) {
     context.strokeStyle = "rgba(223, 239, 229, .28)";
     context.beginPath();
     context.moveTo(x * cellSize + cellSize * .18, y * cellSize + cellSize * .55);
@@ -1414,10 +1481,18 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     hiddenItems.has(Terrain.Ravine) ? hiddenOpacity : 1,
     context,
   );
-  drawWaterUpperEdges(
+  drawLiquidUpperEdges(
     grid,
     cellSize,
+    Terrain.Water,
     hiddenItems.has(Terrain.Water) ? hiddenOpacity : 1,
+    context,
+  );
+  drawLiquidUpperEdges(
+    grid,
+    cellSize,
+    Terrain.Lava,
+    hiddenItems.has(Terrain.Lava) ? hiddenOpacity : 1,
     context,
   );
   drawShorelines(grid, cellSize, hiddenItems, hiddenOpacity, context);
