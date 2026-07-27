@@ -77,17 +77,22 @@ const mountainousTilesetModes = new Set<LandscapeMode>([
   "volcanic",
 ]);
 
+const snowyTilesetModes = new Set<LandscapeMode>([
+  "frozen-lake",
+]);
+
 function tilesetCoordinate(
   terrain: TerrainKind,
   mode: LandscapeMode,
 ): readonly [number, number] | undefined {
   const sandy = sandyTilesetModes.has(mode);
   const mountainous = mountainousTilesetModes.has(mode);
+  const snowy = snowyTilesetModes.has(mode);
   if (terrain === Terrain.Ground) {
-    return mountainous ? [0, 2] : sandy ? [0, 1] : [0, 0];
+    return mountainous ? [0, 2] : sandy ? [0, 1] : snowy ? [2, 2] : [0, 0];
   }
   if (terrain === Terrain.Difficult) {
-    return mountainous ? [1, 2] : sandy ? [1, 1] : [1, 0];
+    return mountainous ? [1, 2] : sandy ? [1, 1] : snowy ? [3, 2] : [1, 0];
   }
   if (terrain === Terrain.Road) {
     return mountainous ? [4, 0] : [3, 0];
