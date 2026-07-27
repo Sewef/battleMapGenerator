@@ -45,6 +45,7 @@ export interface Tile {
   terrain: TerrainKind;
   obstacle: ObstacleKind;
   obstacleId?: number;
+  elevation?: number;
 }
 
 export type Grid = Tile[][];

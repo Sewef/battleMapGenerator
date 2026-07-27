@@ -403,6 +403,50 @@ function drawRoadCrossing(grid: Grid, horizontal: boolean, random: Random) {
   );
 }
 
+function assignCliffElevations(grid: Grid) {
+  const distances = grid.map((row) => row.map(() => Infinity));
+  const queue: Point[] = [];
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      const tile = grid[y][x];
+      delete tile.elevation;
+      if (tile.terrain !== Terrain.Cliff) continue;
+      const touchesLowerTerrain = [
+        grid[y - 1]?.[x],
+        grid[y + 1]?.[x],
+        grid[y]?.[x - 1],
+        grid[y]?.[x + 1],
+      ].some((neighbor) => neighbor && neighbor.terrain !== Terrain.Cliff);
+      if (touchesLowerTerrain) {
+        distances[y][x] = 0;
+        queue.push({ x, y });
+      }
+    }
+  }
+  for (let index = 0; index < queue.length; index += 1) {
+    const { x, y } = queue[index];
+    for (const [offsetX, offsetY] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nextX = x + offsetX;
+      const nextY = y + offsetY;
+      if (
+        grid[nextY]?.[nextX]?.terrain !== Terrain.Cliff ||
+        distances[nextY][nextX] <= distances[y][x] + 1
+      ) {
+        continue;
+      }
+      distances[nextY][nextX] = distances[y][x] + 1;
+      queue.push({ x: nextX, y: nextY });
+    }
+  }
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      if (grid[y][x].terrain !== Terrain.Cliff) continue;
+      const distance = Number.isFinite(distances[y][x]) ? distances[y][x] : 0;
+      grid[y][x].elevation = Math.min(3, 1 + Math.floor(distance / 2));
+    }
+  }
+}
+
 function drawCoastalRoad(grid: Grid, random: Random) {
   const waterDistance = cellDistancesFromWater(grid);
   const minimumClearance = 4;
@@ -932,6 +976,8 @@ export function generateTerrain(options: TerrainOptions): Grid {
       seededRandom(`${seed}:pass-road`),
     );
   }
+
+  assignCliffElevations(grid);
 
   // Second pass: obstacles do not participate in terrain morphology.
   const waterDistance = cellDistancesFromWater(grid);

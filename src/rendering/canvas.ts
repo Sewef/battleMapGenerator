@@ -229,10 +229,14 @@ function fillCliffMaskCell(
   x: number,
   y: number,
   cellSize: number,
+  minimumElevation = 1,
 ) {
   const isCliff = (cellX: number, cellY: number) =>
     outsideGrid(grid, cellX, cellY) ||
-    grid[cellY]?.[cellX]?.terrain === Terrain.Cliff;
+    (
+      grid[cellY]?.[cellX]?.terrain === Terrain.Cliff &&
+      (grid[cellY][cellX].elevation ?? 1) >= minimumElevation
+    );
   const left = x * cellSize;
   const top = y * cellSize;
   const right = left + cellSize;
@@ -495,6 +499,38 @@ function createTerrainMask(
   return mask;
 }
 
+function createCliffElevationMask(
+  grid: Grid,
+  minimumElevation: number,
+  cellSize: number,
+  width: number,
+  height: number,
+) {
+  const mask = document.createElement("canvas");
+  mask.width = width;
+  mask.height = height;
+  const maskContext = mask.getContext("2d")!;
+  maskContext.fillStyle = "#fff";
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      if (
+        grid[y][x].terrain === Terrain.Cliff &&
+        (grid[y][x].elevation ?? 1) >= minimumElevation
+      ) {
+        fillCliffMaskCell(
+          maskContext,
+          grid,
+          x,
+          y,
+          cellSize,
+          minimumElevation,
+        );
+      }
+    }
+  }
+  return mask;
+}
+
 function drawDifficultTerrainContour(
   grid: Grid,
   cellSize: number,
@@ -726,7 +762,7 @@ function drawLiquidUpperEdges(
       effectContext.filter = "none";
       effectContext.strokeStyle = lava
         ? "rgba(255, 190, 91, .25)"
-        : "rgba(216, 235, 228, .22)";
+        : "rgba(151, 184, 177, .14)";
       effectContext.lineWidth = Math.max(.75, cellSize * .025);
       strokeEdge(0);
     }
@@ -906,12 +942,118 @@ function drawTerrainLayers(
     context.globalAlpha = hiddenItems.has(terrain) ? hiddenOpacity : 1;
     context.drawImage(layer, 0, 0);
     if (terrain === Terrain.Cliff) {
-      const depth = Math.max(3, cellSize * .18);
-      const blur = Math.max(1.5, cellSize * .065);
-      const color = "rgba(25, 27, 24, .38)";
-      context.drawImage(createMaskEdge(mask, depth, 0, blur, color), 0, 0);
-      context.drawImage(createMaskEdge(mask, -depth, 0, blur, color), 0, 0);
-      context.drawImage(createMaskEdge(mask, 0, -depth, blur, color), 0, 0);
+      const sideDepth = Math.max(2, cellSize * .12);
+      const sideBlur = Math.max(1, cellSize * .045);
+      const lowerBlur = Math.max(2, cellSize * .085);
+
+      context.drawImage(
+        createMaskEdge(
+          mask,
+          sideDepth,
+          0,
+          sideBlur,
+          "rgba(28, 30, 27, .14)",
+        ),
+        0,
+        0,
+      );
+      context.drawImage(
+        createMaskEdge(
+          mask,
+          -sideDepth,
+          0,
+          sideBlur,
+          "rgba(24, 26, 23, .38)",
+        ),
+        0,
+        0,
+      );
+      context.drawImage(
+        createMaskEdge(
+          mask,
+          0,
+          -Math.max(5, cellSize * .3),
+          lowerBlur,
+          "rgba(20, 22, 20, .48)",
+        ),
+        0,
+        0,
+      );
+      context.drawImage(
+        createMaskEdge(
+          mask,
+          0,
+          -Math.max(4, cellSize * .18),
+          Math.max(1, cellSize * .04),
+          "rgba(18, 20, 18, .72)",
+        ),
+        0,
+        0,
+      );
+      context.drawImage(
+        createCliffRockFace(mask, grid, cellSize),
+        0,
+        0,
+      );
+
+      const maximumElevation = Math.max(
+        1,
+        ...grid.flatMap((row) =>
+          row
+            .filter((tile) => tile.terrain === Terrain.Cliff)
+            .map((tile) => tile.elevation ?? 1)
+        ),
+      );
+      for (let elevation = 2; elevation <= maximumElevation; elevation += 1) {
+        const tierMask = createCliffElevationMask(
+          grid,
+          elevation,
+          cellSize,
+          width,
+          height,
+        );
+        const tier = document.createElement("canvas");
+        tier.width = width;
+        tier.height = height;
+        const tierContext = tier.getContext("2d")!;
+        tierContext.fillStyle = terrainFill(Terrain.Cliff);
+        tierContext.fillRect(0, 0, width, height);
+        tierContext.globalCompositeOperation = "destination-in";
+        tierContext.drawImage(tierMask, 0, 0);
+        context.drawImage(tier, 0, 0);
+        context.drawImage(
+          createMaskEdge(
+            tierMask,
+            -Math.max(2, cellSize * .13),
+            0,
+            Math.max(1, cellSize * .04),
+            "rgba(22, 24, 22, .4)",
+          ),
+          0,
+          0,
+        );
+        context.drawImage(
+          createMaskEdge(
+            tierMask,
+            0,
+            -Math.max(5, cellSize * .3),
+            Math.max(2, cellSize * .08),
+            "rgba(16, 18, 16, .76)",
+          ),
+          0,
+          0,
+        );
+        context.drawImage(
+          createCliffRockFace(
+            tierMask,
+            grid,
+            cellSize,
+            elevation,
+          ),
+          0,
+          0,
+        );
+      }
     }
     if (terrain === Terrain.Difficult) {
       drawDifficultTerrainContour(
@@ -965,6 +1107,109 @@ function createMaskEdge(
   edgeContext.fillStyle = color;
   edgeContext.fillRect(0, 0, edge.width, edge.height);
   return edge;
+}
+
+function createCliffRockFace(
+  mask: HTMLCanvasElement,
+  grid: Grid,
+  cellSize: number,
+  minimumElevation = 1,
+) {
+  const face = document.createElement("canvas");
+  face.width = mask.width;
+  face.height = mask.height;
+  const faceContext = face.getContext("2d")!;
+  const isCliff = (x: number, y: number) =>
+    outsideGrid(grid, x, y) ||
+    (
+      grid[y]?.[x]?.terrain === Terrain.Cliff &&
+      (grid[y][x].elevation ?? 1) >= minimumElevation
+    );
+
+  const drawRock = (
+    centerX: number,
+    centerY: number,
+    radius: number,
+    variation: number,
+  ) => {
+    const radiusX = radius * (.78 + variation * .34);
+    const radiusY = radius * (1.08 - variation * .2);
+    faceContext.fillStyle = "rgba(22, 25, 23, .42)";
+    faceContext.beginPath();
+    faceContext.ellipse(
+      centerX,
+      centerY,
+      radiusX,
+      radiusY,
+      (variation - .5) * .5,
+      0,
+      Math.PI * 2,
+    );
+    faceContext.fill();
+    faceContext.fillStyle = "rgba(194, 194, 176, .3)";
+    faceContext.beginPath();
+    faceContext.ellipse(
+      centerX - radiusX * .22,
+      centerY - radiusY * .28,
+      radiusX * .42,
+      radiusY * .26,
+      0,
+      0,
+      Math.PI * 2,
+    );
+    faceContext.fill();
+  };
+
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      if (
+        grid[y][x].terrain !== Terrain.Cliff ||
+        (grid[y][x].elevation ?? 1) < minimumElevation
+      ) {
+        continue;
+      }
+      const left = x * cellSize;
+      const top = y * cellSize;
+
+      if (!isCliff(x, y + 1)) {
+        for (let index = 0; index < 5; index += 1) {
+          const variation = terrainVariation(x * 5 + index, y, 1601);
+          drawRock(
+            left + cellSize * (index + .5) / 5,
+            top + cellSize * (.88 + (variation - .5) * .055),
+            cellSize * (.13 + variation * .025),
+            variation,
+          );
+        }
+      }
+      if (!isCliff(x - 1, y)) {
+        for (let index = 0; index < 4; index += 1) {
+          const variation = terrainVariation(x, y * 4 + index, 1663);
+          drawRock(
+            left + cellSize * (.1 + (variation - .5) * .04),
+            top + cellSize * (index + .5) / 4,
+            cellSize * (.1 + variation * .018),
+            variation,
+          );
+        }
+      }
+      if (!isCliff(x + 1, y)) {
+        for (let index = 0; index < 4; index += 1) {
+          const variation = terrainVariation(x, y * 4 + index, 1721);
+          drawRock(
+            left + cellSize * (.9 + (variation - .5) * .04),
+            top + cellSize * (index + .5) / 4,
+            cellSize * (.105 + variation * .018),
+            variation,
+          );
+        }
+      }
+    }
+  }
+
+  faceContext.globalCompositeOperation = "destination-in";
+  faceContext.drawImage(mask, 0, 0);
+  return face;
 }
 
 function drawReliefBevels(
@@ -1443,12 +1688,13 @@ function drawRoadNetwork(
 function drawShorelines(
   grid: Grid,
   cellSize: number,
+  mode: LandscapeMode,
   hiddenItems: ReadonlySet<string>,
   hiddenOpacity: number,
   context: CanvasRenderingContext2D,
 ) {
   context.save();
-  context.globalAlpha = hiddenItems.has(Terrain.Water) ? hiddenOpacity : 1;
+  const visibility = hiddenItems.has(Terrain.Water) ? hiddenOpacity : 1;
   context.lineCap = "round";
   context.lineJoin = "round";
   context.beginPath();
@@ -1477,11 +1723,13 @@ function drawShorelines(
       }
     }
   }
-  context.strokeStyle = "rgba(38, 74, 75, .26)";
-  context.lineWidth = Math.max(2, cellSize * .13);
+  context.globalAlpha = visibility * .34;
+  context.strokeStyle = getTerrainStyle(Terrain.Ground, mode).color;
+  context.lineWidth = Math.max(2, cellSize * .12);
   context.stroke();
-  context.strokeStyle = "rgba(235, 242, 224, .48)";
-  context.lineWidth = Math.max(1, cellSize * .035);
+  context.globalAlpha = visibility * .28;
+  context.strokeStyle = getTerrainStyle(Terrain.Water, mode).alt;
+  context.lineWidth = Math.max(1, cellSize * .03);
   context.stroke();
   context.restore();
 }
@@ -1806,7 +2054,14 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     hiddenItems.has(Terrain.Lava) ? hiddenOpacity : 1,
     context,
   );
-  drawShorelines(grid, cellSize, hiddenItems, hiddenOpacity, context);
+  drawShorelines(
+    grid,
+    cellSize,
+    mode,
+    hiddenItems,
+    hiddenOpacity,
+    context,
+  );
   drawRoadNetwork(
     grid,
     cellSize,
