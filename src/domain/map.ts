@@ -20,6 +20,7 @@ export const Obstacle = {
 } as const;
 
 export type TerrainKind = (typeof Terrain)[keyof typeof Terrain];
+export type SurfaceKind = typeof Terrain.Road | typeof Terrain.Bridge;
 export type ObstacleKind = (typeof Obstacle)[keyof typeof Obstacle];
 export type LandscapeMode =
   | "countryside"
@@ -43,9 +44,25 @@ export type LandscapeMode =
 
 export interface Tile {
   terrain: TerrainKind;
+  surface?: SurfaceKind;
   obstacle: ObstacleKind;
   obstacleId?: number;
   elevation?: number;
+  height?: number;
+}
+
+export function tileSurface(tile: Tile): SurfaceKind | undefined {
+  if (tile.surface) return tile.surface;
+  return tile.terrain === Terrain.Road || tile.terrain === Terrain.Bridge
+    ? tile.terrain
+    : undefined;
+}
+
+export function setTileSurface(tile: Tile, surface: SurfaceKind) {
+  if (tile.terrain === Terrain.Road || tile.terrain === Terrain.Bridge) {
+    tile.terrain = Terrain.Ground;
+  }
+  tile.surface = surface;
 }
 
 export type Grid = Tile[][];

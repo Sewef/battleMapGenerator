@@ -1,4 +1,4 @@
-import { Obstacle, Terrain, type Grid } from "../domain/map";
+import { Obstacle, Terrain, setTileSurface, type Grid } from "../domain/map";
 import type { Random } from "./types";
 
 export function generateCity(
@@ -24,17 +24,23 @@ export function generateCity(
   horizontalStreets.push(height - 1);
 
   for (const x of verticalStreets) {
-    for (let y = 0; y < height; y += 1) grid[y][x].terrain = Terrain.Road;
+    for (let y = 0; y < height; y += 1) {
+      setTileSurface(grid[y][x], Terrain.Road);
+    }
   }
   for (const y of horizontalStreets) {
-    for (let x = 0; x < width; x += 1) grid[y][x].terrain = Terrain.Road;
+    for (let x = 0; x < width; x += 1) {
+      setTileSurface(grid[y][x], Terrain.Road);
+    }
   }
 
   // A wider avenue gives the street network a readable hierarchy.
   const avenue = verticalStreets[Math.floor(verticalStreets.length / 2)];
   for (let y = 0; y < height; y += 1) {
-    grid[y][avenue].terrain = Terrain.Road;
-    if (grid[y][avenue + 1]) grid[y][avenue + 1].terrain = Terrain.Road;
+    setTileSurface(grid[y][avenue], Terrain.Road);
+    if (grid[y][avenue + 1]) {
+      setTileSurface(grid[y][avenue + 1], Terrain.Road);
+    }
   }
 
   let buildingId = 0;
@@ -67,7 +73,7 @@ export function generateCity(
           const alley = (right - left > 7 && x === Math.floor((left + right) / 2)) ||
             (bottom - top > 6 && y === Math.floor((top + bottom) / 2));
           if (alley) {
-            grid[y][x].terrain = Terrain.Road;
+            setTileSurface(grid[y][x], Terrain.Road);
             continue;
           }
           grid[y][x].obstacle = Obstacle.Building;

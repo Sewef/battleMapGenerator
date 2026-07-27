@@ -1,4 +1,4 @@
-import { Terrain, type Grid } from "../domain/map";
+import { Terrain, setTileSurface, type Grid } from "../domain/map";
 import type { Random } from "./types";
 
 function paintCircle(
@@ -22,8 +22,16 @@ export function generateFarmland(grid: Grid, random: Random, difficultWeight: nu
   const width = grid[0].length;
   const lanesX = [0, Math.floor(width * (.42 + random() * .12)), width - 1];
   const lanesY = [0, Math.floor(height * (.44 + random() * .12)), height - 1];
-  for (const x of lanesX) for (let y = 0; y < height; y += 1) grid[y][x].terrain = Terrain.Road;
-  for (const y of lanesY) for (let x = 0; x < width; x += 1) grid[y][x].terrain = Terrain.Road;
+  for (const x of lanesX) {
+    for (let y = 0; y < height; y += 1) {
+      setTileSurface(grid[y][x], Terrain.Road);
+    }
+  }
+  for (const y of lanesY) {
+    for (let x = 0; x < width; x += 1) {
+      setTileSurface(grid[y][x], Terrain.Road);
+    }
+  }
   for (let by = 0; by < lanesY.length - 1; by += 1) {
     for (let bx = 0; bx < lanesX.length - 1; bx += 1) {
       if (random() > .35 + difficultWeight * .35) continue;
@@ -105,8 +113,12 @@ export function generateAncientRuins(grid: Grid, random: Random) {
   const width = grid[0].length;
   const centerX = Math.floor(width / 2);
   const centerY = Math.floor(height / 2);
-  for (let x = 0; x < width; x += 1) grid[centerY][x].terrain = Terrain.Road;
-  for (let y = 0; y < height; y += 1) grid[y][centerX].terrain = Terrain.Road;
+  for (let x = 0; x < width; x += 1) {
+    setTileSurface(grid[centerY][x], Terrain.Road);
+  }
+  for (let y = 0; y < height; y += 1) {
+    setTileSurface(grid[y][centerX], Terrain.Road);
+  }
   paintCircle(grid, centerX, centerY, 3, Terrain.Ground);
   for (let index = 0; index < 5; index += 1) {
     paintCircle(

@@ -1,4 +1,10 @@
-import { Obstacle, Terrain, type Grid } from "../domain/map";
+import {
+  Obstacle,
+  Terrain,
+  tileSurface,
+  type Grid,
+  type LandscapeMode,
+} from "../domain/map";
 import type { Point, Random } from "./types";
 
 export function cellDistancesFromWater(grid: Grid): number[][] {
@@ -46,10 +52,15 @@ export function scatterDifficultTerrain(
   for (let patch = 0; patch < patchCount && placed.size < target; patch += 1) {
     const seedPool = candidates
       .filter(({ x, y }) => !placed.has(`${x},${y}`))
+      .map((candidate) => {
+        const { x, y } = candidate;
+        const wet = Number.isFinite(waterDistance[y][x])
+          ? waterDistance[y][x]
+          : 8;
+        return { ...candidate, score: wet + random() * 8 };
+      })
       .sort((a, b) => {
-        const wetA = Number.isFinite(waterDistance[a.y][a.x]) ? waterDistance[a.y][a.x] : 8;
-        const wetB = Number.isFinite(waterDistance[b.y][b.x]) ? waterDistance[b.y][b.x] : 8;
-        return (wetA + random() * 8) - (wetB + random() * 8);
+        return a.score - b.score;
       });
     if (!seedPool.length) break;
     let point = { x: seedPool[0].x, y: seedPool[0].y };
@@ -71,11 +82,13 @@ export function scatterDifficultTerrain(
 
   const remaining = candidates
     .filter(({ x, y }) => !placed.has(`${x},${y}`))
-    .sort((a, b) => {
-      const wetA = Number.isFinite(waterDistance[a.y][a.x]) ? waterDistance[a.y][a.x] : 8;
-      const wetB = Number.isFinite(waterDistance[b.y][b.x]) ? waterDistance[b.y][b.x] : 8;
-      return (wetA + random() * 16) - (wetB + random() * 16);
-    });
+    .map((candidate) => {
+      const wet = Number.isFinite(waterDistance[candidate.y][candidate.x])
+        ? waterDistance[candidate.y][candidate.x]
+        : 8;
+      return { ...candidate, score: wet + random() * 16 };
+    })
+    .sort((a, b) => a.score - b.score);
   for (const { x, y } of remaining.slice(0, Math.max(0, target - placed.size))) {
     placed.add(`${x},${y}`);
   }
@@ -87,7 +100,22 @@ export function scatterDifficultTerrain(
 
 export function scatterRocks(grid: Grid, target: number, random: Random) {
   const candidates = grid.flatMap((row, y) =>
-    row.map((tile, x) => ({ tile, x, y, score: random() }))
+    row.map((tile, x) => {
+      let nearbyCliffs = 0;
+      for (let offsetY = -2; offsetY <= 2; offsetY += 1) {
+        for (let offsetX = -2; offsetX <= 2; offsetX += 1) {
+          if (grid[y + offsetY]?.[x + offsetX]?.terrain === Terrain.Cliff) {
+            nearbyCliffs += 1;
+          }
+        }
+      }
+      return {
+        tile,
+        x,
+        y,
+        score: random() - Math.min(.55, nearbyCliffs * .045),
+      };
+    })
       .filter(({ tile }) =>
         tile.terrain === Terrain.Ground || tile.terrain === Terrain.Difficult,
       ),
@@ -100,10 +128,18 @@ export function scatterRocks(grid: Grid, target: number, random: Random) {
       Math.abs(rock.x - candidate.x) <= 2 && Math.abs(rock.y - candidate.y) <= 2,
     );
     if (nearExisting) continue;
-    const outcropSize = random() < .18 ? 2 + Math.floor(random() * 3) : 1;
+    const roll = random();
+    const footprint = roll < .08
+      ? [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }]
+      : roll < .16
+        ? [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }]
+        : roll < .28
+          ? [{ x: 0, y: 0 }, { x: 1, y: 0 }]
+          : [{ x: 0, y: 0 }];
     rockId += 1;
-    let point = { x: candidate.x, y: candidate.y };
-    for (let index = 0; index < outcropSize && placed.length < target; index += 1) {
+    for (const offset of footprint) {
+      if (placed.length >= target) break;
+      const point = { x: candidate.x + offset.x, y: candidate.y + offset.y };
       const tile = grid[point.y]?.[point.x];
       if (
         tile &&
@@ -114,11 +150,6 @@ export function scatterRocks(grid: Grid, target: number, random: Random) {
         tile.obstacleId = rockId;
         placed.push(point);
       }
-      const directions = [
-        { x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 },
-      ];
-      const direction = directions[Math.floor(random() * directions.length)];
-      point = { x: point.x + direction.x, y: point.y + direction.y };
     }
     if (placed.length >= target) break;
   }
@@ -129,6 +160,7 @@ export function placeTrees(
   target: number,
   waterDistance: number[][],
   random: Random,
+  mode: LandscapeMode = "countryside",
 ) {
   const candidates = grid.flatMap((row, y) =>
     row.map((tile, x) => ({ tile, x, y }))
@@ -141,11 +173,14 @@ export function placeTrees(
 
   const centerCount = Math.max(1, Math.round(target / 22));
   const centers: Point[] = [];
-  const wetCandidates = [...candidates].sort((a, b) => {
-    const wetA = Number.isFinite(waterDistance[a.y][a.x]) ? waterDistance[a.y][a.x] : 10;
-    const wetB = Number.isFinite(waterDistance[b.y][b.x]) ? waterDistance[b.y][b.x] : 10;
-    return (wetA + random() * 12) - (wetB + random() * 12);
-  });
+  const wetCandidates = candidates
+    .map((candidate) => {
+      const wet = Number.isFinite(waterDistance[candidate.y][candidate.x])
+        ? waterDistance[candidate.y][candidate.x]
+        : 10;
+      return { ...candidate, score: wet + random() * 12 };
+    })
+    .sort((a, b) => a.score - b.score);
   for (const candidate of wetCandidates) {
     if (centers.every((center) => Math.hypot(center.x - candidate.x, center.y - candidate.y) > 5)) {
       centers.push({ x: candidate.x, y: candidate.y });
@@ -161,7 +196,21 @@ export function placeTrees(
       const wetness = Number.isFinite(waterDistance[candidate.y][candidate.x])
         ? Math.min(8, waterDistance[candidate.y][candidate.x]) * .18
         : 1.4;
-      return { ...candidate, score: groveDistance * .8 + wetness + random() * 7 };
+      const elevationPenalty =
+        mode === "highlands" || mode === "mountain-pass"
+          ? (candidate.tile.height ?? 0) * 2.4
+          : 0;
+      const waterAffinity = mode === "wetlands" || mode === "ancient-forest"
+        ? wetness * .55
+        : wetness;
+      return {
+        ...candidate,
+        score:
+          groveDistance * .8 +
+          waterAffinity +
+          elevationPenalty +
+          random() * 7,
+      };
     })
     .sort((a, b) => a.score - b.score);
   const placed: Point[] = [];
@@ -215,12 +264,27 @@ export function placeBuildings(grid: Grid, count: number, random: Random) {
     for (let y = startY - 1; y <= startY + buildingHeight; y += 1) {
       for (let x = startX - 1; x <= startX + buildingWidth; x += 1) {
         const tile = grid[y]?.[x];
-        if (!tile || tile.terrain !== Terrain.Ground || tile.obstacle !== Obstacle.None) {
+        if (
+          !tile ||
+          tile.terrain !== Terrain.Ground ||
+          tileSurface(tile) ||
+          tile.obstacle !== Obstacle.None
+        ) {
           available = false;
         }
       }
     }
     if (!available) continue;
+    const nearRoad = (() => {
+      for (let y = startY - 3; y <= startY + buildingHeight + 2; y += 1) {
+        for (let x = startX - 3; x <= startX + buildingWidth + 2; x += 1) {
+          const tile = grid[y]?.[x];
+          if (tile && tileSurface(tile) === Terrain.Road) return true;
+        }
+      }
+      return false;
+    })();
+    if (!nearRoad && random() < .75) continue;
     placed += 1;
     for (let y = startY; y < startY + buildingHeight; y += 1) {
       for (let x = startX; x < startX + buildingWidth; x += 1) {

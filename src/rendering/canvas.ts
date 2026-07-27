@@ -1,6 +1,7 @@
 import {
   Obstacle,
   Terrain,
+  tileSurface,
   type Grid,
   type LandscapeMode,
   type TerrainKind,
@@ -174,6 +175,7 @@ function createTilesetPatterns(
 
 function underlyingTerrain(grid: Grid, x: number, y: number): TerrainKind {
   const terrain = grid[y][x].terrain;
+  if (tileSurface(grid[y][x]) && !overlayTerrains.has(terrain)) return terrain;
   if (!overlayTerrains.has(terrain)) return terrain;
   const canUnderlay = (kind: TerrainKind) =>
     !overlayTerrains.has(kind) &&
@@ -1387,8 +1389,9 @@ function drawRoadNetwork(
   const bridgeCells: Array<{ x: number; y: number }> = [];
   for (let y = 0; y < grid.length; y += 1) {
     for (let x = 0; x < grid[y].length; x += 1) {
-      if (roadTerrains.has(grid[y][x].terrain)) roadCells.push({ x, y });
-      if (grid[y][x].terrain === Terrain.Bridge) bridgeCells.push({ x, y });
+      const surface = tileSurface(grid[y][x]);
+      if (surface && roadTerrains.has(surface)) roadCells.push({ x, y });
+      if (surface === Terrain.Bridge) bridgeCells.push({ x, y });
     }
   }
   if (!roadCells.length) return;
@@ -1443,7 +1446,7 @@ function drawRoadNetwork(
   const roadFootprint = new Path2D();
   const roadEdges = new Path2D();
   for (const { x, y } of roadCells) {
-    if (grid[y][x].terrain === Terrain.Bridge) {
+    if (tileSurface(grid[y][x]) === Terrain.Bridge) {
       roadFootprint.rect(x * cellSize, y * cellSize, cellSize, cellSize);
       continue;
     }
@@ -1546,16 +1549,16 @@ function drawRoadNetwork(
       let horizontalConnections = 0;
       let verticalConnections = 0;
       for (const { x, y } of component) {
-        if (grid[y]?.[x - 1]?.terrain === Terrain.Road) {
+        if (grid[y]?.[x - 1] && tileSurface(grid[y][x - 1]) === Terrain.Road) {
           horizontalConnections += 1;
         }
-        if (grid[y]?.[x + 1]?.terrain === Terrain.Road) {
+        if (grid[y]?.[x + 1] && tileSurface(grid[y][x + 1]) === Terrain.Road) {
           horizontalConnections += 1;
         }
-        if (grid[y - 1]?.[x]?.terrain === Terrain.Road) {
+        if (grid[y - 1]?.[x] && tileSurface(grid[y - 1][x]) === Terrain.Road) {
           verticalConnections += 1;
         }
-        if (grid[y + 1]?.[x]?.terrain === Terrain.Road) {
+        if (grid[y + 1]?.[x] && tileSurface(grid[y + 1][x]) === Terrain.Road) {
           verticalConnections += 1;
         }
       }
@@ -1613,7 +1616,8 @@ function drawRoadNetwork(
         }
         if (
           !bridgeKeys.has(`${x - 1},${y}`) &&
-          grid[y]?.[x - 1]?.terrain === Terrain.Road
+          grid[y]?.[x - 1] &&
+          tileSurface(grid[y][x - 1]) === Terrain.Road
         ) {
           bridgeRampSeams.moveTo(left, top);
           bridgeRampSeams.lineTo(left, bottom);
@@ -1622,7 +1626,8 @@ function drawRoadNetwork(
         }
         if (
           !bridgeKeys.has(`${x + 1},${y}`) &&
-          grid[y]?.[x + 1]?.terrain === Terrain.Road
+          grid[y]?.[x + 1] &&
+          tileSurface(grid[y][x + 1]) === Terrain.Road
         ) {
           bridgeRampSeams.moveTo(right, top);
           bridgeRampSeams.lineTo(right, bottom);
@@ -1640,7 +1645,8 @@ function drawRoadNetwork(
         }
         if (
           !bridgeKeys.has(`${x},${y - 1}`) &&
-          grid[y - 1]?.[x]?.terrain === Terrain.Road
+          grid[y - 1]?.[x] &&
+          tileSurface(grid[y - 1][x]) === Terrain.Road
         ) {
           bridgeRampSeams.moveTo(left, top);
           bridgeRampSeams.lineTo(right, top);
@@ -1649,7 +1655,8 @@ function drawRoadNetwork(
         }
         if (
           !bridgeKeys.has(`${x},${y + 1}`) &&
-          grid[y + 1]?.[x]?.terrain === Terrain.Road
+          grid[y + 1]?.[x] &&
+          tileSurface(grid[y + 1][x]) === Terrain.Road
         ) {
           bridgeRampSeams.moveTo(left, bottom);
           bridgeRampSeams.lineTo(right, bottom);
@@ -2081,6 +2088,8 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     for (let x = 0; x < columns; x += 1) {
       const tile = grid[y][x];
       counts.set(tile.terrain, (counts.get(tile.terrain) ?? 0) + 1);
+      const surface = tileSurface(tile);
+      if (surface) counts.set(surface, (counts.get(surface) ?? 0) + 1);
     }
   }
 
@@ -2154,6 +2163,7 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
       const tile = grid[y][x];
       context.globalAlpha = hiddenItems.has(tile.terrain) ? hiddenOpacity : 1;
       if (
+        !tileSurface(tile) &&
         !overlayTerrains.has(tile.terrain) &&
         tile.terrain !== Terrain.Water &&
         tile.terrain !== Terrain.Cliff &&

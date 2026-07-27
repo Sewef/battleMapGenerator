@@ -2,6 +2,7 @@ import { Delaunay } from "d3-delaunay";
 import {
   Obstacle,
   Terrain,
+  setTileSurface,
   type Grid,
   type TerrainKind,
   type TerrainOptions,
@@ -23,12 +24,34 @@ import {
   generateFarmland,
   generateSewer,
 } from "./special-biomes";
+import {
+  BIOME_RECIPES,
+  assignHeightField,
+  connectPointsOfInterest,
+  normalizeGenerationOptions,
+  paintTerrain,
+  smoothTerrain,
+  validateAndRepairGrid,
+} from "./pipeline";
 
 interface RegionMap {
   centers: Point[];
   neighbors: number[][];
   cells: Point[][];
   cellRegion: number[][];
+}
+
+const liquidTerrainPolicy = {
+  preserve: new Set<TerrainKind>([Terrain.Water, Terrain.Lava]),
+};
+
+function shuffled<T>(values: readonly T[], random: Random) {
+  const result = [...values];
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const other = Math.floor(random() * (index + 1));
+    [result[index], result[other]] = [result[other], result[index]];
+  }
+  return result;
 }
 
 function buildRegionMap(width: number, height: number, scale: number, random: Random): RegionMap {
@@ -114,7 +137,7 @@ function selectConnectedRegions(
 
 function paintRegions(grid: Grid, map: RegionMap, regions: Set<number>, terrain: TerrainKind) {
   for (const region of regions) {
-    for (const { x, y } of map.cells[region]) grid[y][x].terrain = terrain;
+    for (const { x, y } of map.cells[region]) paintTerrain(grid[y][x], terrain);
   }
 }
 
@@ -146,7 +169,7 @@ function shortestRegionPath(
   previous[start] = start;
   for (let index = 0; index < queue.length && previous[end] === -1; index += 1) {
     const region = queue[index];
-    const next = [...map.neighbors[region]].sort(() => random() - .5);
+    const next = shuffled(map.neighbors[region], random);
     for (const neighbor of next) {
       if (previous[neighbor] === -1 && allowed(neighbor)) {
         previous[neighbor] = region;
@@ -154,6 +177,7 @@ function shortestRegionPath(
       }
     }
   }
+  if (previous[end] === -1) return [];
   const path = [end];
   while (path[0] !== start && previous[path[0]] !== -1) path.unshift(previous[path[0]]);
   return path;
@@ -187,7 +211,7 @@ function drawRegionPath(
       tile.terrain !== Terrain.Water &&
       tile.terrain !== Terrain.Lava
     ) {
-      tile.terrain = terrain;
+      paintTerrain(tile, terrain, liquidTerrainPolicy);
     }
   };
   const paintCell = (centerX: number, centerY: number) => {
@@ -309,6 +333,7 @@ function meanderingCrossing(
   width: number | [number, number],
   paint: (tile: Tile) => TerrainKind,
   widthIsDiameter = false,
+  lowlandBias = 0,
 ): Point[] {
   const longSize = horizontal ? grid[0].length : grid.length;
   const shortSize = horizontal ? grid.length : grid[0].length;
@@ -336,6 +361,19 @@ function meanderingCrossing(
       ? Math.ceil((paintedWidth - 1) / 2)
       : paintedWidth;
     if (random() < .28) velocity += (random() - .5) * .22;
+    if (lowlandBias > 0 && along >= 0 && along < longSize) {
+      const candidates = [-1, 0, 1]
+        .map((offset) => {
+          const short = Math.round(across + offset);
+          const tile = horizontal
+            ? grid[short]?.[along]
+            : grid[along]?.[short];
+          return { offset, height: tile?.height ?? Infinity };
+        })
+        .filter(({ height }) => Number.isFinite(height))
+        .sort((a, b) => a.height - b.height);
+      velocity += (candidates[0]?.offset ?? 0) * .1 * lowlandBias;
+    }
     velocity *= .82;
     velocity = Math.max(-.42, Math.min(.42, velocity));
     across += velocity;
@@ -361,7 +399,14 @@ function meanderingCrossing(
         for (let connectorY = startY; connectorY <= endY; connectorY += 1) {
           for (let offset = minimumOffset; offset <= maximumOffset; offset += 1) {
             const tile = grid[connectorY + offset]?.[center.x];
-            if (tile) tile.terrain = paint(tile);
+            if (tile) {
+              const terrain = paint(tile);
+              if (terrain === Terrain.Road || terrain === Terrain.Bridge) {
+                setTileSurface(tile, terrain);
+              } else {
+                tile.terrain = terrain;
+              }
+            }
           }
         }
       } else if (!horizontal && previousCenter.x !== center.x) {
@@ -380,7 +425,14 @@ function meanderingCrossing(
         ? { x: center.x, y: center.y + offset }
         : { x: center.x + offset, y: center.y };
       const tile = grid[point.y]?.[point.x];
-      if (tile) tile.terrain = paint(tile);
+      if (tile) {
+        const terrain = paint(tile);
+        if (terrain === Terrain.Road || terrain === Terrain.Bridge) {
+          setTileSurface(tile, terrain);
+        } else {
+          tile.terrain = terrain;
+        }
+      }
     }
     previousCenter = center;
   }
@@ -396,7 +448,7 @@ function drawRoadCrossing(grid: Grid, horizontal: boolean, random: Random) {
     (tile) =>
       tile.terrain === Terrain.Water ||
         tile.terrain === Terrain.Ravine ||
-        tile.terrain === Terrain.Bridge
+        tile.surface === Terrain.Bridge
         ? Terrain.Bridge
         : Terrain.Road,
     true,
@@ -490,7 +542,7 @@ function drawCoastalRoad(grid: Grid, random: Random) {
         tile.terrain !== Terrain.Water &&
         waterDistance[y][x] >= minimumClearance
       ) {
-        tile.terrain = Terrain.Road;
+        setTileSurface(tile, Terrain.Road);
       }
     }
   }
@@ -640,6 +692,7 @@ function generateCavern(
 }
 
 export function generateTerrain(options: TerrainOptions): Grid {
+  options = normalizeGenerationOptions(options);
   const { width, height, seed } = options;
   const grid: Grid = Array.from({ length: height }, () =>
     Array.from({ length: width }, () => ({
@@ -649,6 +702,7 @@ export function generateTerrain(options: TerrainOptions): Grid {
   );
   const total = width * height;
   const map = buildRegionMap(width, height, options.scale, seededRandom(`${seed}:mesh`));
+  assignHeightField(grid, options.mode, seed);
 
   if (options.mode === "countryside") {
     const pond = selectConnectedRegions(
@@ -671,6 +725,8 @@ export function generateTerrain(options: TerrainOptions): Grid {
         Math.max(0, Math.round(2 * options.waterWeight)),
       ],
       () => Terrain.Water,
+      false,
+      .9,
     );
     paintShore(grid, seededRandom(`${seed}:river-shore`), 2);
     drawRoadCrossing(
@@ -724,6 +780,8 @@ export function generateTerrain(options: TerrainOptions): Grid {
       meanderingCrossing(
         grid, forestRandom() > .5, seededRandom(`${seed}:forest-stream`),
         [0, Math.max(0, Math.round(options.waterWeight))], () => Terrain.Water,
+        false,
+        .7,
       );
     }
     scatterDifficultTerrain(
@@ -853,6 +911,8 @@ export function generateTerrain(options: TerrainOptions): Grid {
       seededRandom(`${seed}:wetlands-channel`),
       [0, Math.max(0, Math.round(options.waterWeight))],
       () => Terrain.Water,
+      false,
+      .65,
     );
     const wetlandDistance = cellDistancesFromWater(grid);
     scatterDifficultTerrain(
@@ -886,6 +946,8 @@ export function generateTerrain(options: TerrainOptions): Grid {
         seededRandom(`${seed}:lava-river`),
         [0, Math.max(0, Math.round(options.waterWeight))],
         () => Terrain.Lava,
+        false,
+        .55,
       );
     }
     if (hasLake && options.waterWeight > 0) {
@@ -977,7 +1039,11 @@ export function generateTerrain(options: TerrainOptions): Grid {
     );
   }
 
-  assignCliffElevations(grid);
+  smoothTerrain(
+    grid,
+    Terrain.Difficult,
+    BIOME_RECIPES[options.mode].smoothing,
+  );
 
   // Second pass: obstacles do not participate in terrain morphology.
   const waterDistance = cellDistancesFromWater(grid);
@@ -995,6 +1061,7 @@ export function generateTerrain(options: TerrainOptions): Grid {
       Math.round(total * options.treeRatio),
       waterDistance,
       seededRandom(`${seed}:groves`),
+      options.mode,
     );
   }
   if (options.mode === "city") {
@@ -1003,7 +1070,11 @@ export function generateTerrain(options: TerrainOptions): Grid {
       Math.round(total * options.treeRatio),
       waterDistance,
       seededRandom(`${seed}:street-trees`),
+      options.mode,
     );
   }
+  connectPointsOfInterest(grid, options.mode);
+  validateAndRepairGrid(grid, options.mode);
+  assignCliffElevations(grid);
   return grid;
 }
