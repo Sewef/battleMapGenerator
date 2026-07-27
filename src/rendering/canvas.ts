@@ -83,6 +83,83 @@ function underlyingTerrain(grid: Grid, x: number, y: number): TerrainKind {
   return Terrain.Ground;
 }
 
+function cliffBackdropTerrain(grid: Grid, x: number, y: number): TerrainKind {
+  for (let radius = 1; radius <= 3; radius += 1) {
+    const candidates = [
+      grid[y - radius]?.[x]?.terrain,
+      grid[y + radius]?.[x]?.terrain,
+      grid[y]?.[x - radius]?.terrain,
+      grid[y]?.[x + radius]?.terrain,
+    ].filter((kind): kind is TerrainKind =>
+      kind !== undefined &&
+      kind !== Terrain.Cliff &&
+      !overlayTerrains.has(kind)
+    );
+    if (candidates.length) {
+      return candidates.sort((a, b) =>
+        terrainPriority[a] - terrainPriority[b]
+      )[0];
+    }
+  }
+  return Terrain.Ground;
+}
+
+function fillCliffMaskCell(
+  context: CanvasRenderingContext2D,
+  grid: Grid,
+  x: number,
+  y: number,
+  cellSize: number,
+) {
+  const isCliff = (cellX: number, cellY: number) =>
+    grid[cellY]?.[cellX]?.terrain === Terrain.Cliff;
+  const left = x * cellSize;
+  const top = y * cellSize;
+  const right = left + cellSize;
+  const bottom = top + cellSize;
+  const topRadius = cellSize * .3;
+  const bottomRadius = cellSize * .42;
+  const topLeftRadius = !isCliff(x - 1, y) && !isCliff(x, y - 1)
+    ? topRadius
+    : 0;
+  const topRightRadius = !isCliff(x + 1, y) && !isCliff(x, y - 1)
+    ? topRadius
+    : 0;
+  const bottomRightRadius = !isCliff(x + 1, y) && !isCliff(x, y + 1)
+    ? bottomRadius
+    : 0;
+  const bottomLeftRadius = !isCliff(x - 1, y) && !isCliff(x, y + 1)
+    ? bottomRadius
+    : 0;
+
+  context.beginPath();
+  context.moveTo(left + topLeftRadius, top);
+  context.lineTo(right - topRightRadius, top);
+  context.bezierCurveTo(
+    right - topRightRadius * .45,
+    top,
+    right,
+    top + topRightRadius * .45,
+    right,
+    top + topRightRadius,
+  );
+  context.lineTo(right, bottom - bottomRightRadius);
+  context.quadraticCurveTo(right, bottom, right - bottomRightRadius, bottom);
+  context.lineTo(left + bottomLeftRadius, bottom);
+  context.quadraticCurveTo(left, bottom, left, bottom - bottomLeftRadius);
+  context.lineTo(left, top + topLeftRadius);
+  context.bezierCurveTo(
+    left,
+    top + topLeftRadius * .45,
+    left + topLeftRadius * .45,
+    top,
+    left + topLeftRadius,
+    top,
+  );
+  context.closePath();
+  context.fill();
+}
+
 function createTerrainMask(
   grid: Grid,
   terrain: TerrainKind,
@@ -102,12 +179,16 @@ function createTerrainMask(
         ? underlyingTerrain(grid, x, y)
         : grid[y][x].terrain;
       if (tileTerrain === terrain) {
-        maskContext.fillRect(
-          x * cellSize,
-          y * cellSize,
-          cellSize,
-          cellSize,
-        );
+        if (terrain === Terrain.Cliff) {
+          fillCliffMaskCell(maskContext, grid, x, y, cellSize);
+        } else {
+          maskContext.fillRect(
+            x * cellSize,
+            y * cellSize,
+            cellSize,
+            cellSize,
+          );
+        }
       }
     }
   }
@@ -127,9 +208,12 @@ function drawTerrainLayers(
   const present = new Set<TerrainKind>();
   for (let y = 0; y < grid.length; y += 1) {
     for (let x = 0; x < grid[y].length; x += 1) {
-      const terrain = underlyingTerrain(grid, x, y);
+      const tileTerrain = underlyingTerrain(grid, x, y);
+      const terrain = tileTerrain === Terrain.Cliff
+        ? cliffBackdropTerrain(grid, x, y)
+        : tileTerrain;
       const style = getTerrainStyle(terrain, mode);
-      present.add(terrain);
+      present.add(tileTerrain);
       context.globalAlpha = hiddenItems.has(terrain) ? hiddenOpacity : 1;
       context.fillStyle = style.color;
       context.fillRect(
@@ -153,26 +237,36 @@ function drawTerrainLayers(
     layerContext.fillStyle = style.color;
     layerContext.fillRect(0, 0, width, height);
 
-    const gradient = layerContext.createLinearGradient(0, 0, width, height);
-    gradient.addColorStop(0, "rgba(255,255,255,.09)");
-    gradient.addColorStop(.48, "rgba(255,255,255,0)");
-    gradient.addColorStop(1, "rgba(19,31,25,.10)");
-    layerContext.fillStyle = gradient;
-    layerContext.fillRect(0, 0, width, height);
+    if (terrain !== Terrain.Cliff) {
+      const gradient = layerContext.createLinearGradient(0, 0, width, height);
+      gradient.addColorStop(0, "rgba(255,255,255,.09)");
+      gradient.addColorStop(.48, "rgba(255,255,255,0)");
+      gradient.addColorStop(1, "rgba(19,31,25,.10)");
+      layerContext.fillStyle = gradient;
+      layerContext.fillRect(0, 0, width, height);
+    }
 
     layerContext.globalCompositeOperation = "destination-in";
     const maskBlur = terrain === Terrain.Ravine
       ? Math.max(.75, cellSize * .035)
       : terrain === Terrain.Cliff
-        ? Math.max(1, cellSize * .055)
+        ? 0
         : Math.max(1.5, cellSize * .11);
-    layerContext.filter = `blur(${maskBlur}px)`;
+    layerContext.filter = maskBlur > 0 ? `blur(${maskBlur}px)` : "none";
     layerContext.drawImage(mask, 0, 0);
     layerContext.filter = "none";
     layerContext.globalCompositeOperation = "source-over";
 
     context.globalAlpha = hiddenItems.has(terrain) ? hiddenOpacity : 1;
     context.drawImage(layer, 0, 0);
+    if (terrain === Terrain.Cliff) {
+      const depth = Math.max(3, cellSize * .18);
+      const blur = Math.max(1.5, cellSize * .065);
+      const color = "rgba(25, 27, 24, .38)";
+      context.drawImage(createMaskEdge(mask, depth, 0, blur, color), 0, 0);
+      context.drawImage(createMaskEdge(mask, -depth, 0, blur, color), 0, 0);
+      context.drawImage(createMaskEdge(mask, 0, -depth, blur, color), 0, 0);
+    }
   }
   context.globalAlpha = 1;
 }
@@ -227,7 +321,8 @@ function drawReliefBevels(
   height: number,
   context: CanvasRenderingContext2D,
 ) {
-  for (const terrain of [Terrain.Cliff, Terrain.Ravine] as const) {
+  const beveledTerrains: TerrainKind[] = [Terrain.Ravine];
+  for (const terrain of beveledTerrains) {
     if (!grid.some((row) => row.some((tile) => tile.terrain === terrain))) {
       continue;
     }
