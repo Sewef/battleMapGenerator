@@ -10,6 +10,12 @@ export interface TerrainStyle {
   label: string;
 }
 
+export interface BiomeObjectStyle {
+  tree: { dark: string; light: string; trunk: string };
+  rock: { fill: string; highlight: string; stroke: string };
+  building: { primary: string; secondary: string; edge: string };
+}
+
 const terrainStyles: Record<TerrainKind, TerrainStyle> = {
   [Terrain.Void]: { color: "#263334", alt: "#222f30", label: "Void" },
   [Terrain.Ground]: { color: "#b8ca8e", alt: "#afc382", label: "Ground" },
@@ -102,11 +108,93 @@ const biomePalettes: Record<
   },
 };
 
+type VisualProfile = {
+  terrain: Partial<Record<TerrainKind, Omit<TerrainStyle, "label">>>;
+  objects: BiomeObjectStyle;
+};
+
+type VisualProfileName = "temperate" | "arid" | "cold" | "dark";
+
+const visualProfiles: Record<VisualProfileName, VisualProfile> = {
+  temperate: {
+    terrain: {
+      [Terrain.Water]: { color: "#729fa2", alt: "#527f85" },
+      [Terrain.Road]: { color: "#b19a76", alt: "#725f49" },
+      [Terrain.Bridge]: { color: "#806044", alt: "#513b2c" },
+    },
+    objects: {
+      tree: { dark: "#294638", light: "#5f7d54", trunk: "#d7d3b6" },
+      rock: { fill: "#555a59", highlight: "#92958f", stroke: "#343837" },
+      building: { primary: "#a85d43", secondary: "#bb6e4b", edge: "#432820" },
+    },
+  },
+  arid: {
+    terrain: {
+      [Terrain.Water]: { color: "#4f9295", alt: "#346e73" },
+      [Terrain.Beach]: { color: "#dfbd78", alt: "#bd9656" },
+      [Terrain.Road]: { color: "#e0b477", alt: "#8c603d" },
+      [Terrain.Bridge]: { color: "#8c6240", alt: "#513720" },
+      [Terrain.Cliff]: { color: "#87533d", alt: "#60372d" },
+      [Terrain.Ravine]: { color: "#51342e", alt: "#35231f" },
+    },
+    objects: {
+      tree: { dark: "#42513a", light: "#74805b", trunk: "#c6b184" },
+      rock: { fill: "#704b3f", highlight: "#bd8060", stroke: "#442c27" },
+      building: { primary: "#9a563c", secondary: "#bb724c", edge: "#543126" },
+    },
+  },
+  cold: {
+    terrain: {
+      [Terrain.Water]: { color: "#739eaa", alt: "#4f7885" },
+      [Terrain.Road]: { color: "#a59d8d", alt: "#65615a" },
+      [Terrain.Bridge]: { color: "#756a5d", alt: "#49413a" },
+      [Terrain.Cliff]: { color: "#70787a", alt: "#50595d" },
+    },
+    objects: {
+      tree: { dark: "#304a48", light: "#69817a", trunk: "#d8ded8" },
+      rock: { fill: "#596267", highlight: "#aebabc", stroke: "#333b3e" },
+      building: { primary: "#765d54", secondary: "#92736a", edge: "#403431" },
+    },
+  },
+  dark: {
+    terrain: {
+      [Terrain.Water]: { color: "#496b6c", alt: "#304c4e" },
+      [Terrain.Road]: { color: "#827968", alt: "#49443c" },
+      [Terrain.Bridge]: { color: "#645547", alt: "#392f28" },
+      [Terrain.Cliff]: { color: "#4e5350", alt: "#343936" },
+      [Terrain.Ravine]: { color: "#372f2c", alt: "#211d1b" },
+    },
+    objects: {
+      tree: { dark: "#273b32", light: "#4d6754", trunk: "#aaa894" },
+      rock: { fill: "#424745", highlight: "#7e8580", stroke: "#272b29" },
+      building: { primary: "#725044", secondary: "#876052", edge: "#342824" },
+    },
+  },
+};
+
+const visualProfileByMode: Record<LandscapeMode, VisualProfileName> = {
+  countryside: "temperate", river: "temperate", coast: "temperate",
+  wetlands: "temperate", farmland: "temperate", archipelago: "temperate",
+  city: "temperate", "ancient-forest": "temperate",
+  "desert-canyon": "arid", badlands: "arid",
+  "ruined-battlefield": "arid", volcanic: "arid",
+  "frozen-lake": "cold", highlands: "cold", "mountain-pass": "cold",
+  underground: "dark", sewer: "dark", "ancient-ruins": "dark",
+};
+
 export function getTerrainStyle(kind: TerrainKind, mode: LandscapeMode): TerrainStyle {
   const base = terrainStyles[kind];
-  return kind === Terrain.Ground
+  const biomeBase = kind === Terrain.Ground
     ? { ...base, ...biomePalettes[mode].ground }
     : kind === Terrain.Difficult
       ? { ...base, ...biomePalettes[mode].difficult }
       : base;
+  return {
+    ...biomeBase,
+    ...visualProfiles[visualProfileByMode[mode]].terrain[kind],
+  };
+}
+
+export function getBiomeObjectStyle(mode: LandscapeMode): BiomeObjectStyle {
+  return visualProfiles[visualProfileByMode[mode]].objects;
 }

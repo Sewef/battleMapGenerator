@@ -6,7 +6,7 @@ import {
   type LandscapeMode,
   type TerrainKind,
 } from "../domain/map";
-import { getTerrainStyle } from "./palettes";
+import { getBiomeObjectStyle, getTerrainStyle } from "./palettes";
 
 export interface RenderOptions {
   targetCanvas: HTMLCanvasElement;
@@ -1570,9 +1570,13 @@ function drawRoadNetwork(
   }
   context.restore();
 
-  context.strokeStyle = "rgba(70, 58, 43, .34)";
-  context.lineWidth = Math.max(1, cellSize * .055);
+  context.globalAlpha = hiddenItems.has(Terrain.Road)
+    ? hiddenOpacity
+    : .72;
+  context.strokeStyle = getTerrainStyle(Terrain.Road, mode).alt;
+  context.lineWidth = Math.max(1.5, cellSize * .075);
   context.stroke(roadEdges);
+  context.globalAlpha = hiddenItems.has(Terrain.Road) ? hiddenOpacity : 1;
 
   if (bridgeCells.length) {
     const bridgeKeys = new Set(
@@ -1642,6 +1646,7 @@ function drawRoadNetwork(
     const bridgeDarkEdge = new Path2D();
     const bridgeRampSeams = new Path2D();
     const bridgeRampLips = new Path2D();
+    const bridgeAbutments = new Path2D();
     for (const { x, y } of bridgeCells) {
       const left = x * cellSize;
       const top = y * cellSize;
@@ -1649,11 +1654,20 @@ function drawRoadNetwork(
       const bottom = top + cellSize;
       const axis = bridgeAxis(x, y);
       const shadowOffset = cellSize * .12;
-      bridgeFootprint.rect(left, top, cellSize, cellSize);
+      const overhang = cellSize * .08;
+      const deckLeft = axis === "vertical" ? left - overhang : left;
+      const deckTop = axis === "horizontal" ? top - overhang : top;
+      const deckWidth = axis === "vertical"
+        ? cellSize + overhang * 2
+        : cellSize;
+      const deckHeight = axis === "horizontal"
+        ? cellSize + overhang * 2
+        : cellSize;
+      bridgeFootprint.rect(deckLeft, deckTop, deckWidth, deckHeight);
       if (axis === "horizontal") {
-        horizontalBridgeFootprint.rect(left, top, cellSize, cellSize);
+        horizontalBridgeFootprint.rect(deckLeft, deckTop, deckWidth, deckHeight);
       } else {
-        verticalBridgeFootprint.rect(left, top, cellSize, cellSize);
+        verticalBridgeFootprint.rect(deckLeft, deckTop, deckWidth, deckHeight);
       }
       bridgeShadow.rect(
         left + (axis === "vertical" ? shadowOffset : 0),
@@ -1679,6 +1693,8 @@ function drawRoadNetwork(
           bridgeRampSeams.lineTo(left, bottom);
           bridgeRampLips.moveTo(left + cellSize * .1, top);
           bridgeRampLips.lineTo(left + cellSize * .1, bottom);
+          bridgeAbutments.moveTo(left, top - overhang * 1.6);
+          bridgeAbutments.lineTo(left, bottom + overhang * 1.6);
         }
         if (
           !bridgeKeys.has(`${x + 1},${y}`) &&
@@ -1689,6 +1705,8 @@ function drawRoadNetwork(
           bridgeRampSeams.lineTo(right, bottom);
           bridgeRampLips.moveTo(right - cellSize * .1, top);
           bridgeRampLips.lineTo(right - cellSize * .1, bottom);
+          bridgeAbutments.moveTo(right, top - overhang * 1.6);
+          bridgeAbutments.lineTo(right, bottom + overhang * 1.6);
         }
       } else {
         if (!bridgeKeys.has(`${x - 1},${y}`)) {
@@ -1708,6 +1726,8 @@ function drawRoadNetwork(
           bridgeRampSeams.lineTo(right, top);
           bridgeRampLips.moveTo(left, top + cellSize * .1);
           bridgeRampLips.lineTo(right, top + cellSize * .1);
+          bridgeAbutments.moveTo(left - overhang * 1.6, top);
+          bridgeAbutments.lineTo(right + overhang * 1.6, top);
         }
         if (
           !bridgeKeys.has(`${x},${y + 1}`) &&
@@ -1718,6 +1738,8 @@ function drawRoadNetwork(
           bridgeRampSeams.lineTo(right, bottom);
           bridgeRampLips.moveTo(left, bottom - cellSize * .1);
           bridgeRampLips.lineTo(right, bottom - cellSize * .1);
+          bridgeAbutments.moveTo(left - overhang * 1.6, bottom);
+          bridgeAbutments.lineTo(right + overhang * 1.6, bottom);
         }
       }
     }
@@ -1761,6 +1783,9 @@ function drawRoadNetwork(
     context.strokeStyle = "rgba(48, 34, 25, .62)";
     context.lineWidth = Math.max(2, cellSize * .085);
     context.stroke(bridgeRampSeams);
+    context.strokeStyle = getTerrainStyle(Terrain.Bridge, mode).alt;
+    context.lineWidth = Math.max(3, cellSize * .16);
+    context.stroke(bridgeAbutments);
     context.strokeStyle = "rgba(246, 224, 181, .52)";
     context.lineWidth = Math.max(1, cellSize * .04);
     context.stroke(bridgeRampLips);
@@ -1843,11 +1868,57 @@ function drawShorelines(
   context.restore();
 }
 
+function drawWaterDetails(
+  grid: Grid,
+  cellSize: number,
+  mode: LandscapeMode,
+  visibility: number,
+  context: CanvasRenderingContext2D,
+) {
+  context.save();
+  context.globalAlpha = visibility;
+  context.lineCap = "round";
+  context.lineWidth = Math.max(1, cellSize * .025);
+  const light = getTerrainStyle(Terrain.Water, mode).color;
+  const dark = getTerrainStyle(Terrain.Water, mode).alt;
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      if (underlyingTerrain(grid, x, y) !== Terrain.Water) continue;
+      const horizontal =
+        Number(grid[y]?.[x - 1] && underlyingTerrain(grid, x - 1, y) === Terrain.Water) +
+        Number(grid[y]?.[x + 1] && underlyingTerrain(grid, x + 1, y) === Terrain.Water);
+      const vertical =
+        Number(grid[y - 1]?.[x] && underlyingTerrain(grid, x, y - 1) === Terrain.Water) +
+        Number(grid[y + 1]?.[x] && underlyingTerrain(grid, x, y + 1) === Terrain.Water);
+      const alongX = horizontal >= vertical;
+      const variation = terrainVariation(x, y, 2081);
+      const centerX = (x + .5) * cellSize;
+      const centerY = (y + .5) * cellSize;
+      const length = cellSize * (.22 + variation * .22);
+      const bend = (variation - .5) * cellSize * .16;
+      context.strokeStyle = variation > .42 ? light : dark;
+      context.globalAlpha = visibility * (variation > .42 ? .3 : .2);
+      context.beginPath();
+      if (alongX) {
+        context.moveTo(centerX - length, centerY + bend);
+        context.quadraticCurveTo(centerX, centerY - bend, centerX + length, centerY + bend * .35);
+      } else {
+        context.moveTo(centerX + bend, centerY - length);
+        context.quadraticCurveTo(centerX - bend, centerY, centerX + bend * .35, centerY + length);
+      }
+      context.stroke();
+    }
+  }
+  context.restore();
+}
+
 function drawTree(
   points: Array<{ x: number; y: number }>,
   size: number,
+  mode: LandscapeMode,
   context: CanvasRenderingContext2D,
 ) {
+  const colors = getBiomeObjectStyle(mode).tree;
   const minimumX = Math.min(...points.map(({ x }) => x));
   const maximumX = Math.max(...points.map(({ x }) => x));
   const minimumY = Math.min(...points.map(({ y }) => y));
@@ -1861,12 +1932,12 @@ function drawTree(
   context.shadowBlur = Math.max(2, size * .12);
   context.shadowOffsetX = Math.max(1, size * .07);
   context.shadowOffsetY = Math.max(2, size * .13);
-  context.fillStyle = "#344f3e";
+  context.fillStyle = colors.dark;
   context.beginPath();
   context.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
   context.fill();
   context.restore();
-  context.fillStyle = "#5e7855";
+  context.fillStyle = colors.light;
   context.beginPath();
   context.ellipse(
     centerX - radiusX * .16,
@@ -1878,7 +1949,7 @@ function drawTree(
     Math.PI * 2,
   );
   context.fill();
-  context.fillStyle = "#d7d3b6";
+  context.fillStyle = colors.trunk;
   context.beginPath();
   context.arc(centerX, centerY, Math.max(1.2, size * .06), 0, Math.PI * 2);
   context.fill();
@@ -1888,8 +1959,10 @@ function drawBuilding(
   points: Array<{ x: number; y: number }>,
   id: number,
   size: number,
+  mode: LandscapeMode,
   context: CanvasRenderingContext2D,
 ) {
+  const colors = getBiomeObjectStyle(mode).building;
   const cells = new Set(points.map(({ x, y }) => `${x},${y}`));
   const minimumX = Math.min(...points.map(({ x }) => x));
   const maximumX = Math.max(...points.map(({ x }) => x));
@@ -1905,7 +1978,7 @@ function drawBuilding(
   context.shadowBlur = Math.max(2, size * .14);
   context.shadowOffsetX = Math.max(1, size * .065);
   context.shadowOffsetY = Math.max(2, size * .12);
-  context.fillStyle = id % 2 === 0 ? "#a85d43" : "#bb6e4b";
+  context.fillStyle = id % 2 === 0 ? colors.primary : colors.secondary;
   context.fill(footprint);
   context.shadowColor = "transparent";
 
@@ -1929,7 +2002,7 @@ function drawBuilding(
   );
   context.restore();
 
-  context.strokeStyle = "rgba(67, 40, 32, .72)";
+  context.strokeStyle = colors.edge;
   context.lineWidth = Math.max(1, size * .045);
   context.beginPath();
   for (const { x, y } of points) {
@@ -1982,23 +2055,7 @@ function drawRock(
   const left = x * size;
   const top = y * size;
   const rockSize = size * span;
-  const colors = mode === "volcanic"
-    ? {
-      fill: "#24282a",
-      highlight: "#776c62",
-      stroke: "rgba(16, 19, 19, .68)",
-    }
-    : mode === "underground"
-      ? {
-        fill: "#4a4742",
-        highlight: "#918a80",
-        stroke: "rgba(35, 34, 31, .62)",
-      }
-      : {
-        fill: "#555a59",
-        highlight: "#92958f",
-        stroke: "rgba(42, 45, 44, .58)",
-      };
+  const colors = getBiomeObjectStyle(mode).rock;
   context.fillStyle = "rgba(20, 22, 22, .3)";
   context.beginPath();
   context.ellipse(
@@ -2204,6 +2261,13 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     hiddenOpacity,
     context,
   );
+  drawWaterDetails(
+    grid,
+    cellSize,
+    mode,
+    hiddenItems.has(Terrain.Water) ? hiddenOpacity : 1,
+    context,
+  );
   drawRoadNetwork(
     grid,
     cellSize,
@@ -2296,11 +2360,13 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   context.globalAlpha =
     hiddenItems.has(Obstacle.Building) ? hiddenOpacity : 1;
   for (const [id, points] of buildingGroups) {
-    drawBuilding(points, id, cellSize, context);
+    drawBuilding(points, id, cellSize, mode, context);
   }
   context.globalAlpha = 1;
   context.globalAlpha = hiddenItems.has(Obstacle.Tree) ? hiddenOpacity : 1;
-  for (const points of treeGroups.values()) drawTree(points, cellSize, context);
+  for (const points of treeGroups.values()) {
+    drawTree(points, cellSize, mode, context);
+  }
   context.globalAlpha = 1;
 
   if (!updateInterface) return;

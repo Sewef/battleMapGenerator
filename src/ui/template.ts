@@ -9,6 +9,21 @@ export const PARAMETER_FIELDS = [
   { id: "buildings", key: "buildingCount", label: "Buildings", min: 0, max: 8, step: 1, percent: false, group: "obstacles" },
 ] as const;
 
+const PRESET_GROUPS = [
+  {
+    label: "Nature",
+    ids: ["countryside", "river", "coast", "wetlands", "ancient-forest", "farmland", "archipelago"],
+  },
+  {
+    label: "Harsh lands",
+    ids: ["desert-canyon", "badlands", "frozen-lake", "highlands", "mountain-pass", "volcanic"],
+  },
+  {
+    label: "Settlements & ruins",
+    ids: ["city", "ancient-ruins", "ruined-battlefield", "sewer", "underground"],
+  },
+] as const;
+
 export function renderApp(root: HTMLElement) {
   root.innerHTML = `
     <main class="shell">
@@ -19,13 +34,25 @@ export function renderApp(root: HTMLElement) {
       </header>
 
       <section class="preset-section">
-        <div class="preset-list">
-          ${PRESETS.map((preset) => `
-            <button class="preset-card" type="button" data-preset="${preset.id}">
-              <span class="preset-icon ${preset.id}" aria-hidden="true"></span>
-              <span><strong>${preset.name}</strong><small>${preset.description}</small></span>
-            </button>
-          `).join("")}
+        <div class="preset-groups">
+          ${PRESET_GROUPS.map((group) => {
+            const initiallyOpen = group.ids.some((id) => id === PRESETS[0].id);
+            return `
+            <section class="preset-group${initiallyOpen ? " is-open" : ""}">
+              <button class="preset-group-heading" type="button" aria-expanded="${initiallyOpen}" data-preset-group>
+                <span>${group.label}</span><span aria-hidden="true">⌄</span>
+              </button>
+              <div class="preset-list">
+                ${group.ids.map((id) => PRESETS.find((preset) => preset.id === id)!)
+                  .map((preset) => `
+                    <button class="preset-card" type="button" data-preset="${preset.id}">
+                      <span class="preset-icon ${preset.id}" aria-hidden="true"></span>
+                      <span><strong>${preset.name}</strong><small>${preset.description}</small></span>
+                    </button>
+                  `).join("")}
+              </div>
+            </section>`;
+          }).join("")}
         </div>
       </section>
 

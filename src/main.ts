@@ -109,6 +109,14 @@ document.querySelectorAll<HTMLButtonElement>(".preset-card").forEach((button) =>
     }
   });
 });
+document.querySelectorAll<HTMLButtonElement>("[data-preset-group]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const group = button.closest<HTMLElement>(".preset-group");
+    const open = !group?.classList.contains("is-open");
+    group?.classList.toggle("is-open", open);
+    button.setAttribute("aria-expanded", String(open));
+  });
+});
 
 document.querySelector("#generate")!.addEventListener("click", generate);
 document.querySelector("#randomize")!.addEventListener("click", () => {
