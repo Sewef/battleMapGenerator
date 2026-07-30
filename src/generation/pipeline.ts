@@ -376,7 +376,8 @@ export function validateAndRepairGrid(
       }
       if (
         tile.obstacle !== Obstacle.None &&
-        (tile.terrain === Terrain.Water ||
+        (tileSurface(tile) !== undefined ||
+          tile.terrain === Terrain.Water ||
           tile.terrain === Terrain.Lava ||
           tile.terrain === Terrain.Ravine ||
           tile.terrain === Terrain.Cliff)
@@ -446,6 +447,15 @@ export function validateAndRepairGrid(
           : Terrain.Road,
       );
       mainTargets.add(`${point.x},${point.y}`);
+    }
+  }
+  for (const row of grid) {
+    for (const tile of row) {
+      if (tileSurface(tile) && tile.obstacle !== Obstacle.None) {
+        tile.obstacle = Obstacle.None;
+        delete tile.obstacleId;
+        removedInvalidObstacles += 1;
+      }
     }
   }
   return {

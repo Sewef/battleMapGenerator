@@ -33,6 +33,10 @@ function assertGrid(grid: Grid, label: string) {
         tile.obstacle !== Obstacle.Building || !surface,
         `${label}: building overlaps a road`,
       );
+      assert(
+        tile.obstacle === Obstacle.None || !surface,
+        `${label}: obstacle overlaps a road or bridge`,
+      );
       if (surface === Terrain.Bridge) {
         assert(
           tile.terrain === Terrain.Water || tile.terrain === Terrain.Ravine,

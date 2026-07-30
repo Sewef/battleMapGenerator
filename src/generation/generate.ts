@@ -415,7 +415,14 @@ function meanderingCrossing(
         for (let connectorX = startX; connectorX <= endX; connectorX += 1) {
           for (let offset = minimumOffset; offset <= maximumOffset; offset += 1) {
             const tile = grid[center.y]?.[connectorX + offset];
-            if (tile) tile.terrain = paint(tile);
+            if (tile) {
+              const terrain = paint(tile);
+              if (terrain === Terrain.Road || terrain === Terrain.Bridge) {
+                setTileSurface(tile, terrain);
+              } else {
+                tile.terrain = terrain;
+              }
+            }
           }
         }
       }

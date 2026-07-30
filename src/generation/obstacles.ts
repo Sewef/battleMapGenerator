@@ -117,7 +117,8 @@ export function scatterRocks(grid: Grid, target: number, random: Random) {
       };
     })
       .filter(({ tile }) =>
-        tile.terrain === Terrain.Ground || tile.terrain === Terrain.Difficult,
+        !tileSurface(tile) &&
+        (tile.terrain === Terrain.Ground || tile.terrain === Terrain.Difficult),
       ),
   ).sort((a, b) => a.score - b.score);
   const placed: Point[] = [];
@@ -143,6 +144,7 @@ export function scatterRocks(grid: Grid, target: number, random: Random) {
       const tile = grid[point.y]?.[point.x];
       if (
         tile &&
+        !tileSurface(tile) &&
         tile.obstacle === Obstacle.None &&
         (tile.terrain === Terrain.Ground || tile.terrain === Terrain.Difficult)
       ) {
@@ -166,6 +168,7 @@ export function placeTrees(
     row.map((tile, x) => ({ tile, x, y }))
       .filter(({ tile }) =>
         tile.obstacle === Obstacle.None &&
+        !tileSurface(tile) &&
         (tile.terrain === Terrain.Ground || tile.terrain === Terrain.Difficult),
       ),
   );
@@ -233,6 +236,7 @@ export function placeTrees(
       const tile = grid[point.y]?.[point.x];
       return tile &&
         tile.obstacle === Obstacle.None &&
+        !tileSurface(tile) &&
         (tile.terrain === Terrain.Ground || tile.terrain === Terrain.Difficult) &&
         !placed.some((tree) =>
           Math.abs(tree.x - point.x) <= 1 && Math.abs(tree.y - point.y) <= 1
