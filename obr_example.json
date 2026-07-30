@@ -1,0 +1,338 @@
+{
+    "items": {
+        "shared": {
+            "0b0a8750-d9af-4a08-8569-ff13e3495ab2": {
+                "type": "IMAGE",
+                "id": "0b0a8750-d9af-4a08-8569-ff13e3495ab2",
+                "name": "Wasteland",
+                "position": {
+                    "x": -385.0566569740713,
+                    "y": -3904.2404396865795
+                },
+                "rotation": 0,
+                "scale": {
+                    "x": 1,
+                    "y": 1
+                },
+                "visible": true,
+                "locked": false,
+                "zIndex": 1785423235322,
+                "metadata": {},
+                "image": {
+                    "url": "https://images.owlbear.rodeo/shared/items/owlbear-maps/Wasteland.jpeg",
+                    "mime": "image/jpeg",
+                    "width": 3600,
+                    "height": 3600
+                },
+                "grid": {
+                    "dpi": 150,
+                    "offset": {
+                        "x": 0,
+                        "y": 0
+                    }
+                },
+                "text": {
+                    "type": "PLAIN",
+                    "style": {
+                        "padding": 8,
+                        "fontSize": 24,
+                        "fillColor": "white",
+                        "textAlign": "CENTER",
+                        "fontFamily": "Roboto",
+                        "fontWeight": 400,
+                        "lineHeight": 1.5,
+                        "fillOpacity": 1,
+                        "strokeColor": "white",
+                        "strokeWidth": 0,
+                        "strokeOpacity": 1,
+                        "textAlignVertical": "BOTTOM"
+                    },
+                    "width": "AUTO",
+                    "height": "AUTO",
+                    "richText": [
+                        {
+                            "type": "paragraph",
+                            "children": [
+                                {
+                                    "text": ""
+                                }
+                            ]
+                        }
+                    ],
+                    "plainText": ""
+                },
+                "textItemType": "LABEL",
+                "layer": "MAP"
+            },
+            "24106ea9-f292-4fce-88a8-0c18a4e655ee": {
+                "type": "IMAGE",
+                "id": "24106ea9-f292-4fce-88a8-0c18a4e655ee",
+                "name": "Rough Terrain",
+                "position": {
+                    "x": 75,
+                    "y": -3225
+                },
+                "rotation": 0,
+                "scale": {
+                    "x": 1,
+                    "y": 1
+                },
+                "visible": true,
+                "locked": false,
+                "createdUserId": "b93771d1-1d8c-4ade-ac08-c487bbe3be1d",
+                "zIndex": 1785423214315,
+                "lastModified": "2026-07-30T14:53:34.315Z",
+                "lastModifiedUserId": "b93771d1-1d8c-4ade-ac08-c487bbe3be1d",
+                "metadata": {},
+                "image": {
+                    "width": 1024,
+                    "height": 1024,
+                    "mime": "image/png",
+                    "url": "https://images.owlbear.rodeo/b93771d1-1d8c-4ade-ac08-c487bbe3be1d/items/991e4daf-6efe-4a46-86af-967193b8a233.png"
+                },
+                "grid": {
+                    "offset": {
+                        "x": 512,
+                        "y": 512
+                    },
+                    "dpi": 1024
+                },
+                "text": {
+                    "richText": [
+                        {
+                            "type": "paragraph",
+                            "children": [
+                                {
+                                    "text": ""
+                                }
+                            ]
+                        }
+                    ],
+                    "plainText": "",
+                    "style": {
+                        "padding": 8,
+                        "fontFamily": "Roboto",
+                        "fontSize": 24,
+                        "fontWeight": 400,
+                        "textAlign": "CENTER",
+                        "textAlignVertical": "BOTTOM",
+                        "fillColor": "#ffffff",
+                        "fillOpacity": 1,
+                        "strokeColor": "#ffffff",
+                        "strokeOpacity": 1,
+                        "strokeWidth": 0,
+                        "lineHeight": 1.5
+                    },
+                    "type": "PLAIN",
+                    "width": "AUTO",
+                    "height": "AUTO"
+                },
+                "textItemType": "LABEL",
+                "layer": "PROP"
+            },
+            "a636de78-81a0-49bc-b681-c99810e6981a": {
+                "type": "IMAGE",
+                "id": "a636de78-81a0-49bc-b681-c99810e6981a",
+                "name": "Spikes",
+                "position": {
+                    "x": 75,
+                    "y": -3075
+                },
+                "rotation": 0,
+                "scale": {
+                    "x": 1,
+                    "y": 1
+                },
+                "visible": true,
+                "locked": false,
+                "zIndex": 1785423216605,
+                "metadata": {},
+                "image": {
+                    "width": 1024,
+                    "height": 1024,
+                    "mime": "image/png",
+                    "url": "https://images.owlbear.rodeo/b93771d1-1d8c-4ade-ac08-c487bbe3be1d/items/68dc2344-db49-4019-81fc-38e67e382dd4.png"
+                },
+                "grid": {
+                    "offset": {
+                        "x": 512,
+                        "y": 512
+                    },
+                    "dpi": 1024
+                },
+                "text": {
+                    "richText": [
+                        {
+                            "type": "paragraph",
+                            "children": [
+                                {
+                                    "text": ""
+                                }
+                            ]
+                        }
+                    ],
+                    "plainText": "",
+                    "style": {
+                        "padding": 8,
+                        "fontFamily": "Roboto",
+                        "fontSize": 24,
+                        "fontWeight": 400,
+                        "textAlign": "CENTER",
+                        "textAlignVertical": "BOTTOM",
+                        "fillColor": "#ffffff",
+                        "fillOpacity": 1,
+                        "strokeColor": "#ffffff",
+                        "strokeOpacity": 1,
+                        "strokeWidth": 0,
+                        "lineHeight": 1.5
+                    },
+                    "type": "PLAIN",
+                    "width": "AUTO",
+                    "height": "AUTO"
+                },
+                "textItemType": "LABEL",
+                "layer": "PROP"
+            },
+            "96ff8448-d327-40c0-a22e-11bf3adf62ee": {
+                "type": "IMAGE",
+                "id": "96ff8448-d327-40c0-a22e-11bf3adf62ee",
+                "name": "Stealth Rock",
+                "position": {
+                    "x": 75,
+                    "y": -2925
+                },
+                "rotation": 0,
+                "scale": {
+                    "x": 1,
+                    "y": 1
+                },
+                "visible": true,
+                "locked": false,
+                "zIndex": 1785423218258,
+                "metadata": {},
+                "image": {
+                    "width": 1024,
+                    "height": 1024,
+                    "mime": "image/png",
+                    "url": "https://images.owlbear.rodeo/b93771d1-1d8c-4ade-ac08-c487bbe3be1d/items/438af9c7-bd0c-48d9-a63b-d186e0f3acdb.png"
+                },
+                "grid": {
+                    "offset": {
+                        "x": 512,
+                        "y": 512
+                    },
+                    "dpi": 1024
+                },
+                "text": {
+                    "richText": [
+                        {
+                            "type": "paragraph",
+                            "children": [
+                                {
+                                    "text": ""
+                                }
+                            ]
+                        }
+                    ],
+                    "plainText": "",
+                    "style": {
+                        "padding": 8,
+                        "fontFamily": "Roboto",
+                        "fontSize": 24,
+                        "fontWeight": 400,
+                        "textAlign": "CENTER",
+                        "textAlignVertical": "BOTTOM",
+                        "fillColor": "#ffffff",
+                        "fillOpacity": 1,
+                        "strokeColor": "#ffffff",
+                        "strokeOpacity": 1,
+                        "strokeWidth": 0,
+                        "lineHeight": 1.5
+                    },
+                    "type": "PLAIN",
+                    "width": "AUTO",
+                    "height": "AUTO"
+                },
+                "textItemType": "LABEL",
+                "layer": "PROP"
+            },
+            "bf46a058-7ab4-4e2b-a93c-d19e41427451": {
+                "type": "IMAGE",
+                "id": "bf46a058-7ab4-4e2b-a93c-d19e41427451",
+                "name": "Stealth Rock",
+                "position": {
+                    "x": 600,
+                    "y": -3150
+                },
+                "rotation": 0,
+                "scale": {
+                    "x": 2,
+                    "y": 2
+                },
+                "visible": true,
+                "locked": false,
+                "createdUserId": "b93771d1-1d8c-4ade-ac08-c487bbe3be1d",
+                "zIndex": 1785423227015,
+                "lastModified": "2026-07-30T14:53:47.014Z",
+                "lastModifiedUserId": "b93771d1-1d8c-4ade-ac08-c487bbe3be1d",
+                "metadata": {},
+                "image": {
+                    "width": 1024,
+                    "height": 1024,
+                    "mime": "image/png",
+                    "url": "https://images.owlbear.rodeo/b93771d1-1d8c-4ade-ac08-c487bbe3be1d/items/438af9c7-bd0c-48d9-a63b-d186e0f3acdb.png"
+                },
+                "grid": {
+                    "offset": {
+                        "x": 512,
+                        "y": 512
+                    },
+                    "dpi": 1024
+                },
+                "text": {
+                    "richText": [
+                        {
+                            "type": "paragraph",
+                            "children": [
+                                {
+                                    "text": ""
+                                }
+                            ]
+                        }
+                    ],
+                    "plainText": "",
+                    "style": {
+                        "padding": 8,
+                        "fontFamily": "Roboto",
+                        "fontSize": 24,
+                        "fontWeight": 400,
+                        "textAlign": "CENTER",
+                        "textAlignVertical": "BOTTOM",
+                        "fillColor": "#ffffff",
+                        "fillOpacity": 1,
+                        "strokeColor": "#ffffff",
+                        "strokeOpacity": 1,
+                        "strokeWidth": 0,
+                        "lineHeight": 1.5
+                    },
+                    "type": "PLAIN",
+                    "width": "AUTO",
+                    "height": "AUTO"
+                },
+                "textItemType": "LABEL",
+                "layer": "PROP"
+            }
+        },
+        "local": {}
+    },
+    "bounds": {
+        "min": {
+            "x": -385.0566569740713,
+            "y": -3904.2404396865795
+        },
+        "max": {
+            "x": 3214.9433430259287,
+            "y": -304.2404396865795
+        }
+    }
+}

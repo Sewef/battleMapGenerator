@@ -3,7 +3,7 @@ import { drawGrid } from "../rendering/canvas";
 
 const WEBP_QUALITY = 0.95;
 
-function renderExportCanvas(
+export function renderExportCanvas(
   grid: Grid,
   mode: LandscapeMode,
   cellSize: number,

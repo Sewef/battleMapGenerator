@@ -8,6 +8,7 @@ import {
 import { drawGrid } from "./rendering/canvas";
 import { PARAMETER_FIELDS, renderApp } from "./ui/template";
 import { downloadWebp } from "./export/webp";
+import { downloadOwlbearScene } from "./export/owlbear";
 
 const randomSeed = () =>
   `${["moor", "mist", "oak", "flint", "dawn"][Math.floor(Math.random() * 5)]}-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -129,6 +130,17 @@ document.querySelector("#reset")!.addEventListener("click", () => {
 });
 document.querySelector("#download")!.addEventListener("click", () => {
   downloadWebp(
+    currentGrid,
+    activePreset.mode,
+    seedInput.value.trim(),
+    hiddenLegendItems,
+    showGridInput.checked,
+    useTilesetInput.checked && tilesetReady(),
+    tilesetImage,
+  );
+});
+document.querySelector("#download-owlbear")!.addEventListener("click", () => {
+  downloadOwlbearScene(
     currentGrid,
     activePreset.mode,
     seedInput.value.trim(),

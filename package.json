@@ -4,10 +4,10 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "test:generation": "vite build --ssr src/generation/generation-test.ts --outDir dist/generation-test && node dist/generation-test/generation-test.js",
-    "preview": "vite preview"
+    "dev": "vite --configLoader runner",
+    "build": "tsc && vite build --configLoader runner",
+    "test:generation": "vite build --configLoader runner --ssr src/generation/generation-test.ts --outDir dist/generation-test && node dist/generation-test/generation-test.js",
+    "preview": "vite preview --configLoader runner"
   },
   "dependencies": {
     "@types/d3-delaunay": "^6.0.4",

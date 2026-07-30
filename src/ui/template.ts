@@ -117,6 +117,7 @@ export function renderApp(root: HTMLElement) {
                 <input id="show-grid" type="checkbox" checked />
                 <span>Show grid</span>
               </label>
+              <button id="download-owlbear" class="download-button" type="button">Owlbear JSON ↓</button>
               <button id="download" class="download-button" type="button">Export WebP ↓</button>
             </div>
           </div>

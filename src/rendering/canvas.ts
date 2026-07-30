@@ -22,6 +22,7 @@ export interface RenderOptions {
   tilesetImage?: CanvasImageSource;
 }
 
+
 const terrainPriority: Record<TerrainKind, number> = {
   [Terrain.Void]: 120,
   [Terrain.Ground]: 10,

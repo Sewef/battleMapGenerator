@@ -1,0 +1,83 @@
+{
+    "items": {
+        "shared": {
+            "0711d05f-88b3-4985-8ab8-a952b83a3f48": {
+                "createdUserId": "b93771d1-1d8c-4ade-ac08-c487bbe3be1d",
+                "id": "0711d05f-88b3-4985-8ab8-a952b83a3f48",
+                "name": "Terra Flint 1996",
+                "zIndex": 1785424545669,
+                "lastModified": "2026-07-30T15:15:45.669Z",
+                "lastModifiedUserId": "b93771d1-1d8c-4ade-ac08-c487bbe3be1d",
+                "locked": true,
+                "metadata": {},
+                "position": {
+                    "x": -12300,
+                    "y": -8100
+                },
+                "rotation": 0,
+                "scale": {
+                    "x": 1,
+                    "y": 1
+                },
+                "type": "IMAGE",
+                "visible": true,
+                "layer": "MAP",
+                "image": {
+                    "width": 2304,
+                    "height": 1536,
+                    "mime": "image/webp",
+                    "url": "https://images.owlbear.rodeo/b93771d1-1d8c-4ade-ac08-c487bbe3be1d/items/0ac72c2c-cb43-4369-9943-99349b23f384.webp"
+                },
+                "grid": {
+                    "dpi": 64,
+                    "offset": {
+                        "x": 0,
+                        "y": 0
+                    }
+                },
+                "text": {
+                    "richText": [
+                        {
+                            "type": "paragraph",
+                            "children": [
+                                {
+                                    "text": ""
+                                }
+                            ]
+                        }
+                    ],
+                    "plainText": "",
+                    "style": {
+                        "padding": 8,
+                        "fontFamily": "Roboto",
+                        "fontSize": 14,
+                        "fontWeight": 400,
+                        "textAlign": "CENTER",
+                        "textAlignVertical": "BOTTOM",
+                        "fillColor": "#ffffff",
+                        "fillOpacity": 1,
+                        "strokeColor": "#ffffff",
+                        "strokeOpacity": 1,
+                        "strokeWidth": 0,
+                        "lineHeight": 1.5
+                    },
+                    "type": "PLAIN",
+                    "width": "AUTO",
+                    "height": "AUTO"
+                },
+                "textItemType": "LABEL"
+            }
+        },
+        "local": {}
+    },
+    "bounds": {
+        "min": {
+            "x": -12300,
+            "y": -8100
+        },
+        "max": {
+            "x": -6900,
+            "y": -4500
+        }
+    }
+}
