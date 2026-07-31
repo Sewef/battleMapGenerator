@@ -158,6 +158,7 @@ const sharedTilesetCoordinates: TilesetTerrainMap = {
   [Terrain.Cliff]: [3, 1],
   [Terrain.Bridge]: [5, 0],
 };
+const buildingTilesetCoordinate: TilesetCoordinate = [4, 1];
 
 const tilesetProfiles: Record<TilesetProfileName, TilesetTerrainMap> = {
   grass: {
@@ -2315,6 +2316,7 @@ function drawBuilding(
   size: number,
   mode: LandscapeMode,
   context: CanvasRenderingContext2D,
+  tilesetImage?: CanvasImageSource,
 ) {
   const colors = getBiomeObjectStyle(mode).building;
   const cells = new Set(points.map(({ x, y }) => `${x},${y}`));
@@ -2329,7 +2331,18 @@ function drawBuilding(
 
   context.save();
   applyPropContactShadow(size, context);
-  context.fillStyle = id % 2 === 0 ? colors.primary : colors.secondary;
+  const baseColor = id % 2 === 0 ? colors.primary : colors.secondary;
+  context.fillStyle = tilesetImage
+    ? createTilesetTilePattern(
+      tilesetImage,
+      buildingTilesetCoordinate,
+      context,
+      size,
+      0,
+      baseColor,
+      .5,
+    )!
+    : baseColor;
   context.fill(footprint);
   context.shadowColor = "transparent";
 
@@ -2719,7 +2732,14 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   context.globalAlpha =
     hiddenItems.has(Obstacle.Building) ? hiddenOpacity : 1;
   for (const [id, points] of buildingGroups) {
-    drawBuilding(points, id, cellSize, mode, context);
+    drawBuilding(
+      points,
+      id,
+      cellSize,
+      mode,
+      context,
+      options.useTileset ? options.tilesetImage : undefined,
+    );
   }
   context.globalAlpha = 1;
   context.globalAlpha = hiddenItems.has(Obstacle.Tree) ? hiddenOpacity : 1;
