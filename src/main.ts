@@ -11,6 +11,7 @@ import { downloadWebp } from "./export/webp";
 import {
   createOwlbearSceneJson,
   downloadOwlbearJson,
+  inspectOwlbearProp,
 } from "./export/owlbear";
 
 const randomSeed = () =>
@@ -23,6 +24,8 @@ const seedInput = document.querySelector<HTMLInputElement>("#seed")!;
 const widthInput = document.querySelector<HTMLInputElement>("#width")!;
 const heightInput = document.querySelector<HTMLInputElement>("#height")!;
 const scaleInput = document.querySelector<HTMLInputElement>("#scale")!;
+const previewGridInput =
+  document.querySelector<HTMLInputElement>("#preview-grid")!;
 const showGridInput = document.querySelector<HTMLInputElement>("#show-grid")!;
 const useTilesetInput =
   document.querySelector<HTMLInputElement>("#use-tileset")!;
@@ -32,6 +35,10 @@ const owlbearTreeUrlInput =
   document.querySelector<HTMLInputElement>("#owlbear-tree-url")!;
 const owlbearRockUrlInput =
   document.querySelector<HTMLInputElement>("#owlbear-rock-url")!;
+const owlbearTreePreview =
+  document.querySelector<HTMLElement>("#owlbear-tree-preview")!;
+const owlbearRockPreview =
+  document.querySelector<HTMLElement>("#owlbear-rock-preview")!;
 const owlbearStatus =
   document.querySelector<HTMLParagraphElement>("#owlbear-status")!;
 const owlbearCopyButton =
@@ -50,7 +57,12 @@ const inputs = Object.fromEntries(
 
 let activePreset = PRESETS[0];
 let currentGrid: Grid = [];
+let mapRevision = 0;
 const hiddenLegendItems = new Set<string>();
+let owlbearExportCache: {
+  key: string;
+  scene: Awaited<ReturnType<typeof createOwlbearSceneJson>>;
+} | undefined;
 
 function updateLabels() {
   document.querySelector("#width-value")!.textContent = widthInput.value;
@@ -90,7 +102,7 @@ function renderMap(grid: Grid, targetCanvas = previewCanvas, cellSize?: number) 
     pixelRatio: targetCanvas === previewCanvas ? undefined : 1,
     updateInterface: targetCanvas === previewCanvas,
     hiddenItems: hiddenLegendItems,
-    showGrid: showGridInput.checked,
+    showGrid: previewGridInput.checked,
     useTileset: useTilesetInput.checked && tilesetReady(),
     tilesetImage,
   });
@@ -113,6 +125,7 @@ function generate() {
     treeRatio: Number(inputs.trees.value) / 100,
     buildingCount: Number(inputs.buildings.value),
   });
+  mapRevision += 1;
   renderMap(currentGrid);
 }
 
@@ -170,17 +183,88 @@ async function copyText(text: string) {
   if (!copied) throw new Error("The browser refused clipboard access.");
 }
 
+function owlbearExportKey() {
+  return JSON.stringify({
+    mapRevision,
+    mode: activePreset.mode,
+    seed: seedInput.value.trim(),
+    hiddenItems: [...hiddenLegendItems].sort(),
+    showGrid: owlbearGridInput.checked,
+    useTileset: useTilesetInput.checked && tilesetReady(),
+    treeUrl: owlbearTreeUrlInput.value.trim(),
+    rockUrl: owlbearRockUrlInput.value.trim(),
+  });
+}
+
+async function updatePropPreview(
+  input: HTMLInputElement,
+  preview: HTMLElement,
+  assetName: string,
+) {
+  const requestedUrl = input.value.trim();
+  preview.classList.remove("is-error");
+  preview.classList.add("is-loading");
+  const information = preview.querySelector<HTMLElement>("small")!;
+  const image = preview.querySelector<HTMLImageElement>("img")!;
+  information.textContent = "Checking image…";
+  try {
+    const asset = await inspectOwlbearProp(requestedUrl, assetName);
+    if (input.value.trim() !== requestedUrl) return;
+    image.src = asset.url;
+    image.style.display = "block";
+    information.textContent =
+      `${asset.width} × ${asset.height} · ${asset.mime.replace("image/", "").toUpperCase()}`;
+  } catch (error) {
+    if (input.value.trim() !== requestedUrl) return;
+    preview.classList.add("is-error");
+    image.removeAttribute("src");
+    information.textContent = error instanceof Error
+      ? error.message
+      : "Unable to inspect this prop.";
+  } finally {
+    if (input.value.trim() === requestedUrl) {
+      preview.classList.remove("is-loading");
+    }
+  }
+}
+
+function bindPropPreview(
+  input: HTMLInputElement,
+  preview: HTMLElement,
+  assetName: string,
+) {
+  let timeout = 0;
+  const schedule = () => {
+    window.clearTimeout(timeout);
+    timeout = window.setTimeout(() => {
+      void updatePropPreview(input, preview, assetName);
+    }, 450);
+  };
+  input.addEventListener("input", schedule);
+  input.addEventListener("change", () => {
+    window.clearTimeout(timeout);
+    void updatePropPreview(input, preview, assetName);
+  });
+  void updatePropPreview(input, preview, assetName);
+}
+
 async function runOwlbearExport(action: "copy" | "download") {
   const activeButton =
     action === "copy" ? owlbearCopyButton : owlbearDownloadButton;
   const previousLabel = activeButton.textContent;
+  const cacheKey = owlbearExportKey();
+  const cachedScene = owlbearExportCache?.key === cacheKey
+    ? owlbearExportCache.scene
+    : undefined;
   owlbearCopyButton.disabled = true;
   owlbearDownloadButton.disabled = true;
-  activeButton.textContent = "Uploading…";
+  activeButton.textContent = cachedScene ? "Preparing…" : "Uploading…";
   owlbearStatus.classList.remove("is-error");
-  owlbearStatus.textContent = "Uploading the map background to Litterbox…";
+  owlbearStatus.textContent = cachedScene
+    ? "Reusing the latest Owlbear export…"
+    : "Uploading the map background to Litterbox…";
   try {
-    const scene = await createOwlbearSceneJson(
+    const scene = cachedScene ?? await createOwlbearSceneJson(
       currentGrid,
       activePreset.mode,
       seedInput.value.trim(),
@@ -193,6 +277,9 @@ async function runOwlbearExport(action: "copy" | "download") {
         tilesetImage,
       },
     );
+    if (!cachedScene) {
+      owlbearExportCache = { key: cacheKey, scene };
+    }
     if (action === "copy") {
       await copyText(scene.json);
       owlbearStatus.textContent =
@@ -219,7 +306,9 @@ owlbearCopyButton.addEventListener("click", () => {
 owlbearDownloadButton.addEventListener("click", () => {
   void runOwlbearExport("download");
 });
-showGridInput.addEventListener("change", () => renderMap(currentGrid));
+bindPropPreview(owlbearTreeUrlInput, owlbearTreePreview, "tree.png");
+bindPropPreview(owlbearRockUrlInput, owlbearRockPreview, "rock.png");
+previewGridInput.addEventListener("change", () => renderMap(currentGrid));
 useTilesetInput.addEventListener("change", () => renderMap(currentGrid));
 tilesetImage.addEventListener("load", () => {
   if (useTilesetInput.checked) renderMap(currentGrid);

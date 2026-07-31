@@ -16,12 +16,14 @@ type ExportedObstacle = {
   id: number;
 };
 
-type PropAsset = {
+export type OwlbearPropAsset = {
   url: string;
   mime: "image/png" | "image/jpeg" | "image/webp" | "image/gif" | "image/avif";
+  width: number;
+  height: number;
 };
 
-const PROP_MIME_BY_EXTENSION: Record<string, PropAsset["mime"]> = {
+const PROP_MIME_BY_EXTENSION: Record<string, OwlbearPropAsset["mime"]> = {
   png: "image/png",
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
@@ -29,6 +31,9 @@ const PROP_MIME_BY_EXTENSION: Record<string, PropAsset["mime"]> = {
   gif: "image/gif",
   avif: "image/avif",
 };
+const SUPPORTED_PROP_MIMES = new Set<OwlbearPropAsset["mime"]>(
+  Object.values(PROP_MIME_BY_EXTENSION),
+);
 
 export interface OwlbearExportOptions {
   showGrid?: boolean;
@@ -122,12 +127,70 @@ function imageItem(
   };
 }
 
-function propAsset(customUrl: string | undefined, assetName: string): PropAsset {
+function imageDimensions(url: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const timeout = window.setTimeout(() => {
+      image.src = "";
+      reject(new Error(`Timed out while loading custom prop: ${url}`));
+    }, 10_000);
+    image.onload = () => {
+      window.clearTimeout(timeout);
+      if (!image.naturalWidth || !image.naturalHeight) {
+        reject(new Error(`Custom prop has invalid dimensions: ${url}`));
+        return;
+      }
+      resolve({ width: image.naturalWidth, height: image.naturalHeight });
+    };
+    image.onerror = () => {
+      window.clearTimeout(timeout);
+      reject(new Error(`Unable to load custom prop image: ${url}`));
+    };
+    image.src = url;
+  });
+}
+
+async function mimeFromUrl(parsed: URL): Promise<OwlbearPropAsset["mime"]> {
+  const extension = parsed.pathname.split(".").pop()?.toLowerCase() ?? "";
+  const extensionMime = PROP_MIME_BY_EXTENSION[extension];
+  if (!extensionMime) {
+    throw new Error(
+      "Custom prop URLs must end with .png, .jpg, .jpeg, .webp, .gif, or .avif.",
+    );
+  }
+
+  let response: Response | undefined;
+  try {
+    response = await fetch(parsed.href, { method: "HEAD" });
+  } catch {
+    // Many image hosts do not expose HEAD requests through CORS.
+  }
+  if (!response?.ok) return extensionMime;
+
+  const contentType = response.headers.get("content-type")
+    ?.split(";", 1)[0]
+    .trim()
+    .toLowerCase();
+  if (!contentType || contentType === "application/octet-stream") {
+    return extensionMime;
+  }
+  if (!SUPPORTED_PROP_MIMES.has(contentType as OwlbearPropAsset["mime"])) {
+    throw new Error(`Unsupported custom prop Content-Type: ${contentType}`);
+  }
+  return contentType as OwlbearPropAsset["mime"];
+}
+
+export async function inspectOwlbearProp(
+  customUrl: string | undefined,
+  assetName: string,
+): Promise<OwlbearPropAsset> {
   const value = customUrl?.trim();
   if (!value) {
     return {
       url: new URL(`/assets/${assetName}`, window.location.origin).href,
       mime: "image/png",
+      width: 512,
+      height: 512,
     };
   }
   let parsed: URL;
@@ -139,14 +202,14 @@ function propAsset(customUrl: string | undefined, assetName: string): PropAsset 
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
     throw new Error("Prop URLs must use HTTP or HTTPS.");
   }
-  const extension = parsed.pathname.split(".").pop()?.toLowerCase() ?? "";
-  const mime = PROP_MIME_BY_EXTENSION[extension];
-  if (!mime) {
+  const mime = await mimeFromUrl(parsed);
+  const dimensions = await imageDimensions(parsed.href);
+  if (dimensions.width !== dimensions.height) {
     throw new Error(
-      "Custom prop URLs must end with .png, .jpg, .jpeg, .webp, .gif, or .avif.",
+      `Custom props must be square (${dimensions.width}×${dimensions.height} received).`,
     );
   }
-  return { url: parsed.href, mime };
+  return { url: parsed.href, mime, ...dimensions };
 }
 
 export async function createOwlbearSceneJson(
@@ -157,8 +220,10 @@ export async function createOwlbearSceneJson(
   options: OwlbearExportOptions = {},
 ): Promise<OwlbearSceneExport> {
   if (!grid.length) throw new Error("Generate a map before exporting.");
-  const treeAsset = propAsset(options.treeUrl, "tree.png");
-  const rockAsset = propAsset(options.rockUrl, "rock.png");
+  const [treeAsset, rockAsset] = await Promise.all([
+    inspectOwlbearProp(options.treeUrl, "tree.png"),
+    inspectOwlbearProp(options.rockUrl, "rock.png"),
+  ]);
   const mapHiddenItems = new Set(hiddenItems);
   mapHiddenItems.add(Obstacle.Tree);
   mapHiddenItems.add(Obstacle.Rock);
@@ -199,7 +264,8 @@ export async function createOwlbearSceneJson(
     [Obstacle.Rock]: "Rock",
     [Obstacle.Building]: "Building",
   };
-  collectObstacles(grid).forEach((obstacle, index) => {
+  let nextPropZIndex = baseZIndex + 1;
+  collectObstacles(grid).forEach((obstacle) => {
     if (
       hiddenItems.has(obstacle.kind) ||
       obstacle.kind === Obstacle.Building
@@ -207,37 +273,38 @@ export async function createOwlbearSceneJson(
     const points = grid.flatMap((row, y) =>
       row.map((tile, x) => ({ tile, x, y }))
         .filter(({ tile }) =>
-          tile.obstacle === obstacle.kind &&
-          tile.obstacleId === obstacle.id
+          tile.obstacle === obstacle.kind
         ),
+    ).filter(({ tile, x, y }) =>
+      (tile.obstacleId ?? y * grid[y].length + x) === obstacle.id
     );
     if (!points.length) return;
-    const minimumX = Math.min(...points.map(({ x }) => x));
-    const maximumX = Math.max(...points.map(({ x }) => x));
-    const minimumY = Math.min(...points.map(({ y }) => y));
-    const maximumY = Math.max(...points.map(({ y }) => y));
-    const spanX = maximumX - minimumX + 1;
-    const spanY = maximumY - minimumY + 1;
     const asset = obstacle.kind === Obstacle.Tree ? treeAsset : rockAsset;
-    const id = crypto.randomUUID();
-    shared[id] = imageItem(
-      id,
-      `${obstacleNames[obstacle.kind]} ${obstacle.id}`,
-      "PROP",
-      asset.url,
-      asset.mime,
-      512,
-      512,
-      {
-        x: (minimumX + spanX / 2) * OWLBEAR_SCENE_DPI,
-        y: (minimumY + spanY / 2) * OWLBEAR_SCENE_DPI,
-      },
-      PROP_IMAGE_DPI,
-      { x: 256, y: 256 },
-      baseZIndex + index + 1,
-      false,
-      { x: spanX, y: spanY },
-    );
+    points.forEach(({ x, y }, pointIndex) => {
+      const id = crypto.randomUUID();
+      shared[id] = imageItem(
+        id,
+        `${obstacleNames[obstacle.kind]} ${obstacle.id}.${pointIndex + 1}`,
+        "PROP",
+        asset.url,
+        asset.mime,
+        asset.width,
+        asset.height,
+        {
+          x: (x + .5) * OWLBEAR_SCENE_DPI,
+          y: (y + .5) * OWLBEAR_SCENE_DPI,
+        },
+        PROP_IMAGE_DPI,
+        { x: asset.width / 2, y: asset.height / 2 },
+        nextPropZIndex,
+        false,
+        {
+          x: PROP_IMAGE_DPI / asset.width,
+          y: PROP_IMAGE_DPI / asset.height,
+        },
+      );
+      nextPropZIndex += 1;
+    });
   });
 
   const width = grid[0].length * OWLBEAR_SCENE_DPI;

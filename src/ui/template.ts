@@ -108,19 +108,36 @@ export function renderApp(root: HTMLElement) {
         <div class="map-panel">
           <div class="map-toolbar">
             <div><strong>Map preview</strong><span id="dimensions"></span></div>
+            <label class="grid-option preview-option">
+              <input id="preview-grid" type="checkbox" checked />
+              <span>Preview grid</span>
+            </label>
           </div>
           <div class="canvas-wrap">
             <canvas id="map" aria-label="Generated terrain grid"></canvas>
           </div>
-          <div class="map-footer">
-            <div class="legend" id="legend"></div>
-            <p class="map-note"><span>◆</span> Obstacles are generated on a separate layer from terrain.</p>
-          </div>
+          <section class="map-content-panel" aria-labelledby="map-content-title">
+            <div class="map-content-heading">
+              <div>
+                <p class="eyebrow">Shared settings</p>
+                <h2 id="map-content-title">Map content</h2>
+                <p>These settings affect the preview, WebP and Owlbear exports.</p>
+              </div>
+              <label class="grid-option shared-tileset-option">
+                <input id="use-tileset" type="checkbox" />
+                <span>Use tileset</span>
+              </label>
+            </div>
+            <div class="map-footer">
+              <div class="legend" id="legend"></div>
+              <p class="map-note"><span>◆</span> Click legend items to include or exclude layers everywhere.</p>
+            </div>
+          </section>
           <section class="export-panel" aria-labelledby="export-title">
             <div class="export-panel-heading">
               <p class="eyebrow">Files &amp; virtual tabletops</p>
               <h2 id="export-title">Export your map</h2>
-              <p>Choose a ready-to-use image or prepare a complete Owlbear Rodeo scene.</p>
+              <p>Shared content above is already applied. Only format-specific settings appear here.</p>
             </div>
             <div class="export-card webp-export">
               <div class="export-card-heading">
@@ -130,15 +147,11 @@ export function renderApp(root: HTMLElement) {
                 </div>
                 <span class="export-format">.WEBP</span>
               </div>
-              <p class="export-description">A compact image with the current terrain and visible props.</p>
+              <p class="export-description">A compact image with the current terrain and selected props.</p>
               <div class="webp-options">
                 <label class="grid-option">
-                  <input id="use-tileset" type="checkbox" />
-                  <span>Use tileset</span>
-                </label>
-                <label class="grid-option">
                   <input id="show-grid" type="checkbox" checked />
-                  <span>Include grid</span>
+                  <span>Include grid in WebP</span>
                 </label>
               </div>
               <button id="download" class="owlbear-primary-button export-wide-button" type="button">Download WebP ↓</button>
@@ -151,28 +164,36 @@ export function renderApp(root: HTMLElement) {
               </div>
               <label class="grid-option owlbear-grid-option">
                 <input id="owlbear-grid" type="checkbox" />
-                <span>Include grid</span>
+                <span>Include grid in Owlbear</span>
               </label>
             </div>
             <div class="owlbear-options">
               <label class="owlbear-field">
                 <span>Tree prop URL <small>Optional</small></span>
-                <input id="owlbear-tree-url" type="url" placeholder="HTTPS URL ending in .png, .jpg, .webp…" />
+                <input id="owlbear-tree-url" type="url" placeholder="Direct URL" />
+                <span class="prop-preview" id="owlbear-tree-preview">
+                  <img alt="Tree prop preview" />
+                  <small>Loading default prop…</small>
+                </span>
               </label>
               <label class="owlbear-field">
                 <span>Rock prop URL <small>Optional</small></span>
-                <input id="owlbear-rock-url" type="url" placeholder="HTTPS URL ending in .png, .jpg, .webp…" />
+                <input id="owlbear-rock-url" type="url" placeholder="Direct URL" />
+                <span class="prop-preview" id="owlbear-rock-preview">
+                  <img alt="Rock prop preview" />
+                  <small>Loading default prop…</small>
+                </span>
               </label>
             </div>
             <div class="owlbear-notice">
               <strong>Public image hosting</strong>
-              <p>The map background is uploaded anonymously to Litterbox. The resulting URL is public and expires after 72 hours; after that, the background will no longer load in Owlbear.</p>
+              <p>The map background is uploaded anonymously to Litterbox. The resulting URL is public and expires after 72 hours; after that, the background will no longer load in Owlbear. Consider downloading a local copy.</p>
             </div>
             <div class="owlbear-instructions">
               <span>1</span>
               <p>Export or copy the generated JSON.</p>
               <span>2</span>
-              <p>Open your Owlbear scene and paste the JSON into the scene importer.</p>
+              <p>Open your Owlbear scene and paste the JSON into the scene.</p>
             </div>
             <div class="owlbear-actions">
               <p id="owlbear-status" role="status" aria-live="polite"></p>
