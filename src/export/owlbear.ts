@@ -8,7 +8,7 @@ const OWLBEAR_SCENE_DPI = 150;
 const MAP_IMAGE_DPI = 64;
 const PROP_IMAGE_DPI = 512;
 const DEFAULT_MAP_URL =
-  "https://images.owlbear.rodeo/shared/items/owlbear-maps/Wasteland.jpeg";
+  "https://cdn.jsdelivr.net/gh/Sewef/battleMapGenerator@main/public/assets/tilesets/default.png";
 const PUBLIC_TILESET_ASSET_BASE =
   "https://cdn.jsdelivr.net/gh/Sewef/battleMapGenerator@main/public/assets/tilesets/";
 
@@ -286,7 +286,7 @@ export async function createOwlbearSceneJson(
     "Replace with uploaded Terra map",
     "MAP",
     DEFAULT_MAP_URL,
-    "image/jpeg",
+    "image/png",
     mapWidth,
     mapHeight,
     { x: 0, y: 0 },
