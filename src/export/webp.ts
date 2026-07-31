@@ -1,5 +1,5 @@
 import type { Grid, LandscapeMode } from "../domain/map";
-import { drawGrid } from "../rendering/canvas";
+import { drawGrid, type TilesetPropImages } from "../rendering/canvas";
 
 const WEBP_QUALITY = 0.95;
 
@@ -11,6 +11,7 @@ export function renderExportCanvas(
   showGrid: boolean,
   useTileset: boolean,
   tilesetImage: CanvasImageSource | undefined,
+  tilesetProps?: TilesetPropImages,
 ) {
   const canvas = document.createElement("canvas");
   drawGrid(grid, {
@@ -25,6 +26,7 @@ export function renderExportCanvas(
     showGrid,
     useTileset,
     tilesetImage,
+    tilesetProps,
   });
   return canvas;
 }
@@ -44,6 +46,7 @@ export function downloadWebp(
   showGrid = true,
   useTileset = false,
   tilesetImage?: CanvasImageSource,
+  tilesetProps?: TilesetPropImages,
   cellSize = 64,
 ) {
   const link = document.createElement("a");
@@ -56,6 +59,7 @@ export function downloadWebp(
     showGrid,
     useTileset,
     tilesetImage,
+    tilesetProps,
   ).toDataURL(
     "image/webp",
     WEBP_QUALITY,

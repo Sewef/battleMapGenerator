@@ -57,6 +57,40 @@ function outsideGrid(grid: Grid, x: number, y: number) {
   return y < 0 || y >= grid.length || x < 0 || x >= grid[0].length;
 }
 
+const tintedTilesetPropCache = new WeakMap<
+  object,
+  Map<string, HTMLCanvasElement>
+>();
+
+function tintedTilesetProp(
+  image: CanvasImageSource,
+  size: 1 | 2,
+  cellSize: number,
+  tint: string,
+  tintStrength: number,
+) {
+  const imageCache = tintedTilesetPropCache.get(image as object) ?? new Map();
+  tintedTilesetPropCache.set(image as object, imageCache);
+  const key = `${size}:${cellSize}:${tint}:${tintStrength}`;
+  const cached = imageCache.get(key);
+  if (cached) return cached;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = size * cellSize;
+  canvas.height = size * cellSize;
+  const context = canvas.getContext("2d")!;
+  context.imageSmoothingEnabled = false;
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  context.globalCompositeOperation = "source-atop";
+  context.globalAlpha = tintStrength;
+  context.fillStyle = tint;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.globalAlpha = 1;
+  context.globalCompositeOperation = "source-over";
+  imageCache.set(key, canvas);
+  return canvas;
+}
+
 function drawTilesetProp(
   image: CanvasImageSource,
   x: number,
@@ -64,11 +98,13 @@ function drawTilesetProp(
   size: 1 | 2,
   cellSize: number,
   context: CanvasRenderingContext2D,
+  tint: string,
+  tintStrength: number,
 ) {
   context.save();
   context.imageSmoothingEnabled = false;
   context.drawImage(
-    image,
+    tintedTilesetProp(image, size, cellSize, tint, tintStrength),
     x * cellSize,
     y * cellSize,
     size * cellSize,
@@ -158,6 +194,8 @@ function createTilesetTilePattern(
   context: CanvasRenderingContext2D,
   cellSize: number,
   quarterTurns = 0,
+  tint?: string,
+  tintStrength = .5,
 ) {
   const tile = document.createElement("canvas");
   tile.width = cellSize;
@@ -177,6 +215,15 @@ function createTilesetTilePattern(
     cellSize,
     cellSize,
   );
+  if (tint) {
+    tileContext.setTransform(1, 0, 0, 1, 0, 0);
+    tileContext.globalCompositeOperation = "source-atop";
+    tileContext.globalAlpha = tintStrength;
+    tileContext.fillStyle = tint;
+    tileContext.fillRect(0, 0, cellSize, cellSize);
+    tileContext.globalAlpha = 1;
+    tileContext.globalCompositeOperation = "source-over";
+  }
   return context.createPattern(tile, "repeat");
 }
 
@@ -196,6 +243,11 @@ function createTilesetPatterns(
       coordinate,
       context,
       cellSize,
+      0,
+      terrain === Terrain.Cliff
+        ? getTerrainStyle(Terrain.Cliff, mode).color
+        : undefined,
+      .55,
     );
     if (pattern) patterns.set(terrain, pattern);
   }
@@ -724,6 +776,7 @@ function drawRavineUpperEdges(
   context.globalAlpha = opacity;
   context.drawImage(effect, 0, 0);
   context.restore();
+
 }
 
 function drawLiquidUpperEdges(
@@ -813,6 +866,7 @@ function drawLiquidUpperEdges(
   context.globalAlpha = opacity;
   context.drawImage(effect, 0, 0);
   context.restore();
+
 }
 
 function drawLavaRockEdges(
@@ -821,18 +875,16 @@ function drawLavaRockEdges(
   opacity: number,
   context: CanvasRenderingContext2D,
 ) {
+  const width = grid[0].length * cellSize;
+  const height = grid.length * cellSize;
   const effect = document.createElement("canvas");
-  effect.width = context.canvas.width;
-  effect.height = context.canvas.height;
+  effect.width = width;
+  effect.height = height;
   const effectContext = effect.getContext("2d")!;
   const edgePath = new Path2D();
   const segmentCount = 6;
   const isLava = (x: number, y: number) =>
-    outsideGrid(grid, x, y) ||
-    (
-      grid[y]?.[x] !== undefined &&
-      underlyingTerrain(grid, x, y) === Terrain.Lava
-    );
+    grid[y]?.[x]?.terrain === Terrain.Lava;
 
   const addEdge = (x: number, y: number, side: 0 | 1 | 2 | 3) => {
     for (let index = 0; index <= segmentCount; index += 1) {
@@ -865,10 +917,10 @@ function drawLavaRockEdges(
   for (let y = 0; y < grid.length; y += 1) {
     for (let x = 0; x < grid[y].length; x += 1) {
       if (!isLava(x, y)) continue;
-      if (!isLava(x, y - 1)) addEdge(x, y, 0);
-      if (!isLava(x + 1, y)) addEdge(x, y, 1);
-      if (!isLava(x, y + 1)) addEdge(x, y, 2);
-      if (!isLava(x - 1, y)) addEdge(x, y, 3);
+      if (y > 0 && !isLava(x, y - 1)) addEdge(x, y, 0);
+      if (x < grid[y].length - 1 && !isLava(x + 1, y)) addEdge(x, y, 1);
+      if (y < grid.length - 1 && !isLava(x, y + 1)) addEdge(x, y, 2);
+      if (x > 0 && !isLava(x - 1, y)) addEdge(x, y, 3);
     }
   }
 
@@ -880,16 +932,6 @@ function drawLavaRockEdges(
   effectContext.strokeStyle = "rgba(25, 22, 20, .62)";
   effectContext.lineWidth = Math.max(1.5, cellSize * .075);
   effectContext.stroke(edgePath);
-
-  const mask = createTerrainMask(
-    grid,
-    Terrain.Lava,
-    cellSize,
-    effect.width,
-    effect.height,
-  );
-  effectContext.globalCompositeOperation = "destination-in";
-  effectContext.drawImage(mask, 0, 0);
 
   context.save();
   context.globalAlpha = opacity;
@@ -2276,12 +2318,6 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     hiddenItems.has(Terrain.Lava) ? hiddenOpacity : 1,
     context,
   );
-  drawLavaRockEdges(
-    grid,
-    cellSize,
-    hiddenItems.has(Terrain.Lava) ? hiddenOpacity : 1,
-    context,
-  );
   drawShorelines(
     grid,
     cellSize,
@@ -2304,6 +2340,12 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     hiddenItems,
     hiddenOpacity,
     options.useTileset ? options.tilesetImage : undefined,
+    context,
+  );
+  drawLavaRockEdges(
+    grid,
+    cellSize,
+    hiddenItems.has(Terrain.Lava) ? hiddenOpacity : 1,
     context,
   );
 
@@ -2362,6 +2404,7 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   }
   context.globalAlpha =
     hiddenItems.has(Obstacle.Rock) ? hiddenOpacity : 1;
+  const objectStyle = getBiomeObjectStyle(mode);
   const renderedRockCells = new Set<string>();
   for (let y = 0; y < rows - 1; y += 1) {
     for (let x = 0; x < columns - 1; x += 1) {
@@ -2383,6 +2426,8 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
             2,
             cellSize,
             context,
+            objectStyle.rock.fill,
+            .58,
           );
         } else {
           drawRock(x, y, cellSize, mode, context, 2);
@@ -2402,6 +2447,8 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
         1,
         cellSize,
         context,
+        objectStyle.rock.fill,
+        .58,
       );
     } else {
       drawRock(x, y, cellSize, mode, context);
@@ -2434,6 +2481,8 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
           2,
           cellSize,
           context,
+          objectStyle.tree.light,
+          .48,
         );
         continue;
       }
@@ -2447,6 +2496,8 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
           1,
           cellSize,
           context,
+          objectStyle.tree.light,
+          .48,
         );
       }
     } else {

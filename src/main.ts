@@ -178,6 +178,7 @@ document.querySelector("#download")!.addEventListener("click", () => {
     showGridInput.checked,
     useTilesetInput.checked && tilesetReady(),
     tilesetImage,
+    tilesetPropsReady() ? tilesetProps : undefined,
   );
 });
 async function copyText(text: string) {
