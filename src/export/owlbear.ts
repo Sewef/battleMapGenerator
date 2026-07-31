@@ -4,17 +4,45 @@ import {
   type LandscapeMode,
   type ObstacleKind,
 } from "../domain/map";
+import { uploadCanvasToLitterbox } from "./litterbox";
 import { renderExportCanvas } from "./webp";
 
 const OWLBEAR_SCENE_DPI = 150;
 const MAP_IMAGE_DPI = 64;
 const PROP_IMAGE_DPI = 512;
-const EXPORT_USER_ID = "terra-map-generator";
 
 type ExportedObstacle = {
   kind: Exclude<ObstacleKind, "none">;
   id: number;
 };
+
+type PropAsset = {
+  url: string;
+  mime: "image/png" | "image/jpeg" | "image/webp" | "image/gif" | "image/avif";
+};
+
+const PROP_MIME_BY_EXTENSION: Record<string, PropAsset["mime"]> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+  avif: "image/avif",
+};
+
+export interface OwlbearExportOptions {
+  showGrid?: boolean;
+  useTileset?: boolean;
+  treeUrl?: string;
+  rockUrl?: string;
+  tilesetImage?: CanvasImageSource;
+}
+
+export interface OwlbearSceneExport {
+  json: string;
+  filename: string;
+  mapUrl: string;
+}
 
 function safeSeed(seed: string) {
   return seed.replace(/[^a-z0-9_-]+/gi, "-") || "terrain";
@@ -73,7 +101,6 @@ function imageItem(
   locked: boolean,
   scale = { x: 1, y: 1 },
 ) {
-  const modified = new Date().toISOString();
   return {
     type: "IMAGE",
     id,
@@ -83,10 +110,7 @@ function imageItem(
     scale,
     visible: true,
     locked,
-    // createdUserId: EXPORT_USER_ID,
     zIndex,
-    // lastModified: modified,
-    // lastModifiedUserId: EXPORT_USER_ID,
     metadata: {
       "com.terra-map-generator/export": true,
     },
@@ -98,16 +122,43 @@ function imageItem(
   };
 }
 
-export function downloadOwlbearScene(
+function propAsset(customUrl: string | undefined, assetName: string): PropAsset {
+  const value = customUrl?.trim();
+  if (!value) {
+    return {
+      url: new URL(`/assets/${assetName}`, window.location.origin).href,
+      mime: "image/png",
+    };
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`Invalid prop URL: ${value}`);
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error("Prop URLs must use HTTP or HTTPS.");
+  }
+  const extension = parsed.pathname.split(".").pop()?.toLowerCase() ?? "";
+  const mime = PROP_MIME_BY_EXTENSION[extension];
+  if (!mime) {
+    throw new Error(
+      "Custom prop URLs must end with .png, .jpg, .jpeg, .webp, .gif, or .avif.",
+    );
+  }
+  return { url: parsed.href, mime };
+}
+
+export async function createOwlbearSceneJson(
   grid: Grid,
   mode: LandscapeMode,
   seed: string,
   hiddenItems: ReadonlySet<string>,
-  showGrid: boolean,
-  useTileset: boolean,
-  tilesetImage?: CanvasImageSource,
-) {
-  if (!grid.length) return;
+  options: OwlbearExportOptions = {},
+): Promise<OwlbearSceneExport> {
+  if (!grid.length) throw new Error("Generate a map before exporting.");
+  const treeAsset = propAsset(options.treeUrl, "tree.png");
+  const rockAsset = propAsset(options.rockUrl, "rock.png");
   const mapHiddenItems = new Set(hiddenItems);
   mapHiddenItems.add(Obstacle.Tree);
   mapHiddenItems.add(Obstacle.Rock);
@@ -116,19 +167,23 @@ export function downloadOwlbearScene(
     mode,
     MAP_IMAGE_DPI,
     mapHiddenItems,
-    showGrid,
-    useTileset,
-    tilesetImage,
+    options.showGrid ?? false,
+    options.useTileset ?? false,
+    options.tilesetImage,
   );
 
   const shared: Record<string, ReturnType<typeof imageItem>> = {};
   const baseZIndex = Date.now();
   const mapId = crypto.randomUUID();
+  const mapUrl = await uploadCanvasToLitterbox(
+    mapCanvas,
+    `terra-${safeSeed(seed)}.webp`,
+  );
   shared[mapId] = imageItem(
     mapId,
     `Terra ${safeSeed(seed)}`,
     "MAP",
-    mapCanvas.toDataURL("image/webp", .95),
+    mapUrl,
     "image/webp",
     mapCanvas.width,
     mapCanvas.height,
@@ -163,14 +218,14 @@ export function downloadOwlbearScene(
     const maximumY = Math.max(...points.map(({ y }) => y));
     const spanX = maximumX - minimumX + 1;
     const spanY = maximumY - minimumY + 1;
-    const assetName = obstacle.kind === Obstacle.Tree ? "tree.png" : "rock.png";
+    const asset = obstacle.kind === Obstacle.Tree ? treeAsset : rockAsset;
     const id = crypto.randomUUID();
     shared[id] = imageItem(
       id,
       `${obstacleNames[obstacle.kind]} ${obstacle.id}`,
       "PROP",
-      new URL(`/assets/${assetName}`, window.location.origin).href,
-      "image/png",
+      asset.url,
+      asset.mime,
       512,
       512,
       {
@@ -194,12 +249,19 @@ export function downloadOwlbearScene(
       max: { x: width, y: height },
     },
   };
-  const blob = new Blob([JSON.stringify(scene)], {
-    type: "application/json",
-  });
+  return {
+    json: JSON.stringify(scene),
+    filename:
+      `terra-${safeSeed(seed)}-${grid[0].length}x${grid.length}-owlbear.json`,
+    mapUrl,
+  };
+}
+
+export function downloadOwlbearJson(scene: OwlbearSceneExport) {
+  const blob = new Blob([scene.json], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
-  link.download = `terra-${safeSeed(seed)}-${grid[0].length}x${grid.length}-owlbear.json`;
+  link.download = scene.filename;
   link.href = url;
   link.click();
   URL.revokeObjectURL(url);

@@ -107,7 +107,7 @@ input[type="range"]::-webkit-slider-thumb { appearance: none; width: 14px; heigh
 .field.compact { gap: 5px; }
 .field.compact > span:first-child { font-size: 8px; letter-spacing: .04em; }
 .field.compact input[type="range"] { margin: 4px 0; }
-.primary-button { margin-top: auto; height: 48px; padding: 0 17px; display: flex; justify-content: space-between; align-items: center; border: 0; background: #b45e38; color: #fffaf0; cursor: pointer; font-size: 12px; font-weight: 700; }
+.primary-button { margin-top: 4px; height: 48px; padding: 0 17px; display: flex; justify-content: space-between; align-items: center; border: 0; background: #b45e38; color: #fffaf0; cursor: pointer; font-size: 12px; font-weight: 700; }
 .primary-button:hover { background: #9f4f2f; }
 .primary-button span { font-size: 18px; font-weight: 400; }
 
@@ -122,7 +122,44 @@ input[type="range"]::-webkit-slider-thumb { appearance: none; width: 14px; heigh
 .download-button:hover { background: #e9e7da; }
 .canvas-wrap { flex: 1; min-height: 520px; padding: 24px; display: grid; place-items: center; overflow: auto; background-color: #dad8ca; background-image: radial-gradient(#c1c0b4 1px, transparent 1px); background-size: 12px 12px; border: 1px solid #cfccbc; }
 canvas { display: block; max-width: 100%; height: auto !important; box-shadow: 0 8px 24px rgba(31,42,40,.18); image-rendering: auto; }
-.map-footer { padding-top: 13px; }
+.export-panel { display: grid; grid-template-columns: minmax(210px, .65fr) minmax(0, 1.35fr); gap: 14px; margin-top: 24px; padding: 20px; border: 1px solid #bdb9a8; background: #dedbcc; }
+.export-panel-heading { grid-column: 1 / -1; padding-bottom: 15px; border-bottom: 1px solid #c4c0b1; }
+.export-panel-heading .eyebrow { margin-bottom: 4px; }
+.export-panel-heading h2 { margin: 0; font-size: 21px; letter-spacing: -.025em; }
+.export-panel-heading > p:last-child { margin: 6px 0 0; color: #68716b; font-size: 11px; }
+.export-card { padding: 18px; border: 1px solid #c9c5b5; background: #efecdf; }
+.export-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.export-card-heading .eyebrow { margin-bottom: 4px; }
+.export-card h3 { margin: 0; font-size: 17px; letter-spacing: -.02em; }
+.export-format { padding: 5px 7px; border: 1px solid #c7c3b4; color: #737b75; font: 8px "DM Mono", monospace; letter-spacing: .08em; }
+.export-description { margin: 12px 0 18px; color: #626a65; font-size: 10px; line-height: 1.55; }
+.webp-export { display: flex; flex-direction: column; box-shadow: inset 4px 0 #b45e38; }
+.webp-options { display: grid; gap: 10px; margin-bottom: 18px; }
+.webp-options .grid-option { min-height: 34px; padding: 0 10px; border: 1px solid #cfccbd; background: #f8f6ed; }
+.export-wide-button { width: 100%; margin-top: auto; }
+.owlbear-export { box-shadow: inset 4px 0 #536b51; }
+.owlbear-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.owlbear-heading .eyebrow { margin-bottom: 4px; }
+.owlbear-grid-option { padding: 8px 10px; border: 1px solid #cfccbd; background: #f8f6ed; }
+.owlbear-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px; }
+.owlbear-field { display: grid; gap: 7px; }
+.owlbear-field > span { display: flex; justify-content: space-between; font: 9px "DM Mono", monospace; letter-spacing: .06em; text-transform: uppercase; color: #59635d; }
+.owlbear-field small { color: #89908b; font-size: 8px; }
+.owlbear-field input { width: 100%; min-width: 0; height: 38px; padding: 0 11px; border: 1px solid #c9c6b8; background: #f8f6ed; outline: 0; font: 10px "DM Mono", monospace; }
+.owlbear-field input:focus { border-color: #61765b; box-shadow: inset 0 0 0 1px #61765b; }
+.owlbear-notice { margin-top: 14px; padding: 12px 14px; border-left: 3px solid #b45e38; background: rgba(180,94,56,.07); }
+.owlbear-notice strong { display: block; margin-bottom: 4px; font-size: 10px; }
+.owlbear-notice p { margin: 0; color: #626a65; font-size: 10px; line-height: 1.55; }
+.owlbear-instructions { display: grid; grid-template-columns: 22px 1fr 22px 1fr; gap: 8px; align-items: center; margin-top: 14px; }
+.owlbear-instructions span { display: grid; width: 22px; height: 22px; place-items: center; border-radius: 50%; background: #536b51; color: #fff; font: 9px "DM Mono", monospace; }
+.owlbear-instructions p { margin: 0; color: #59635d; font-size: 10px; line-height: 1.45; }
+.owlbear-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.owlbear-actions #owlbear-status { min-height: 16px; margin: 0 auto 0 0; color: #68716b; font: 9px "DM Mono", monospace; }
+.owlbear-actions #owlbear-status.is-error { color: #a1472d; }
+.owlbear-primary-button { padding: 9px 12px; border: 1px solid #536b51; background: #536b51; color: #fff; cursor: pointer; font: 600 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .05em; }
+.owlbear-primary-button:hover { background: #40583f; }
+.owlbear-actions button:disabled { opacity: .55; cursor: wait; }
+.map-footer { padding: 13px 0 4px; }
 .legend { display: grid; gap: 13px; font-family: "DM Mono", monospace; text-transform: uppercase; color: #626b65; }
 .legend-group { display: grid; gap: 7px; }
 .legend-heading { display: flex; align-items: center; justify-content: space-between; min-height: 24px; border-bottom: 1px solid #d5d1c4; }
@@ -160,6 +197,8 @@ canvas { display: block; max-width: 100%; height: auto !important; box-shadow: 0
   .controls { border-right: 0; border-bottom: 1px solid #d3d0c0; }
   .primary-button { margin-top: 4px; }
   .canvas-wrap { min-height: 400px; }
+  .export-panel { grid-template-columns: 1fr; }
+  .export-panel-heading { grid-column: auto; }
 }
 
 @media (max-width: 520px) {
@@ -171,6 +210,12 @@ canvas { display: block; max-width: 100%; height: auto !important; box-shadow: 0
   .map-panel { padding: 20px 12px 14px; }
   .map-toolbar { height: auto; margin-bottom: 14px; }
   .map-toolbar { align-items: flex-start; gap: 12px; }
-  .export-actions { flex-direction: column; }
   .canvas-wrap { padding: 10px; min-height: 320px; }
+  .export-panel { padding: 14px; }
+  .export-card { padding: 16px 14px; }
+  .owlbear-heading { align-items: flex-start; }
+  .owlbear-options { grid-template-columns: 1fr; }
+  .owlbear-instructions { grid-template-columns: 22px 1fr; }
+  .owlbear-actions { align-items: stretch; flex-direction: column; }
+  .owlbear-actions #owlbear-status { margin: 0 0 3px; }
 }

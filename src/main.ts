@@ -8,7 +8,10 @@ import {
 import { drawGrid } from "./rendering/canvas";
 import { PARAMETER_FIELDS, renderApp } from "./ui/template";
 import { downloadWebp } from "./export/webp";
-import { downloadOwlbearScene } from "./export/owlbear";
+import {
+  createOwlbearSceneJson,
+  downloadOwlbearJson,
+} from "./export/owlbear";
 
 const randomSeed = () =>
   `${["moor", "mist", "oak", "flint", "dawn"][Math.floor(Math.random() * 5)]}-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -23,6 +26,18 @@ const scaleInput = document.querySelector<HTMLInputElement>("#scale")!;
 const showGridInput = document.querySelector<HTMLInputElement>("#show-grid")!;
 const useTilesetInput =
   document.querySelector<HTMLInputElement>("#use-tileset")!;
+const owlbearGridInput =
+  document.querySelector<HTMLInputElement>("#owlbear-grid")!;
+const owlbearTreeUrlInput =
+  document.querySelector<HTMLInputElement>("#owlbear-tree-url")!;
+const owlbearRockUrlInput =
+  document.querySelector<HTMLInputElement>("#owlbear-rock-url")!;
+const owlbearStatus =
+  document.querySelector<HTMLParagraphElement>("#owlbear-status")!;
+const owlbearCopyButton =
+  document.querySelector<HTMLButtonElement>("#copy-owlbear")!;
+const owlbearDownloadButton =
+  document.querySelector<HTMLButtonElement>("#download-owlbear")!;
 const tilesetImage = new Image();
 tilesetImage.src = "/assets/tilesets/terrain.png";
 const tilesetReady = () => tilesetImage.naturalWidth > 0;
@@ -139,16 +154,70 @@ document.querySelector("#download")!.addEventListener("click", () => {
     tilesetImage,
   );
 });
-document.querySelector("#download-owlbear")!.addEventListener("click", () => {
-  downloadOwlbearScene(
-    currentGrid,
-    activePreset.mode,
-    seedInput.value.trim(),
-    hiddenLegendItems,
-    showGridInput.checked,
-    useTilesetInput.checked && tilesetReady(),
-    tilesetImage,
-  );
+async function copyText(text: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.append(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) throw new Error("The browser refused clipboard access.");
+}
+
+async function runOwlbearExport(action: "copy" | "download") {
+  const activeButton =
+    action === "copy" ? owlbearCopyButton : owlbearDownloadButton;
+  const previousLabel = activeButton.textContent;
+  owlbearCopyButton.disabled = true;
+  owlbearDownloadButton.disabled = true;
+  activeButton.textContent = "Uploading…";
+  owlbearStatus.classList.remove("is-error");
+  owlbearStatus.textContent = "Uploading the map background to Litterbox…";
+  try {
+    const scene = await createOwlbearSceneJson(
+      currentGrid,
+      activePreset.mode,
+      seedInput.value.trim(),
+      hiddenLegendItems,
+      {
+        showGrid: owlbearGridInput.checked,
+        useTileset: useTilesetInput.checked && tilesetReady(),
+        treeUrl: owlbearTreeUrlInput.value,
+        rockUrl: owlbearRockUrlInput.value,
+        tilesetImage,
+      },
+    );
+    if (action === "copy") {
+      await copyText(scene.json);
+      owlbearStatus.textContent =
+        "JSON copied. Paste it into your Owlbear scene.";
+    } else {
+      downloadOwlbearJson(scene);
+      owlbearStatus.textContent =
+        "JSON downloaded. Import or paste it into Owlbear.";
+    }
+  } catch (error) {
+    owlbearStatus.classList.add("is-error");
+    owlbearStatus.textContent = error instanceof Error
+      ? `Export failed: ${error.message}`
+      : "Owlbear export failed.";
+  } finally {
+    owlbearCopyButton.disabled = false;
+    owlbearDownloadButton.disabled = false;
+    activeButton.textContent = previousLabel;
+  }
+}
+owlbearCopyButton.addEventListener("click", () => {
+  void runOwlbearExport("copy");
+});
+owlbearDownloadButton.addEventListener("click", () => {
+  void runOwlbearExport("download");
 });
 showGridInput.addEventListener("change", () => renderMap(currentGrid));
 useTilesetInput.addEventListener("change", () => renderMap(currentGrid));
