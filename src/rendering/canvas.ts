@@ -244,10 +244,14 @@ function createTilesetPatterns(
       context,
       cellSize,
       0,
+      getTerrainStyle(terrain, mode).color,
       terrain === Terrain.Cliff
-        ? getTerrainStyle(Terrain.Cliff, mode).color
-        : undefined,
-      .55,
+        ? .58
+        : terrain === Terrain.Ground || terrain === Terrain.Difficult
+          ? .48
+          : terrain === Terrain.Water || terrain === Terrain.Lava
+            ? .34
+            : .42,
     );
     if (pattern) patterns.set(terrain, pattern);
   }
@@ -1559,6 +1563,9 @@ function drawRoadNetwork(
       roadCoordinate,
       context,
       cellSize,
+      0,
+      getTerrainStyle(Terrain.Road, mode).color,
+      .42,
     )
     : undefined;
   context.fillStyle =
@@ -1827,6 +1834,9 @@ function drawRoadNetwork(
         bridgeCoordinate,
         context,
         cellSize,
+        0,
+        getTerrainStyle(Terrain.Bridge, mode).color,
+        .45,
       )
       : undefined;
     if (bridgePattern && tilesetImage && bridgeCoordinate) {
@@ -1838,6 +1848,8 @@ function drawRoadNetwork(
         context,
         cellSize,
         1,
+        getTerrainStyle(Terrain.Bridge, mode).color,
+        .45,
       )!;
       context.fill(verticalBridgeFootprint);
     } else {
