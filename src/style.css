@@ -107,7 +107,9 @@ input[type="text"]:focus { border-color: #718263; box-shadow: inset 0 0 0 1px #7
 input[type="range"] { width: 100%; height: 3px; margin: 7px 0; appearance: none; background: #c8c8b9; accent-color: #536b51; cursor: pointer; }
 input[type="range"]::-webkit-slider-thumb { appearance: none; width: 14px; height: 14px; border: 3px solid #f8f6ed; border-radius: 50%; background: #536b51; box-shadow: 0 0 0 1px #536b51; }
 .parameter-section { padding-top: 15px; border-top: 1px solid #d8d5c7; display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
-.parameter-section > p { grid-column: 1 / -1; margin: 0 0 2px; font-family: "DM Mono", monospace; text-transform: uppercase; letter-spacing: .08em; color: #747c76; font-size: 9px; }
+.parameter-heading { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 2px; }
+.parameter-heading p { margin: 0; font-family: "DM Mono", monospace; text-transform: uppercase; letter-spacing: .08em; color: #747c76; font-size: 9px; }
+.parameter-random-button { flex: 0 0 auto; }
 .field.compact { gap: 5px; }
 .field.compact > span:first-child { font-size: 8px; letter-spacing: .04em; }
 .field.compact input[type="range"] { margin: 4px 0; }

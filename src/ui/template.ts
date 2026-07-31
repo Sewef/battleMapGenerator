@@ -114,7 +114,10 @@ export function renderApp(root: HTMLElement) {
             ["obstacles", "Obstacle population"],
           ].map(([group, title]) => `
           <div class="parameter-section" data-parameter-group="${group}">
-            <p>${title}</p>
+            <div class="parameter-heading">
+              <p>${title}</p>
+              <button class="text-button parameter-random-button" type="button" data-randomize-group="${group}">Random</button>
+            </div>
             ${PARAMETER_FIELDS.filter((field) => field.group === group).map((field) => `
               <label class="field compact" id="${field.id}-field">
                 <span><span id="${field.id}-label">${field.label}</span> <output id="${field.id}-value"></output></span>

@@ -479,6 +479,28 @@ document.querySelector("#legend")!.addEventListener("click", (event) => {
 for (const input of [widthInput, heightInput, ...Object.values(inputs)]) {
   input.addEventListener("input", updateLabels);
 }
+document.querySelectorAll<HTMLButtonElement>("[data-randomize-group]")
+  .forEach((button) => {
+    button.addEventListener("click", () => {
+      const group = button.dataset.randomizeGroup;
+      for (const field of PARAMETER_FIELDS) {
+        if (field.group !== group) continue;
+        const container = document.querySelector<HTMLElement>(
+          `#${field.id}-field`,
+        )!;
+        if (container.hidden) continue;
+        const input = inputs[field.id];
+        const minimum = Number(input.min);
+        const step = Number(input.step) || 1;
+        const stepCount = Math.floor((Number(input.max) - minimum) / step);
+        input.value = String(
+          minimum + Math.floor(Math.random() * (stepCount + 1)) * step,
+        );
+      }
+      updateLabels();
+      generate();
+    });
+  });
 window.addEventListener("resize", () => renderMap(currentGrid));
 
 applyPreset(PRESETS[0]);
