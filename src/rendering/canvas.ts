@@ -1204,6 +1204,72 @@ function drawGlobalTexture(
   context.restore();
 }
 
+function createEdgeExtendedMask(
+  mask: HTMLCanvasElement,
+  padding: number,
+) {
+  const extended = document.createElement("canvas");
+  extended.width = mask.width + padding * 2;
+  extended.height = mask.height + padding * 2;
+  const context = extended.getContext("2d")!;
+  context.imageSmoothingEnabled = false;
+  context.drawImage(mask, padding, padding);
+
+  // Repeat the outermost mask pixels into the padding. Blur and offset
+  // operations can then distinguish a real terrain boundary from the edge of
+  // the canvas instead of treating everything outside the map as transparent.
+  context.drawImage(mask, 0, 0, mask.width, 1, padding, 0, mask.width, padding);
+  context.drawImage(
+    mask,
+    0,
+    mask.height - 1,
+    mask.width,
+    1,
+    padding,
+    padding + mask.height,
+    mask.width,
+    padding,
+  );
+  context.drawImage(mask, 0, 0, 1, mask.height, 0, padding, padding, mask.height);
+  context.drawImage(
+    mask,
+    mask.width - 1,
+    0,
+    1,
+    mask.height,
+    padding + mask.width,
+    padding,
+    padding,
+    mask.height,
+  );
+
+  const corners = [
+    [0, 0, 0, 0],
+    [mask.width - 1, 0, padding + mask.width, 0],
+    [0, mask.height - 1, 0, padding + mask.height],
+    [
+      mask.width - 1,
+      mask.height - 1,
+      padding + mask.width,
+      padding + mask.height,
+    ],
+  ] as const;
+  for (const [sourceX, sourceY, targetX, targetY] of corners) {
+    context.drawImage(
+      mask,
+      sourceX,
+      sourceY,
+      1,
+      1,
+      targetX,
+      targetY,
+      padding,
+      padding,
+    );
+  }
+  return extended;
+}
+
 function createMaskEdge(
   mask: HTMLCanvasElement,
   offsetX: number,
@@ -1211,18 +1277,38 @@ function createMaskEdge(
   blur: number,
   color: string,
 ) {
+  const padding = Math.ceil(
+    Math.max(Math.abs(offsetX), Math.abs(offsetY)) + blur * 3 + 2,
+  );
+  const extendedMask = createEdgeExtendedMask(mask, padding);
+  const working = document.createElement("canvas");
+  working.width = extendedMask.width;
+  working.height = extendedMask.height;
+  const workingContext = working.getContext("2d")!;
+  workingContext.drawImage(extendedMask, 0, 0);
+  workingContext.globalCompositeOperation = "destination-out";
+  workingContext.filter = `blur(${blur}px)`;
+  workingContext.drawImage(extendedMask, offsetX, offsetY);
+  workingContext.filter = "none";
+  workingContext.globalCompositeOperation = "source-in";
+  workingContext.fillStyle = color;
+  workingContext.fillRect(0, 0, working.width, working.height);
+
   const edge = document.createElement("canvas");
   edge.width = mask.width;
   edge.height = mask.height;
   const edgeContext = edge.getContext("2d")!;
-  edgeContext.drawImage(mask, 0, 0);
-  edgeContext.globalCompositeOperation = "destination-out";
-  edgeContext.filter = `blur(${blur}px)`;
-  edgeContext.drawImage(mask, offsetX, offsetY);
-  edgeContext.filter = "none";
-  edgeContext.globalCompositeOperation = "source-in";
-  edgeContext.fillStyle = color;
-  edgeContext.fillRect(0, 0, edge.width, edge.height);
+  edgeContext.drawImage(
+    working,
+    padding,
+    padding,
+    mask.width,
+    mask.height,
+    0,
+    0,
+    mask.width,
+    mask.height,
+  );
   return edge;
 }
 
