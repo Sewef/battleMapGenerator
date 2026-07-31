@@ -4,8 +4,18 @@ import {
   Terrain,
   tileSurface,
   type Grid,
+  type TerrainOptions,
 } from "../domain/map";
 import { generateTerrain } from "./generate";
+import {
+  buildGeneratedMapUrl,
+  parseGeneratedMapRequest,
+} from "../export/map-request";
+import { renderMapSvg } from "../rendering/svg";
+import {
+  decodeGridSnapshot,
+  encodeGridSnapshot,
+} from "../export/grid-snapshot";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -84,6 +94,12 @@ for (const preset of PRESETS) {
     const options = { ...preset, seed: `audit-${index}` };
     const grid = generateTerrain(options);
     assertGrid(grid, `${preset.id}:${index}`);
+    const snapshot = encodeGridSnapshot(grid);
+    const restored = decodeGridSnapshot(snapshot, options.width, options.height);
+    assert(
+      encodeGridSnapshot(restored) === snapshot,
+      `${preset.id}:${index}: grid snapshot is not canonical`,
+    );
     if (index === 0) {
       const duplicate = generateTerrain(options);
       assert(
@@ -96,3 +112,95 @@ for (const preset of PRESETS) {
 }
 
 console.log(`Generation invariants passed for ${generated} maps.`);
+
+const volcanicPreset = PRESETS.find(({ mode }) => mode === "volcanic")!;
+const renderOptions: TerrainOptions = {
+  width: 24,
+  height: 16,
+  seed: "svg-round-trip",
+  scale: volcanicPreset.scale,
+  mode: volcanicPreset.mode,
+  waterWeight: volcanicPreset.waterWeight,
+  difficultWeight: volcanicPreset.difficultWeight,
+  reliefWeight: volcanicPreset.reliefWeight,
+  rockRatio: volcanicPreset.rockRatio,
+  treeRatio: volcanicPreset.treeRatio,
+  buildingCount: volcanicPreset.buildingCount,
+};
+const renderGrid = generateTerrain(renderOptions);
+const hiddenItems = new Set<string>([Obstacle.Tree, Obstacle.Rock]);
+const svg = renderMapSvg(renderGrid, renderOptions.mode, {
+  cellSize: 16,
+  stylizedLighting: true,
+  hiddenItems,
+  hiddenOpacity: 0,
+});
+assert(svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg"'), "invalid SVG root");
+assert(svg.includes('width="384" height="256"'), "invalid SVG dimensions");
+assert(!svg.includes("NaN") && !svg.includes("undefined"), "invalid SVG number");
+assert(
+  svg === renderMapSvg(renderGrid, renderOptions.mode, {
+    cellSize: 16,
+    stylizedLighting: true,
+    hiddenItems,
+    hiddenOpacity: 0,
+  }),
+  "SVG rendering is not deterministic",
+);
+
+const generatedUrl = buildGeneratedMapUrl(
+  "https://maps.example.test/app",
+  renderOptions,
+  {
+    cellSize: 48,
+    useTileset: true,
+    stylizedLighting: true,
+    hiddenItems,
+  },
+  renderGrid,
+);
+const parsedRequest = parseGeneratedMapRequest(new URL(generatedUrl));
+assert(
+  JSON.stringify(parsedRequest.options) === JSON.stringify(renderOptions),
+  "generated map options did not round-trip",
+);
+assert(
+  parsedRequest.renderOptions.hiddenItems.join(",") === "rock,tree",
+  "hidden map items were not canonicalized",
+);
+assert(
+  buildGeneratedMapUrl(
+    "https://maps.example.test",
+    parsedRequest.options,
+    parsedRequest.renderOptions,
+    parsedRequest.grid,
+  ) === generatedUrl,
+  "generated map URL is not canonical",
+);
+
+console.log("Generated map URL and SVG invariants passed.");
+
+const maximumGrid: Grid = Array.from({ length: 48 }, () =>
+  Array.from({ length: 64 }, () => ({
+    terrain: Terrain.Ground,
+    obstacle: Obstacle.None,
+    height: .5,
+  }))
+);
+const maximumUrl = buildGeneratedMapUrl(
+  "https://maps.example.test",
+  {
+    ...renderOptions,
+    width: 64,
+    height: 48,
+    seed: "\u0800".repeat(128),
+  },
+  { cellSize: 64, stylizedLighting: true },
+  maximumGrid,
+);
+assert(
+  maximumUrl.length <= 16 * 1024,
+  `maximum generated map URL is too long (${maximumUrl.length} characters)`,
+);
+
+console.log(`Maximum generated map URL: ${maximumUrl.length} characters.`);

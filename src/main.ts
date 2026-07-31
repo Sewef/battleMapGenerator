@@ -5,6 +5,7 @@ import {
   PRESETS,
   type Grid,
   type Preset,
+  type TerrainOptions,
 } from "./generator";
 import {
   drawGrid,
@@ -103,6 +104,7 @@ const inputs = Object.fromEntries(
 
 let activePreset = PRESETS[0];
 let currentGrid: Grid = [];
+let generatedOptions: TerrainOptions | undefined;
 let mapRevision = 0;
 let pendingGenerationFrame: number | undefined;
 let pendingSeedGeneration: number | undefined;
@@ -176,6 +178,22 @@ function renderMap(grid: Grid, targetCanvas = previewCanvas, cellSize?: number) 
   });
 }
 
+function currentGenerationOptions(): TerrainOptions {
+  return {
+    width: Number(widthInput.value),
+    height: Number(heightInput.value),
+    seed: seedInput.value.trim(),
+    scale: activePreset.scale,
+    mode: activePreset.mode,
+    waterWeight: Number(inputs.water.value) / 100,
+    difficultWeight: Number(inputs.difficult.value) / 100,
+    reliefWeight: Number(inputs.relief.value) / 100,
+    rockRatio: Number(inputs.rocks.value) / 100,
+    treeRatio: Number(inputs.trees.value) / 100,
+    buildingCount: Number(inputs.buildings.value),
+  };
+}
+
 function generate() {
   if (pendingGenerationFrame !== undefined) {
     cancelAnimationFrame(pendingGenerationFrame);
@@ -186,21 +204,10 @@ function generate() {
     pendingSeedGeneration = undefined;
   }
   updateLabels();
-  const seed = seedInput.value.trim() || randomSeed();
+  const seed = (seedInput.value.trim() || randomSeed()).normalize("NFC");
   seedInput.value = seed;
-  currentGrid = generateTerrain({
-    width: Number(widthInput.value),
-    height: Number(heightInput.value),
-    seed,
-    scale: activePreset.scale,
-    mode: activePreset.mode,
-    waterWeight: Number(inputs.water.value) / 100,
-    difficultWeight: Number(inputs.difficult.value) / 100,
-    reliefWeight: Number(inputs.relief.value) / 100,
-    rockRatio: Number(inputs.rocks.value) / 100,
-    treeRatio: Number(inputs.trees.value) / 100,
-    buildingCount: Number(inputs.buildings.value),
-  });
+  generatedOptions = currentGenerationOptions();
+  currentGrid = generateTerrain(generatedOptions);
   mapRevision += 1;
   renderMap(currentGrid);
 }
@@ -339,9 +346,11 @@ function owlbearExportKey() {
   const useTileset = useTilesetInput.checked;
   return JSON.stringify({
     mapRevision,
-    seed: seedInput.value.trim(),
+    seed: generatedOptions?.seed ?? seedInput.value.trim(),
     hiddenItems: [...hiddenLegendItems].sort(),
     useTileset,
+    showGrid: showGridInput.checked,
+    stylizedLighting: stylizedLightingInput.checked,
     treeUrl: useTileset
       ? treePropUrlInput.value.trim()
       : "",
@@ -445,13 +454,18 @@ async function runOwlbearExport(action: "copy" | "download") {
     ? "Reusing the latest Owlbear export…"
     : "Preparing the Owlbear JSON…";
   try {
+    const generation = generatedOptions;
+    if (!generation) throw new Error("Generate a map before exporting.");
     const useTileset = useTilesetInput.checked;
     const scene = cachedScene ?? await createOwlbearSceneJson(
       currentGrid,
-      seedInput.value.trim(),
+      generation.seed,
       hiddenLegendItems,
       {
+        generation,
         useTileset,
+        stylizedLighting: stylizedLightingInput.checked,
+        showGrid: showGridInput.checked,
         treeUrl: useTileset
           ? treePropUrlInput.value
           : undefined,

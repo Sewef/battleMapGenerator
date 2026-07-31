@@ -2,13 +2,13 @@ import {
   Obstacle,
   type Grid,
   type ObstacleKind,
+  type TerrainOptions,
 } from "../domain/map";
+import { buildGeneratedMapUrl } from "./map-request";
 
 const OWLBEAR_SCENE_DPI = 150;
-const MAP_IMAGE_DPI = 64;
+const MAP_IMAGE_DPI = 48;
 const PROP_IMAGE_DPI = 512;
-const DEFAULT_MAP_URL =
-  "https://cdn.jsdelivr.net/gh/Sewef/battleMapGenerator@main/public/assets/tilesets/default.webp";
 const PUBLIC_TILESET_ASSET_BASE =
   "https://cdn.jsdelivr.net/gh/Sewef/battleMapGenerator@main/public/assets/tilesets/";
 
@@ -43,7 +43,10 @@ const SUPPORTED_PROP_MIMES = new Set<OwlbearPropAsset["mime"]>(
 );
 
 export interface OwlbearExportOptions {
+  generation: TerrainOptions;
   useTileset?: boolean;
+  stylizedLighting?: boolean;
+  showGrid?: boolean;
   treeUrl?: string;
   rockUrl?: string;
 }
@@ -269,9 +272,15 @@ export async function createOwlbearSceneJson(
   grid: Grid,
   seed: string,
   hiddenItems: ReadonlySet<string>,
-  options: OwlbearExportOptions = {},
+  options: OwlbearExportOptions,
 ): Promise<OwlbearSceneExport> {
   if (!grid.length) throw new Error("Generate a map before exporting.");
+  if (
+    options.generation.width !== grid[0].length ||
+    options.generation.height !== grid.length
+  ) {
+    throw new Error("The generated map dimensions no longer match the preview.");
+  }
   const [treeAssets, rockAssets] = await Promise.all([
     owlBearPropAssets(options.treeUrl, "tree", options.useTileset ?? false),
     owlBearPropAssets(options.rockUrl, "rock", options.useTileset ?? false),
@@ -281,11 +290,26 @@ export async function createOwlbearSceneJson(
   const mapId = crypto.randomUUID();
   const mapWidth = grid[0].length * MAP_IMAGE_DPI;
   const mapHeight = grid.length * MAP_IMAGE_DPI;
+  const mapHiddenItems = new Set(hiddenItems);
+  mapHiddenItems.add(Obstacle.Tree);
+  mapHiddenItems.add(Obstacle.Rock);
+  const mapUrl = buildGeneratedMapUrl(
+    window.location.origin,
+    options.generation,
+    {
+      cellSize: MAP_IMAGE_DPI,
+      useTileset: options.useTileset ?? false,
+      stylizedLighting: options.stylizedLighting ?? false,
+      showGrid: options.showGrid ?? false,
+      hiddenItems: mapHiddenItems,
+    },
+    grid,
+  );
   shared[mapId] = imageItem(
     mapId,
-    "Replace with uploaded Terra map",
+    "Terra generated background",
     "MAP",
-    DEFAULT_MAP_URL,
+    mapUrl,
     "image/webp",
     mapWidth,
     mapHeight,
