@@ -23,7 +23,6 @@ const previewCanvas = document.querySelector<HTMLCanvasElement>("#map")!;
 const seedInput = document.querySelector<HTMLInputElement>("#seed")!;
 const widthInput = document.querySelector<HTMLInputElement>("#width")!;
 const heightInput = document.querySelector<HTMLInputElement>("#height")!;
-const scaleInput = document.querySelector<HTMLInputElement>("#scale")!;
 const previewGridInput =
   document.querySelector<HTMLInputElement>("#preview-grid")!;
 const showGridInput = document.querySelector<HTMLInputElement>("#show-grid")!;
@@ -85,7 +84,6 @@ let owlbearExportCache: {
 function updateLabels() {
   document.querySelector("#width-value")!.textContent = widthInput.value;
   document.querySelector("#height-value")!.textContent = heightInput.value;
-  document.querySelector("#scale-value")!.textContent = scaleInput.value;
   for (const field of PARAMETER_FIELDS) {
     document.querySelector(`#${field.id}-value`)!.textContent =
       field.percent ? `${inputs[field.id].value}%` : inputs[field.id].value;
@@ -96,7 +94,6 @@ function applyPreset(preset: Preset, useNewSeed = true) {
   activePreset = preset;
   widthInput.value = String(preset.width);
   heightInput.value = String(preset.height);
-  scaleInput.value = String(preset.scale);
   for (const field of PARAMETER_FIELDS) {
     const value = preset[field.key];
     inputs[field.id].value = String(field.percent ? Number(value) * 100 : value);
@@ -136,7 +133,7 @@ function generate() {
     width: Number(widthInput.value),
     height: Number(heightInput.value),
     seed,
-    scale: Number(scaleInput.value),
+    scale: activePreset.scale,
     mode: activePreset.mode,
     waterWeight: Number(inputs.water.value) / 100,
     difficultWeight: Number(inputs.difficult.value) / 100,
@@ -393,7 +390,7 @@ document.querySelector("#legend")!.addEventListener("click", (event) => {
   else hiddenLegendItems.add(item);
   renderMap(currentGrid);
 });
-for (const input of [widthInput, heightInput, scaleInput, ...Object.values(inputs)]) {
+for (const input of [widthInput, heightInput, ...Object.values(inputs)]) {
   input.addEventListener("input", updateLabels);
 }
 window.addEventListener("resize", () => renderMap(currentGrid));

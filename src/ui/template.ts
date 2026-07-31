@@ -82,11 +82,6 @@ export function renderApp(root: HTMLElement) {
             </label>
           </div>
 
-          <label class="field">
-            <span>Biome size <output id="scale-value"></output></span>
-            <input id="scale" type="range" min="4" max="14" step="1" />
-          </label>
-
           ${[
             ["terrain", "Terrain weight"],
             ["obstacles", "Obstacle population"],
