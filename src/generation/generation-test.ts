@@ -12,10 +12,6 @@ import {
   parseGeneratedMapRequest,
 } from "../export/map-request";
 import { renderMapSvg } from "../rendering/svg";
-import {
-  decodeGridSnapshot,
-  encodeGridSnapshot,
-} from "../export/grid-snapshot";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -94,12 +90,6 @@ for (const preset of PRESETS) {
     const options = { ...preset, seed: `audit-${index}` };
     const grid = generateTerrain(options);
     assertGrid(grid, `${preset.id}:${index}`);
-    const snapshot = encodeGridSnapshot(grid);
-    const restored = decodeGridSnapshot(snapshot, options.width, options.height);
-    assert(
-      encodeGridSnapshot(restored) === snapshot,
-      `${preset.id}:${index}: grid snapshot is not canonical`,
-    );
     if (index === 0) {
       const duplicate = generateTerrain(options);
       assert(
@@ -157,12 +147,16 @@ const generatedUrl = buildGeneratedMapUrl(
     stylizedLighting: true,
     hiddenItems,
   },
-  renderGrid,
 );
 const parsedRequest = parseGeneratedMapRequest(new URL(generatedUrl));
 assert(
   JSON.stringify(parsedRequest.options) === JSON.stringify(renderOptions),
   "generated map options did not round-trip",
+);
+assert(
+  JSON.stringify(generateTerrain(parsedRequest.options)) ===
+    JSON.stringify(renderGrid),
+  "server-side generation did not reproduce the exported grid",
 );
 assert(
   parsedRequest.renderOptions.hiddenItems.join(",") === "rock,tree",
@@ -173,20 +167,12 @@ assert(
     "https://maps.example.test",
     parsedRequest.options,
     parsedRequest.renderOptions,
-    parsedRequest.grid,
   ) === generatedUrl,
   "generated map URL is not canonical",
 );
 
 console.log("Generated map URL and SVG invariants passed.");
 
-const maximumGrid: Grid = Array.from({ length: 48 }, () =>
-  Array.from({ length: 64 }, () => ({
-    terrain: Terrain.Ground,
-    obstacle: Obstacle.None,
-    height: .5,
-  }))
-);
 const maximumUrl = buildGeneratedMapUrl(
   "https://maps.example.test",
   {
@@ -196,7 +182,6 @@ const maximumUrl = buildGeneratedMapUrl(
     seed: "\u0800".repeat(128),
   },
   { cellSize: 64, stylizedLighting: true },
-  maximumGrid,
 );
 assert(
   maximumUrl.length <= 16 * 1024,

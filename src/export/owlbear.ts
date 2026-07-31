@@ -303,7 +303,6 @@ export async function createOwlbearSceneJson(
       showGrid: options.showGrid ?? false,
       hiddenItems: mapHiddenItems,
     },
-    grid,
   );
   shared[mapId] = imageItem(
     mapId,

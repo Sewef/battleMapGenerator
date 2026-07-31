@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "battlemap-generator",
+  "name": "touchgrass",
   "main": "./worker/index.ts",
   "compatibility_date": "2026-07-31",
   "compatibility_flags": ["nodejs_compat"],
@@ -10,7 +10,8 @@
     "not_found_handling": "single-page-application"
   },
   "images": {
-    "binding": "IMAGES"
+    "binding": "IMAGES",
+    "remote": true
   },
   "ratelimits": [
     {

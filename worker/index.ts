@@ -6,6 +6,7 @@ import {
 } from "../src/export/map-request";
 import { renderMapSvg } from "../src/rendering/svg";
 import { Obstacle } from "../src/domain/map";
+import { generateTerrain } from "../src/generation/generate";
 
 const DEFAULT_TILE_PATH = "/assets/tilesets/default.png";
 const TERRAIN_TILESET_PATH = "/assets/tilesets/terrain.png";
@@ -115,7 +116,7 @@ async function generatedMap(request: Request, env: Env) {
     const tilesetPromise = parsed.renderOptions.useTileset
       ? assetResponse(request, env, TERRAIN_TILESET_PATH)
       : undefined;
-    const grid = parsed.grid;
+    const grid = generateTerrain(parsed.options);
     const hiddenItems = new Set(parsed.renderOptions.hiddenItems);
     hiddenItems.add(Obstacle.Tree);
     hiddenItems.add(Obstacle.Rock);
@@ -135,8 +136,12 @@ async function generatedMap(request: Request, env: Env) {
 
     const base = await basePromise;
     if (!base.body) throw new Error("Missing render base body.");
-    const svgBody = new Response(svg).body;
+    const svgBody = new Response(
+      `<?xml version="1.0" encoding="UTF-8"?>${svg}`,
+      { headers: { "Content-Type": "image/svg+xml; charset=utf-8" } },
+    ).body;
     if (!svgBody) throw new Error("Unable to create the SVG render stream.");
+    const overlay = env.IMAGES.input(svgBody);
     const result = await env.IMAGES
       .input(base.body)
       .transform({
@@ -145,7 +150,7 @@ async function generatedMap(request: Request, env: Env) {
         fit: "pad",
         background: "#f3f0e5",
       })
-      .draw(svgBody, { top: 0, left: 0, composite: "over" })
+      .draw(overlay, { top: 0, left: 0, composite: "over" })
       .output({ format: "image/webp", quality: 92, anim: false });
     const image = result.response();
     if (

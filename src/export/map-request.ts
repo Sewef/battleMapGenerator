@@ -1,22 +1,16 @@
 import {
   Obstacle,
   Terrain,
-  type Grid,
   type LandscapeMode,
   type ObstacleKind,
   type TerrainKind,
   type TerrainOptions,
 } from "../domain/map";
-import {
-  decodeGridSnapshot,
-  encodeGridSnapshot,
-  GridSnapshotError,
-} from "./grid-snapshot";
 
 export const GENERATED_MAP_PATH = "/api/generated-map.webp";
 // This value is also part of the cross-deployment cache key. Bump it whenever
 // the snapshot or SVG rendering semantics change.
-export const GENERATED_MAP_REQUEST_VERSION = 1 as const;
+export const GENERATED_MAP_REQUEST_VERSION = 3 as const;
 
 export const GENERATED_MAP_LIMITS = Object.freeze({
   width: Object.freeze({ minimum: 16, maximum: 64 }),
@@ -79,8 +73,6 @@ export interface GeneratedMapRequest {
   version: typeof GENERATED_MAP_REQUEST_VERSION;
   options: TerrainOptions;
   renderOptions: CanonicalGeneratedMapRenderOptions;
-  grid: Grid;
-  gridSnapshot: string;
 }
 
 export class GeneratedMapRequestError extends Error {
@@ -115,7 +107,6 @@ const REQUIRED_GENERATION_PARAMETERS = [
   "rockRatio",
   "treeRatio",
   "buildingCount",
-  "grid",
 ] as const;
 
 const KNOWN_PARAMETERS = new Set([
@@ -352,7 +343,6 @@ function generatedMapUrl(
   origin: string | URL,
   generation: TerrainOptions,
   render: CanonicalGeneratedMapRenderOptions,
-  gridSnapshot: string,
 ) {
   const url = mapEndpoint(origin);
   const parameters = url.searchParams;
@@ -376,8 +366,6 @@ function generatedMapUrl(
   if (render.hiddenItems.length) {
     parameters.set("hiddenItems", render.hiddenItems.join(","));
   }
-  parameters.set("grid", gridSnapshot);
-
   return url.href;
 }
 
@@ -385,17 +373,10 @@ export function buildGeneratedMapUrl(
   origin: string | URL,
   options: TerrainOptions,
   renderOptions: GeneratedMapRenderOptions,
-  grid: Grid,
 ) {
   const generation = canonicalOptions(options);
   const render = canonicalRenderOptions(renderOptions);
-  if (
-    grid.length !== generation.height ||
-    grid.some((row) => row.length !== generation.width)
-  ) {
-    requestError("grid dimensions must match width and height.");
-  }
-  return generatedMapUrl(origin, generation, render, encodeGridSnapshot(grid));
+  return generatedMapUrl(origin, generation, render);
 }
 
 export function canonicalGeneratedMapUrl(
@@ -406,7 +387,6 @@ export function canonicalGeneratedMapUrl(
     origin,
     request.options,
     request.renderOptions,
-    request.gridSnapshot,
   );
 }
 
@@ -496,16 +476,6 @@ export function parseGeneratedMapRequest(url: URL): GeneratedMapRequest {
     ),
   });
 
-  const gridSnapshot = url.searchParams.get("grid");
-  if (gridSnapshot === null) requestError("Missing grid parameter.");
-  let grid: Grid;
-  try {
-    grid = decodeGridSnapshot(gridSnapshot, options.width, options.height);
-  } catch (error) {
-    if (error instanceof GridSnapshotError) requestError(error.message);
-    throw error;
-  }
-
   return {
     version: version as typeof GENERATED_MAP_REQUEST_VERSION,
     options,
@@ -536,7 +506,5 @@ export function parseGeneratedMapRequest(url: URL): GeneratedMapRequest {
       ),
       hiddenItems: queryHiddenItems(url.searchParams),
     }),
-    grid,
-    gridSnapshot,
   };
 }
