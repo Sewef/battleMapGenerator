@@ -16,6 +16,12 @@ type ExportedObstacle = {
   id: number;
 };
 
+type PropPlacement = { x: number; y: number; size: 1 | 2 };
+type PropAssetSet = {
+  oneByOne: OwlbearPropAsset;
+  twoByTwo: OwlbearPropAsset;
+};
+
 export type OwlbearPropAsset = {
   url: string;
   mime: "image/png" | "image/jpeg" | "image/webp" | "image/gif" | "image/avif";
@@ -89,6 +95,29 @@ function collectObstacles(grid: Grid): ExportedObstacle[] {
     }
   }
   return [...obstacles.values()];
+}
+
+function propPlacements(points: Array<{ x: number; y: number }>): PropPlacement[] {
+  const remaining = new Set(points.map(({ x, y }) => `${x},${y}`));
+  const placements: PropPlacement[] = [];
+  const ordered = [...points].sort((a, b) => a.y - b.y || a.x - b.x);
+  for (const { x, y } of ordered) {
+    if (!remaining.has(`${x},${y}`)) continue;
+    const block = [
+      `${x},${y}`,
+      `${x + 1},${y}`,
+      `${x},${y + 1}`,
+      `${x + 1},${y + 1}`,
+    ];
+    if (block.every((key) => remaining.has(key))) {
+      block.forEach((key) => remaining.delete(key));
+      placements.push({ x, y, size: 2 });
+    } else {
+      remaining.delete(`${x},${y}`);
+      placements.push({ x, y, size: 1 });
+    }
+  }
+  return placements;
 }
 
 function imageItem(
@@ -182,15 +211,16 @@ async function mimeFromUrl(parsed: URL): Promise<OwlbearPropAsset["mime"]> {
 
 export async function inspectOwlbearProp(
   customUrl: string | undefined,
-  assetName: string,
+  defaultAssetPath: string,
 ): Promise<OwlbearPropAsset> {
   const value = customUrl?.trim();
   if (!value) {
+    const url = new URL(defaultAssetPath, window.location.origin).href;
+    const dimensions = await imageDimensions(url);
     return {
-      url: new URL(`/assets/${assetName}`, window.location.origin).href,
+      url,
       mime: "image/png",
-      width: 512,
-      height: 512,
+      ...dimensions,
     };
   }
   let parsed: URL;
@@ -212,6 +242,29 @@ export async function inspectOwlbearProp(
   return { url: parsed.href, mime, ...dimensions };
 }
 
+async function owlBearPropAssets(
+  customUrl: string | undefined,
+  kind: "tree" | "rock",
+  useTileset: boolean,
+): Promise<PropAssetSet> {
+  if (customUrl?.trim()) {
+    const custom = await inspectOwlbearProp(customUrl, "");
+    return { oneByOne: custom, twoByTwo: custom };
+  }
+  if (useTileset) {
+    const [oneByOne, twoByTwo] = await Promise.all([
+      inspectOwlbearProp(undefined, `/assets/tilesets/${kind}_1x1.png`),
+      inspectOwlbearProp(undefined, `/assets/tilesets/${kind}_2x2.png`),
+    ]);
+    return { oneByOne, twoByTwo };
+  }
+  const fallback = await inspectOwlbearProp(
+    undefined,
+    `/assets/tilesets/${kind}.png`,
+  );
+  return { oneByOne: fallback, twoByTwo: fallback };
+}
+
 export async function createOwlbearSceneJson(
   grid: Grid,
   mode: LandscapeMode,
@@ -220,9 +273,9 @@ export async function createOwlbearSceneJson(
   options: OwlbearExportOptions = {},
 ): Promise<OwlbearSceneExport> {
   if (!grid.length) throw new Error("Generate a map before exporting.");
-  const [treeAsset, rockAsset] = await Promise.all([
-    inspectOwlbearProp(options.treeUrl, "tree.png"),
-    inspectOwlbearProp(options.rockUrl, "rock.png"),
+  const [treeAssets, rockAssets] = await Promise.all([
+    owlBearPropAssets(options.treeUrl, "tree", options.useTileset ?? false),
+    owlBearPropAssets(options.rockUrl, "rock", options.useTileset ?? false),
   ]);
   const mapHiddenItems = new Set(hiddenItems);
   mapHiddenItems.add(Obstacle.Tree);
@@ -279,8 +332,9 @@ export async function createOwlbearSceneJson(
       (tile.obstacleId ?? y * grid[y].length + x) === obstacle.id
     );
     if (!points.length) return;
-    const asset = obstacle.kind === Obstacle.Tree ? treeAsset : rockAsset;
-    points.forEach(({ x, y }, pointIndex) => {
+    const assets = obstacle.kind === Obstacle.Tree ? treeAssets : rockAssets;
+    propPlacements(points).forEach(({ x, y, size }, pointIndex) => {
+      const asset = size === 2 ? assets.twoByTwo : assets.oneByOne;
       const id = crypto.randomUUID();
       shared[id] = imageItem(
         id,
@@ -291,16 +345,16 @@ export async function createOwlbearSceneJson(
         asset.width,
         asset.height,
         {
-          x: (x + .5) * OWLBEAR_SCENE_DPI,
-          y: (y + .5) * OWLBEAR_SCENE_DPI,
+          x: (x + size / 2) * OWLBEAR_SCENE_DPI,
+          y: (y + size / 2) * OWLBEAR_SCENE_DPI,
         },
         PROP_IMAGE_DPI,
         { x: asset.width / 2, y: asset.height / 2 },
         nextPropZIndex,
         false,
         {
-          x: PROP_IMAGE_DPI / asset.width,
-          y: PROP_IMAGE_DPI / asset.height,
+          x: size * PROP_IMAGE_DPI / asset.width,
+          y: size * PROP_IMAGE_DPI / asset.height,
         },
       );
       nextPropZIndex += 1;

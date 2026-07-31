@@ -20,6 +20,14 @@ export interface RenderOptions {
   showGrid?: boolean;
   useTileset?: boolean;
   tilesetImage?: CanvasImageSource;
+  tilesetProps?: TilesetPropImages;
+}
+
+export interface TilesetPropImages {
+  tree1x1: CanvasImageSource;
+  tree2x2: CanvasImageSource;
+  rock1x1: CanvasImageSource;
+  rock2x2: CanvasImageSource;
 }
 
 
@@ -47,6 +55,26 @@ function terrainVariation(x: number, y: number, salt: number) {
 
 function outsideGrid(grid: Grid, x: number, y: number) {
   return y < 0 || y >= grid.length || x < 0 || x >= grid[0].length;
+}
+
+function drawTilesetProp(
+  image: CanvasImageSource,
+  x: number,
+  y: number,
+  size: 1 | 2,
+  cellSize: number,
+  context: CanvasRenderingContext2D,
+) {
+  context.save();
+  context.imageSmoothingEnabled = false;
+  context.drawImage(
+    image,
+    x * cellSize,
+    y * cellSize,
+    size * cellSize,
+    size * cellSize,
+  );
+  context.restore();
 }
 
 const overlayTerrains = new Set<TerrainKind>([
@@ -2347,7 +2375,18 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
         formation.every((key) => rockCells.has(key)) &&
         formation.every((key) => !renderedRockCells.has(key))
       ) {
-        drawRock(x, y, cellSize, mode, context, 2);
+        if (options.useTileset && options.tilesetProps) {
+          drawTilesetProp(
+            options.tilesetProps.rock2x2,
+            x,
+            y,
+            2,
+            cellSize,
+            context,
+          );
+        } else {
+          drawRock(x, y, cellSize, mode, context, 2);
+        }
         for (const key of formation) renderedRockCells.add(key);
       }
     }
@@ -2355,7 +2394,18 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   for (const key of rockCells) {
     if (renderedRockCells.has(key)) continue;
     const [x, y] = key.split(",").map(Number);
-    drawRock(x, y, cellSize, mode, context);
+    if (options.useTileset && options.tilesetProps) {
+      drawTilesetProp(
+        options.tilesetProps.rock1x1,
+        x,
+        y,
+        1,
+        cellSize,
+        context,
+      );
+    } else {
+      drawRock(x, y, cellSize, mode, context);
+    }
   }
   context.globalAlpha = 1;
   context.globalAlpha =
@@ -2366,7 +2416,42 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   context.globalAlpha = 1;
   context.globalAlpha = hiddenItems.has(Obstacle.Tree) ? hiddenOpacity : 1;
   for (const points of treeGroups.values()) {
-    drawTree(points, cellSize, mode, context);
+    if (options.useTileset && options.tilesetProps && points.length === 4) {
+      const minimumX = Math.min(...points.map(({ x }) => x));
+      const minimumY = Math.min(...points.map(({ y }) => y));
+      const completeBlock = [
+        `${minimumX},${minimumY}`,
+        `${minimumX + 1},${minimumY}`,
+        `${minimumX},${minimumY + 1}`,
+        `${minimumX + 1},${minimumY + 1}`,
+      ];
+      const pointKeys = new Set(points.map(({ x, y }) => `${x},${y}`));
+      if (completeBlock.every((key) => pointKeys.has(key))) {
+        drawTilesetProp(
+          options.tilesetProps.tree2x2,
+          minimumX,
+          minimumY,
+          2,
+          cellSize,
+          context,
+        );
+        continue;
+      }
+    }
+    if (options.useTileset && options.tilesetProps) {
+      for (const { x, y } of points) {
+        drawTilesetProp(
+          options.tilesetProps.tree1x1,
+          x,
+          y,
+          1,
+          cellSize,
+          context,
+        );
+      }
+    } else {
+      drawTree(points, cellSize, mode, context);
+    }
   }
   context.globalAlpha = 1;
 

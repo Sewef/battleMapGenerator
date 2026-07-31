@@ -5,7 +5,7 @@ import {
   type Grid,
   type Preset,
 } from "./generator";
-import { drawGrid } from "./rendering/canvas";
+import { drawGrid, type TilesetPropImages } from "./rendering/canvas";
 import { PARAMETER_FIELDS, renderApp } from "./ui/template";
 import { downloadWebp } from "./export/webp";
 import {
@@ -48,6 +48,18 @@ const owlbearDownloadButton =
 const tilesetImage = new Image();
 tilesetImage.src = "/assets/tilesets/terrain.png";
 const tilesetReady = () => tilesetImage.naturalWidth > 0;
+const tilesetProps = {
+  tree1x1: new Image(),
+  tree2x2: new Image(),
+  rock1x1: new Image(),
+  rock2x2: new Image(),
+} satisfies TilesetPropImages;
+tilesetProps.tree1x1.src = "/assets/tilesets/tree_1x1.png";
+tilesetProps.tree2x2.src = "/assets/tilesets/tree_2x2.png";
+tilesetProps.rock1x1.src = "/assets/tilesets/rock_1x1.png";
+tilesetProps.rock2x2.src = "/assets/tilesets/rock_2x2.png";
+const tilesetPropsReady = () =>
+  Object.values(tilesetProps).every((image) => image.naturalWidth > 0);
 const inputs = Object.fromEntries(
   PARAMETER_FIELDS.map(({ id }) => [
     id,
@@ -105,6 +117,7 @@ function renderMap(grid: Grid, targetCanvas = previewCanvas, cellSize?: number) 
     showGrid: previewGridInput.checked,
     useTileset: useTilesetInput.checked && tilesetReady(),
     tilesetImage,
+    tilesetProps: tilesetPropsReady() ? tilesetProps : undefined,
   });
 }
 
@@ -306,12 +319,25 @@ owlbearCopyButton.addEventListener("click", () => {
 owlbearDownloadButton.addEventListener("click", () => {
   void runOwlbearExport("download");
 });
-bindPropPreview(owlbearTreeUrlInput, owlbearTreePreview, "tree.png");
-bindPropPreview(owlbearRockUrlInput, owlbearRockPreview, "rock.png");
+bindPropPreview(
+  owlbearTreeUrlInput,
+  owlbearTreePreview,
+  "/assets/tilesets/tree.png",
+);
+bindPropPreview(
+  owlbearRockUrlInput,
+  owlbearRockPreview,
+  "/assets/tilesets/rock.png",
+);
 previewGridInput.addEventListener("change", () => renderMap(currentGrid));
 useTilesetInput.addEventListener("change", () => renderMap(currentGrid));
 tilesetImage.addEventListener("load", () => {
   if (useTilesetInput.checked) renderMap(currentGrid);
+});
+Object.values(tilesetProps).forEach((image) => {
+  image.addEventListener("load", () => {
+    if (useTilesetInput.checked) renderMap(currentGrid);
+  });
 });
 document.querySelector("#legend")!.addEventListener("click", (event) => {
   const groupButton = (event.target as HTMLElement).closest<HTMLButtonElement>(
