@@ -230,6 +230,8 @@ canvas { display: block; max-width: 100%; height: auto !important; box-shadow: 0
 .asset-credit p { margin: 0; text-align: right; }
 .asset-credit a { color: #536b51; text-underline-offset: 2px; }
 .asset-credit a:hover { color: #b45e38; }
+.footer-separator { margin: 0 6px; color: #a5aaa5; }
+.asset-credit .discord-link { font-weight: 600; }
 
 @media (max-width: 900px) {
   .shell { width: min(100% - 28px, 720px); }

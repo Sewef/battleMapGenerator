@@ -269,6 +269,8 @@ export function renderApp(root: HTMLElement) {
           Tileset assets from
           <a href="https://opengameart.org/content/16x16-game-assets" target="_blank" rel="noopener noreferrer">16x16 Game Assets</a>
           by George Bailey · CC BY 4.0
+          <span class="footer-separator" aria-hidden="true">·</span>
+          <a class="discord-link" href="https://discord.gg/AZkX28fb64" target="_blank" rel="noopener noreferrer">Join the Discord</a>
         </p>
       </footer>
     </main>
