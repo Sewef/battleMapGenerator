@@ -6,7 +6,12 @@ import {
   type Grid,
   type Preset,
 } from "./generator";
-import { drawGrid, type TilesetPropImages } from "./rendering/canvas";
+import {
+  drawGrid,
+  type CustomPropImages,
+  type PropRenderMode,
+  type TilesetPropImages,
+} from "./rendering/canvas";
 import {
   BIOME_PARAMETER_PROFILES,
   PARAMETER_FIELDS,
@@ -16,7 +21,7 @@ import { copyWebp, downloadWebp } from "./export/webp";
 import {
   createOwlbearSceneJson,
   downloadOwlbearJson,
-  inspectOwlbearProp,
+  inspectPropAsset,
 } from "./export/owlbear";
 
 const randomSeed = () =>
@@ -33,30 +38,42 @@ const previewGridInput =
 const showGridInput = document.querySelector<HTMLInputElement>("#show-grid")!;
 const useTilesetInput =
   document.querySelector<HTMLInputElement>("#use-tileset")!;
+const propRenderModeInput =
+  document.querySelector<HTMLSelectElement>("#prop-render-mode")!;
+const customPropSettings =
+  document.querySelector<HTMLElement>("#custom-prop-settings")!;
 const stylizedLightingInput =
   document.querySelector<HTMLInputElement>("#stylized-lighting")!;
-const owlbearTreeUrlInput =
-  document.querySelector<HTMLInputElement>("#owlbear-tree-url")!;
-const owlbearRockUrlInput =
-  document.querySelector<HTMLInputElement>("#owlbear-rock-url")!;
-const owlbearTreePreview =
-  document.querySelector<HTMLElement>("#owlbear-tree-preview")!;
-const owlbearRockPreview =
-  document.querySelector<HTMLElement>("#owlbear-rock-preview")!;
+const treePropUrlInput =
+  document.querySelector<HTMLInputElement>("#custom-tree-url")!;
+const rockPropUrlInput =
+  document.querySelector<HTMLInputElement>("#custom-rock-url")!;
+const treePropPreview =
+  document.querySelector<HTMLElement>("#custom-tree-preview")!;
+const rockPropPreview =
+  document.querySelector<HTMLElement>("#custom-rock-preview")!;
 const owlbearStatus =
   document.querySelector<HTMLParagraphElement>("#owlbear-status")!;
 const webpStatus =
   document.querySelector<HTMLParagraphElement>("#webp-status")!;
-const webpDownloadButton =
-  document.querySelector<HTMLButtonElement>("#download")!;
-const webpCopyButton =
-  document.querySelector<HTMLButtonElement>("#copy-webp")!;
+const webpCopyWithPropsButton =
+  document.querySelector<HTMLButtonElement>("#copy-webp-with-props")!;
+const webpDownloadWithPropsButton =
+  document.querySelector<HTMLButtonElement>("#download-webp-with-props")!;
+const webpCopyBackgroundButton =
+  document.querySelector<HTMLButtonElement>("#copy-webp-background")!;
+const webpDownloadBackgroundButton =
+  document.querySelector<HTMLButtonElement>("#download-webp-background")!;
+const webpButtons = [
+  webpCopyWithPropsButton,
+  webpDownloadWithPropsButton,
+  webpCopyBackgroundButton,
+  webpDownloadBackgroundButton,
+];
 const owlbearCopyButton =
   document.querySelector<HTMLButtonElement>("#copy-owlbear")!;
 const owlbearDownloadButton =
   document.querySelector<HTMLButtonElement>("#download-owlbear")!;
-const owlbearBackgroundButton =
-  document.querySelector<HTMLButtonElement>("#download-owlbear-background")!;
 const tilesetImage = new Image();
 tilesetImage.src = "/assets/tilesets/terrain.png";
 const tilesetReady = () => tilesetImage.naturalWidth > 0;
@@ -72,6 +89,16 @@ tilesetProps.rock1x1.src = "/assets/tilesets/rock_1x1.png";
 tilesetProps.rock2x2.src = "/assets/tilesets/rock_2x2.png";
 const tilesetPropsReady = () =>
   Object.values(tilesetProps).every((image) => image.naturalWidth > 0);
+const customProps: CustomPropImages = {};
+const customPropSources: Partial<Record<"tree" | "rock", string>> = {};
+const activeCustomProps = (): CustomPropImages => ({
+  tree: customPropSources.tree === treePropUrlInput.value.trim()
+    ? customProps.tree
+    : undefined,
+  rock: customPropSources.rock === rockPropUrlInput.value.trim()
+    ? customProps.rock
+    : undefined,
+});
 const inputs = Object.fromEntries(
   PARAMETER_FIELDS.map(({ id }) => [
     id,
@@ -137,6 +164,7 @@ function applyPreset(preset: Preset, useNewSeed = true) {
 }
 
 function renderMap(grid: Grid, targetCanvas = previewCanvas, cellSize?: number) {
+  const propRenderMode = propRenderModeInput.value as PropRenderMode;
   drawGrid(grid, {
     targetCanvas,
     mode: activePreset.mode,
@@ -146,8 +174,10 @@ function renderMap(grid: Grid, targetCanvas = previewCanvas, cellSize?: number) 
     hiddenItems: hiddenLegendItems,
     showGrid: previewGridInput.checked,
     useTileset: useTilesetInput.checked && tilesetReady(),
-    tilesetImage,
+    tilesetImage: tilesetReady() ? tilesetImage : undefined,
     tilesetProps: tilesetPropsReady() ? tilesetProps : undefined,
+    propRenderMode,
+    customProps: propRenderMode === "custom" ? activeCustomProps() : undefined,
     stylizedLighting: stylizedLightingInput.checked,
   });
 }
@@ -218,46 +248,65 @@ document.querySelector("#reset")!.addEventListener("click", () => {
   applyPreset(activePreset);
   generate();
 });
-async function runWebpExport(action: "copy" | "download") {
-  const activeButton = action === "copy" ? webpCopyButton : webpDownloadButton;
+function webpRenderOptions(includeProps: boolean) {
+  const hiddenItems = new Set(hiddenLegendItems);
+  if (!includeProps) {
+    hiddenItems.add(Obstacle.Tree);
+    hiddenItems.add(Obstacle.Rock);
+  }
+  const propRenderMode = propRenderModeInput.value as PropRenderMode;
+  return {
+    hiddenItems,
+    showGrid: showGridInput.checked,
+    useTileset: useTilesetInput.checked && tilesetReady(),
+    tilesetImage: tilesetReady() ? tilesetImage : undefined,
+    tilesetProps: tilesetPropsReady() ? tilesetProps : undefined,
+    propRenderMode,
+    customProps: propRenderMode === "custom" ? activeCustomProps() : undefined,
+    stylizedLighting: stylizedLightingInput.checked,
+    cellSize: 64,
+  };
+}
+
+async function runWebpExport(
+  action: "copy" | "download",
+  includeProps: boolean,
+  activeButton: HTMLButtonElement,
+) {
   const previousLabel = activeButton.textContent;
-  webpCopyButton.disabled = true;
-  webpDownloadButton.disabled = true;
+  webpButtons.forEach((button) => button.disabled = true);
   activeButton.textContent = "Encoding…";
   webpStatus.classList.remove("is-error");
-  webpStatus.textContent = "Rendering and encoding the WebP…";
+  webpStatus.textContent = includeProps
+    ? "Rendering the complete map…"
+    : "Rendering the prop-free background…";
 
   // Let the busy state paint before rendering a potentially large map.
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
   try {
-    const commonArguments = [
-      currentGrid,
-      activePreset.mode,
-      hiddenLegendItems,
-      showGridInput.checked,
-      useTilesetInput.checked && tilesetReady(),
-      tilesetImage,
-      tilesetPropsReady() ? tilesetProps : undefined,
-      stylizedLightingInput.checked,
-    ] as const;
+    const options = webpRenderOptions(includeProps);
     if (action === "copy") {
-      const clipboardFormat = await copyWebp(...commonArguments);
+      const clipboardFormat = await copyWebp(
+        currentGrid,
+        activePreset.mode,
+        options,
+      );
       webpStatus.textContent = clipboardFormat === "webp"
-        ? "WebP copied to the clipboard."
-        : "Map copied to the clipboard (PNG compatibility format).";
+        ? `${includeProps ? "Complete map" : "Background"} copied as WebP.`
+        : `${includeProps ? "Complete map" : "Background"} copied as PNG for browser compatibility.`;
     } else {
       await downloadWebp(
         currentGrid,
         activePreset.mode,
         seedInput.value.trim(),
-        hiddenLegendItems,
-        showGridInput.checked,
-        useTilesetInput.checked && tilesetReady(),
-        tilesetImage,
-        tilesetPropsReady() ? tilesetProps : undefined,
-        stylizedLightingInput.checked,
+        {
+          ...options,
+          filenameSuffix: includeProps ? "" : "-background",
+        },
       );
-      webpStatus.textContent = "WebP ready. The download has started.";
+      webpStatus.textContent = includeProps
+        ? "Complete WebP downloaded."
+        : "Background WebP downloaded.";
     }
   } catch (error) {
     webpStatus.classList.add("is-error");
@@ -265,17 +314,18 @@ async function runWebpExport(action: "copy" | "download") {
       ? `Export failed: ${error.message}`
       : "WebP export failed.";
   } finally {
-    webpCopyButton.disabled = false;
-    webpDownloadButton.disabled = false;
+    webpButtons.forEach((button) => button.disabled = false);
     activeButton.textContent = previousLabel;
   }
 }
-webpCopyButton.addEventListener("click", () => {
-  void runWebpExport("copy");
-});
-webpDownloadButton.addEventListener("click", () => {
-  void runWebpExport("download");
-});
+webpCopyWithPropsButton.addEventListener("click", () =>
+  void runWebpExport("copy", true, webpCopyWithPropsButton));
+webpDownloadWithPropsButton.addEventListener("click", () =>
+  void runWebpExport("download", true, webpDownloadWithPropsButton));
+webpCopyBackgroundButton.addEventListener("click", () =>
+  void runWebpExport("copy", false, webpCopyBackgroundButton));
+webpDownloadBackgroundButton.addEventListener("click", () =>
+  void runWebpExport("download", false, webpDownloadBackgroundButton));
 async function copyText(text: string) {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(text);
@@ -293,41 +343,71 @@ async function copyText(text: string) {
 }
 
 function owlbearExportKey() {
+  const propRenderMode = propRenderModeInput.value as PropRenderMode;
   return JSON.stringify({
     mapRevision,
     seed: seedInput.value.trim(),
     hiddenItems: [...hiddenLegendItems].sort(),
-    useTileset: useTilesetInput.checked && tilesetReady(),
-    treeUrl: owlbearTreeUrlInput.value.trim(),
-    rockUrl: owlbearRockUrlInput.value.trim(),
+    propRenderMode,
+    treeUrl: propRenderMode === "custom"
+      ? treePropUrlInput.value.trim()
+      : "",
+    rockUrl: propRenderMode === "custom"
+      ? rockPropUrlInput.value.trim()
+      : "",
   });
 }
 
 async function updatePropPreview(
   input: HTMLInputElement,
   preview: HTMLElement,
-  assetName: string,
+  kind: "tree" | "rock",
 ) {
   const requestedUrl = input.value.trim();
   preview.classList.remove("is-error");
   preview.classList.add("is-loading");
   const information = preview.querySelector<HTMLElement>("small")!;
-  const image = preview.querySelector<HTMLImageElement>("img")!;
+  const previewImage = preview.querySelector<HTMLImageElement>("img")!;
+  if (!requestedUrl) {
+    delete customProps[kind];
+    delete customPropSources[kind];
+    previewImage.src = `/assets/tilesets/${kind}_1x1.png`;
+    previewImage.style.display = "block";
+    information.textContent = "Tileset fallback";
+    preview.classList.remove("is-loading");
+    if (propRenderModeInput.value === "custom") renderMap(currentGrid);
+    return;
+  }
   information.textContent = "Checking image…";
   try {
-    const asset = await inspectOwlbearProp(requestedUrl, assetName);
+    const asset = await inspectPropAsset(requestedUrl, "");
+    const canvasImage = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image();
+      image.crossOrigin = "anonymous";
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error(
+        "The image host does not allow cross-origin canvas rendering.",
+      ));
+      image.src = asset.url;
+    });
     if (input.value.trim() !== requestedUrl) return;
-    image.src = asset.url;
-    image.style.display = "block";
+    customProps[kind] = canvasImage;
+    customPropSources[kind] = requestedUrl;
+    previewImage.src = asset.url;
+    previewImage.style.display = "block";
     information.textContent =
       `${asset.width} × ${asset.height} · ${asset.mime.replace("image/", "").toUpperCase()}`;
+    if (propRenderModeInput.value === "custom") renderMap(currentGrid);
   } catch (error) {
     if (input.value.trim() !== requestedUrl) return;
+    delete customProps[kind];
+    delete customPropSources[kind];
     preview.classList.add("is-error");
-    image.removeAttribute("src");
+    previewImage.removeAttribute("src");
     information.textContent = error instanceof Error
       ? error.message
       : "Unable to inspect this prop.";
+    if (propRenderModeInput.value === "custom") renderMap(currentGrid);
   } finally {
     if (input.value.trim() === requestedUrl) {
       preview.classList.remove("is-loading");
@@ -338,21 +418,22 @@ async function updatePropPreview(
 function bindPropPreview(
   input: HTMLInputElement,
   preview: HTMLElement,
-  assetName: string,
+  kind: "tree" | "rock",
 ) {
   let timeout = 0;
   const schedule = () => {
     window.clearTimeout(timeout);
+    if (propRenderModeInput.value === "custom") renderMap(currentGrid);
     timeout = window.setTimeout(() => {
-      void updatePropPreview(input, preview, assetName);
+      void updatePropPreview(input, preview, kind);
     }, 450);
   };
   input.addEventListener("input", schedule);
   input.addEventListener("change", () => {
     window.clearTimeout(timeout);
-    void updatePropPreview(input, preview, assetName);
+    void updatePropPreview(input, preview, kind);
   });
-  void updatePropPreview(input, preview, assetName);
+  void updatePropPreview(input, preview, kind);
 }
 
 async function runOwlbearExport(action: "copy" | "download") {
@@ -365,21 +446,25 @@ async function runOwlbearExport(action: "copy" | "download") {
     : undefined;
   owlbearCopyButton.disabled = true;
   owlbearDownloadButton.disabled = true;
-  owlbearBackgroundButton.disabled = true;
   activeButton.textContent = "Preparing…";
   owlbearStatus.classList.remove("is-error");
   owlbearStatus.textContent = cachedScene
     ? "Reusing the latest Owlbear export…"
     : "Preparing the Owlbear JSON…";
   try {
+    const propRenderMode = propRenderModeInput.value as PropRenderMode;
     const scene = cachedScene ?? await createOwlbearSceneJson(
       currentGrid,
       seedInput.value.trim(),
       hiddenLegendItems,
       {
-        useTileset: useTilesetInput.checked && tilesetReady(),
-        treeUrl: owlbearTreeUrlInput.value,
-        rockUrl: owlbearRockUrlInput.value,
+        useTileset: propRenderMode !== "procedural",
+        treeUrl: propRenderMode === "custom"
+          ? treePropUrlInput.value
+          : undefined,
+        rockUrl: propRenderMode === "custom"
+          ? rockPropUrlInput.value
+          : undefined,
       },
     );
     if (!cachedScene) {
@@ -402,50 +487,9 @@ async function runOwlbearExport(action: "copy" | "download") {
   } finally {
     owlbearCopyButton.disabled = false;
     owlbearDownloadButton.disabled = false;
-    owlbearBackgroundButton.disabled = false;
     activeButton.textContent = previousLabel;
   }
 }
-owlbearBackgroundButton.addEventListener("click", async () => {
-  const previousLabel = owlbearBackgroundButton.textContent;
-  owlbearBackgroundButton.disabled = true;
-  owlbearCopyButton.disabled = true;
-  owlbearDownloadButton.disabled = true;
-  owlbearBackgroundButton.textContent = "Encoding…";
-  owlbearStatus.classList.remove("is-error");
-  owlbearStatus.textContent = "Preparing the prop-free background…";
-  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-  try {
-    const backgroundHiddenItems = new Set(hiddenLegendItems);
-    backgroundHiddenItems.add(Obstacle.Tree);
-    backgroundHiddenItems.add(Obstacle.Rock);
-    await downloadWebp(
-      currentGrid,
-      activePreset.mode,
-      seedInput.value.trim(),
-      backgroundHiddenItems,
-      showGridInput.checked,
-      useTilesetInput.checked && tilesetReady(),
-      tilesetImage,
-      tilesetPropsReady() ? tilesetProps : undefined,
-      stylizedLightingInput.checked,
-      64,
-      "-background",
-    );
-    owlbearStatus.textContent =
-      "Background downloaded. Upload it as a map in Owlbear.";
-  } catch (error) {
-    owlbearStatus.classList.add("is-error");
-    owlbearStatus.textContent = error instanceof Error
-      ? `Export failed: ${error.message}`
-      : "Background export failed.";
-  } finally {
-    owlbearBackgroundButton.disabled = false;
-    owlbearCopyButton.disabled = false;
-    owlbearDownloadButton.disabled = false;
-    owlbearBackgroundButton.textContent = previousLabel;
-  }
-});
 owlbearCopyButton.addEventListener("click", () => {
   void runOwlbearExport("copy");
 });
@@ -453,24 +497,31 @@ owlbearDownloadButton.addEventListener("click", () => {
   void runOwlbearExport("download");
 });
 bindPropPreview(
-  owlbearTreeUrlInput,
-  owlbearTreePreview,
-  "/assets/tilesets/tree.png",
+  treePropUrlInput,
+  treePropPreview,
+  "tree",
 );
 bindPropPreview(
-  owlbearRockUrlInput,
-  owlbearRockPreview,
-  "/assets/tilesets/rock.png",
+  rockPropUrlInput,
+  rockPropPreview,
+  "rock",
 );
 previewGridInput.addEventListener("change", () => renderMap(currentGrid));
 useTilesetInput.addEventListener("change", () => renderMap(currentGrid));
+propRenderModeInput.addEventListener("change", () => {
+  customPropSettings.hidden = propRenderModeInput.value !== "custom";
+  renderMap(currentGrid);
+});
 stylizedLightingInput.addEventListener("change", () => renderMap(currentGrid));
 tilesetImage.addEventListener("load", () => {
-  if (useTilesetInput.checked) renderMap(currentGrid);
+  if (
+    useTilesetInput.checked ||
+    propRenderModeInput.value !== "procedural"
+  ) renderMap(currentGrid);
 });
 Object.values(tilesetProps).forEach((image) => {
   image.addEventListener("load", () => {
-    if (useTilesetInput.checked) renderMap(currentGrid);
+    if (propRenderModeInput.value !== "procedural") renderMap(currentGrid);
   });
 });
 document.querySelector("#legend")!.addEventListener("click", (event) => {

@@ -207,7 +207,7 @@ async function mimeFromUrl(parsed: URL): Promise<OwlbearPropAsset["mime"]> {
   return contentType as OwlbearPropAsset["mime"];
 }
 
-export async function inspectOwlbearProp(
+export async function inspectPropAsset(
   customUrl: string | undefined,
   defaultAssetPath: string,
 ): Promise<OwlbearPropAsset> {
@@ -248,17 +248,17 @@ async function owlBearPropAssets(
   useTileset: boolean,
 ): Promise<PropAssetSet> {
   if (customUrl?.trim()) {
-    const custom = await inspectOwlbearProp(customUrl, "");
+    const custom = await inspectPropAsset(customUrl, "");
     return { oneByOne: custom, twoByTwo: custom };
   }
   if (useTileset) {
     const [oneByOne, twoByTwo] = await Promise.all([
-      inspectOwlbearProp(undefined, `/assets/tilesets/${kind}_1x1.png`),
-      inspectOwlbearProp(undefined, `/assets/tilesets/${kind}_2x2.png`),
+      inspectPropAsset(undefined, `/assets/tilesets/${kind}_1x1.png`),
+      inspectPropAsset(undefined, `/assets/tilesets/${kind}_2x2.png`),
     ]);
     return { oneByOne, twoByTwo };
   }
-  const fallback = await inspectOwlbearProp(
+  const fallback = await inspectPropAsset(
     undefined,
     `/assets/tilesets/${kind}.png`,
   );

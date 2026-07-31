@@ -1,7 +1,28 @@
 import type { Grid, LandscapeMode } from "../domain/map";
-import { drawGrid, type TilesetPropImages } from "../rendering/canvas";
+import {
+  drawGrid,
+  type CustomPropImages,
+  type PropRenderMode,
+  type TilesetPropImages,
+} from "../rendering/canvas";
 
 const WEBP_QUALITY = 0.95;
+
+export interface WebpRenderOptions {
+  hiddenItems: ReadonlySet<string>;
+  showGrid?: boolean;
+  useTileset?: boolean;
+  tilesetImage?: CanvasImageSource;
+  tilesetProps?: TilesetPropImages;
+  propRenderMode?: PropRenderMode;
+  customProps?: CustomPropImages;
+  stylizedLighting?: boolean;
+  cellSize?: number;
+}
+
+export interface WebpDownloadOptions extends WebpRenderOptions {
+  filenameSuffix?: string;
+}
 
 function encodeWebp(canvas: HTMLCanvasElement) {
   return new Promise<Blob>((resolve, reject) => {
@@ -35,29 +56,25 @@ function encodePng(canvas: HTMLCanvasElement) {
 export function renderExportCanvas(
   grid: Grid,
   mode: LandscapeMode,
-  cellSize: number,
-  hiddenItems: ReadonlySet<string>,
-  showGrid: boolean,
-  useTileset: boolean,
-  tilesetImage: CanvasImageSource | undefined,
-  tilesetProps?: TilesetPropImages,
-  stylizedLighting = false,
+  options: WebpRenderOptions,
 ) {
   const canvas = document.createElement("canvas");
   drawGrid(grid, {
     targetCanvas: canvas,
     mode,
-    cellSize,
+    cellSize: options.cellSize ?? 64,
     pixelRatio: 1,
     updateInterface: false,
-    hiddenItems,
+    hiddenItems: options.hiddenItems,
     hiddenOpacity: 0,
     transparentBackground: true,
-    showGrid,
-    useTileset,
-    tilesetImage,
-    tilesetProps,
-    stylizedLighting,
+    showGrid: options.showGrid ?? true,
+    useTileset: options.useTileset ?? false,
+    tilesetImage: options.tilesetImage,
+    tilesetProps: options.tilesetProps,
+    propRenderMode: options.propRenderMode,
+    customProps: options.customProps,
+    stylizedLighting: options.stylizedLighting ?? false,
   });
   return canvas;
 }
@@ -78,30 +95,18 @@ export async function downloadWebp(
   grid: Grid,
   mode: LandscapeMode,
   seed: string,
-  hiddenItems: ReadonlySet<string>,
-  showGrid = true,
-  useTileset = false,
-  tilesetImage?: CanvasImageSource,
-  tilesetProps?: TilesetPropImages,
-  stylizedLighting = false,
-  cellSize = 64,
-  filenameSuffix = "",
+  options: WebpDownloadOptions,
 ) {
-  const canvas = renderExportCanvas(
-    grid,
-    mode,
-    cellSize,
-    hiddenItems,
-    showGrid,
-    useTileset,
-    tilesetImage,
-    tilesetProps,
-    stylizedLighting,
-  );
+  const canvas = renderExportCanvas(grid, mode, options);
   const blob = await encodeWebp(canvas);
   const objectUrl = URL.createObjectURL(blob);
   const link = document.createElement("a");
-  link.download = mapFilename(grid, seed, "webp", filenameSuffix);
+  link.download = mapFilename(
+    grid,
+    seed,
+    "webp",
+    options.filenameSuffix ?? "",
+  );
   link.href = objectUrl;
   document.body.append(link);
   link.click();
@@ -112,28 +117,12 @@ export async function downloadWebp(
 export async function copyWebp(
   grid: Grid,
   mode: LandscapeMode,
-  hiddenItems: ReadonlySet<string>,
-  showGrid = true,
-  useTileset = false,
-  tilesetImage?: CanvasImageSource,
-  tilesetProps?: TilesetPropImages,
-  stylizedLighting = false,
-  cellSize = 64,
+  options: WebpRenderOptions,
 ) {
   if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
     throw new Error("This browser does not support copying images to the clipboard.");
   }
-  const canvas = renderExportCanvas(
-    grid,
-    mode,
-    cellSize,
-    hiddenItems,
-    showGrid,
-    useTileset,
-    tilesetImage,
-    tilesetProps,
-    stylizedLighting,
-  );
+  const canvas = renderExportCanvas(grid, mode, options);
   const supportsWebp = typeof ClipboardItem.supports === "function" &&
     ClipboardItem.supports("image/webp");
   const blob = supportsWebp ? await encodeWebp(canvas) : await encodePng(canvas);

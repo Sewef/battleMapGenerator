@@ -148,16 +148,58 @@ export function renderApp(root: HTMLElement) {
                 <h2 id="map-content-title">Map content</h2>
                 <p>These settings affect the preview, WebP and Owlbear exports.</p>
               </div>
-              <div class="shared-render-options">
-                <label class="grid-option">
+            </div>
+            <div class="render-settings">
+              <label class="render-setting">
+                <span>Terrain style</span>
+                <span class="grid-option">
                   <input id="use-tileset" type="checkbox" />
-                  <span>Use tileset</span>
-                </label>
-                <label class="grid-option" title="Adds directional relief, ambient shading and subtle light emitted by liquids.">
+                  <span>Use terrain tileset</span>
+                </span>
+              </label>
+              <label class="render-setting">
+                <span>Prop rendering</span>
+                <select id="prop-render-mode">
+                  <option value="procedural">Procedural</option>
+                  <option value="tileset">Tileset</option>
+                  <option value="custom">Tileset + custom images</option>
+                </select>
+              </label>
+              <label class="render-setting" title="Adds directional relief, ambient shading and subtle light emitted by liquids.">
+                <span>Lighting</span>
+                <span class="grid-option">
                   <input id="stylized-lighting" type="checkbox" checked />
                   <span>Stylized lighting</span>
+                </span>
+              </label>
+            </div>
+            <div class="custom-prop-settings" id="custom-prop-settings" hidden>
+              <div class="custom-prop-heading">
+                <div>
+                  <strong>Custom prop images</strong>
+                  <p>Square direct image URLs. Empty fields fall back to tileset assets.</p>
+                </div>
+                <span>Used everywhere</span>
+              </div>
+              <div class="custom-prop-fields">
+                <label class="owlbear-field">
+                  <span>Tree image URL <small>Optional</small></span>
+                  <input id="custom-tree-url" name="tree-prop-url" type="url" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" placeholder="https://example.com/tree.png" />
+                  <span class="prop-preview" id="custom-tree-preview">
+                    <img src="/assets/tilesets/tree_1x1.png" alt="Tree prop preview" />
+                    <small>Tileset fallback</small>
+                  </span>
+                </label>
+                <label class="owlbear-field">
+                  <span>Rock image URL <small>Optional</small></span>
+                  <input id="custom-rock-url" name="rock-prop-url" type="url" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" placeholder="https://example.com/rock.png" />
+                  <span class="prop-preview" id="custom-rock-preview">
+                    <img src="/assets/tilesets/rock_1x1.png" alt="Rock prop preview" />
+                    <small>Tileset fallback</small>
+                  </span>
                 </label>
               </div>
+              <p class="custom-prop-notice">The image host must allow cross-origin canvas use for preview and WebP export. Owlbear also needs the URL to remain publicly accessible.</p>
             </div>
             <div class="map-footer">
               <div class="legend" id="legend"></div>
@@ -178,18 +220,36 @@ export function renderApp(root: HTMLElement) {
                 </div>
                 <span class="export-format">.WEBP</span>
               </div>
-              <p class="export-description">A compact image with the current terrain and selected props.</p>
+              <p class="export-description">Export the current rendering, or a clean background ready for separate Owlbear props.</p>
               <div class="webp-options">
                 <label class="grid-option">
                   <input id="show-grid" type="checkbox" />
                   <span>Include grid in WebP</span>
                 </label>
               </div>
-              <p id="webp-status" role="status" aria-live="polite"></p>
-              <div class="webp-actions">
-                <button id="copy-webp" class="download-button" type="button">Copy WebP</button>
-                <button id="download" class="owlbear-primary-button" type="button">Download WebP ↓</button>
+              <div class="webp-variants">
+                <div class="export-variant">
+                  <div>
+                    <strong>Complete map</strong>
+                    <span>Terrain, buildings, trees and rocks baked into one image.</span>
+                  </div>
+                  <div>
+                    <button id="copy-webp-with-props" class="download-button" type="button">Copy</button>
+                    <button id="download-webp-with-props" class="owlbear-primary-button" type="button">Download</button>
+                  </div>
+                </div>
+                <div class="export-variant">
+                  <div>
+                    <strong>Background only</strong>
+                    <span>Trees and rocks removed; buildings remain part of the map.</span>
+                  </div>
+                  <div>
+                    <button id="copy-webp-background" class="download-button" type="button">Copy</button>
+                    <button id="download-webp-background" class="owlbear-primary-button" type="button">Download</button>
+                  </div>
+                </div>
               </div>
+              <p id="webp-status" role="status" aria-live="polite"></p>
             </div>
             <div class="export-card owlbear-export" aria-labelledby="owlbear-title">
             <div class="owlbear-heading">
@@ -198,33 +258,14 @@ export function renderApp(root: HTMLElement) {
                 <h3 id="owlbear-title">Owlbear Rodeo</h3>
               </div>
             </div>
-            <div class="owlbear-options">
-              <label class="owlbear-field">
-                <span>Tree prop URL <small>Optional</small></span>
-                <input id="owlbear-tree-url" name="owlbear-tree-prop-url" type="url" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" placeholder="Direct URL" />
-                <span class="prop-preview" id="owlbear-tree-preview">
-                  <img alt="Tree prop preview" />
-                  <small>Loading default prop…</small>
-                </span>
-              </label>
-              <label class="owlbear-field">
-                <span>Rock prop URL <small>Optional</small></span>
-                <input id="owlbear-rock-url" name="owlbear-rock-prop-url" type="url" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" placeholder="Direct URL" />
-                <span class="prop-preview" id="owlbear-rock-preview">
-                  <img alt="Rock prop preview" />
-                  <small>Loading default prop…</small>
-                </span>
-              </label>
-            </div>
-            <div class="owlbear-instructions">
-              <span>1</span>
-              <p>Download and upload the background WebP to your Owlbear scene.</p>
-              <span>2</span>
-              <p>Paste or import the JSON, then remove its placeholder map.</p>
-            </div>
+            <p class="export-description">The JSON creates editable tree and rock props using the shared rendering choice above.</p>
+            <ol class="owlbear-instructions">
+              <li>Download the <strong>Background only</strong> WebP and upload it as an Owlbear map.</li>
+              <li>Copy or download the JSON and import it into the scene.</li>
+              <li>Remove the placeholder map included in the JSON.</li>
+            </ol>
             <div class="owlbear-actions">
               <p id="owlbear-status" role="status" aria-live="polite"></p>
-              <button id="download-owlbear-background" class="download-button" type="button">Download background</button>
               <button id="copy-owlbear" class="owlbear-primary-button" type="button">Copy JSON</button>
               <button id="download-owlbear" class="download-button" type="button">Download JSON ↓</button>
             </div>

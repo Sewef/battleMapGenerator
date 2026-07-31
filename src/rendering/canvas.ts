@@ -22,6 +22,8 @@ export interface RenderOptions {
   useTileset?: boolean;
   tilesetImage?: CanvasImageSource;
   tilesetProps?: TilesetPropImages;
+  propRenderMode?: PropRenderMode;
+  customProps?: CustomPropImages;
   stylizedLighting?: boolean;
 }
 
@@ -30,6 +32,13 @@ export interface TilesetPropImages {
   tree2x2: CanvasImageSource;
   rock1x1: CanvasImageSource;
   rock2x2: CanvasImageSource;
+}
+
+export type PropRenderMode = "procedural" | "tileset" | "custom";
+
+export interface CustomPropImages {
+  tree?: CanvasImageSource;
+  rock?: CanvasImageSource;
 }
 
 
@@ -121,6 +130,27 @@ function drawTilesetProp(
   applyPropContactShadow(cellSize, context);
   context.drawImage(
     tintedTilesetProp(image, size, cellSize, tint, tintStrength),
+    x * cellSize,
+    y * cellSize,
+    size * cellSize,
+    size * cellSize,
+  );
+  context.restore();
+}
+
+function drawCustomProp(
+  image: CanvasImageSource,
+  x: number,
+  y: number,
+  size: 1 | 2,
+  cellSize: number,
+  context: CanvasRenderingContext2D,
+) {
+  context.save();
+  context.imageSmoothingEnabled = true;
+  applyPropContactShadow(cellSize, context);
+  context.drawImage(
+    image,
     x * cellSize,
     y * cellSize,
     size * cellSize,
@@ -2514,6 +2544,9 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   const hiddenItems = options.hiddenItems ?? new Set<string>();
   const hiddenOpacity = options.hiddenOpacity ?? .14;
   const showGrid = options.showGrid ?? true;
+  const propRenderMode = options.propRenderMode ??
+    (options.useTileset ? "tileset" : "procedural");
+  const useImageProps = propRenderMode !== "procedural";
   const width = columns * cellSize;
   const height = rows * cellSize;
 
@@ -2692,7 +2725,16 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
         formation.every((key) => rockCells.has(key)) &&
         formation.every((key) => !renderedRockCells.has(key))
       ) {
-        if (options.useTileset && options.tilesetProps) {
+        if (propRenderMode === "custom" && options.customProps?.rock) {
+          drawCustomProp(
+            options.customProps.rock,
+            x,
+            y,
+            2,
+            cellSize,
+            context,
+          );
+        } else if (useImageProps && options.tilesetProps) {
           drawTilesetProp(
             options.tilesetProps.rock2x2,
             x,
@@ -2713,7 +2755,16 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   for (const key of rockCells) {
     if (renderedRockCells.has(key)) continue;
     const [x, y] = key.split(",").map(Number);
-    if (options.useTileset && options.tilesetProps) {
+    if (propRenderMode === "custom" && options.customProps?.rock) {
+      drawCustomProp(
+        options.customProps.rock,
+        x,
+        y,
+        1,
+        cellSize,
+        context,
+      );
+    } else if (useImageProps && options.tilesetProps) {
       drawTilesetProp(
         options.tilesetProps.rock1x1,
         x,
@@ -2738,13 +2789,13 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
       cellSize,
       mode,
       context,
-      options.useTileset ? options.tilesetImage : undefined,
+      useImageProps ? options.tilesetImage : undefined,
     );
   }
   context.globalAlpha = 1;
   context.globalAlpha = hiddenItems.has(Obstacle.Tree) ? hiddenOpacity : 1;
   for (const points of treeGroups.values()) {
-    if (options.useTileset && options.tilesetProps && points.length === 4) {
+    if (useImageProps && points.length === 4) {
       const minimumX = Math.min(...points.map(({ x }) => x));
       const minimumY = Math.min(...points.map(({ y }) => y));
       const completeBlock = [
@@ -2755,20 +2806,44 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
       ];
       const pointKeys = new Set(points.map(({ x, y }) => `${x},${y}`));
       if (completeBlock.every((key) => pointKeys.has(key))) {
-        drawTilesetProp(
-          options.tilesetProps.tree2x2,
-          minimumX,
-          minimumY,
-          2,
-          cellSize,
-          context,
-          objectStyle.tree.light,
-          .48,
-        );
-        continue;
+        if (propRenderMode === "custom" && options.customProps?.tree) {
+          drawCustomProp(
+            options.customProps.tree,
+            minimumX,
+            minimumY,
+            2,
+            cellSize,
+            context,
+          );
+          continue;
+        }
+        if (options.tilesetProps) {
+          drawTilesetProp(
+            options.tilesetProps.tree2x2,
+            minimumX,
+            minimumY,
+            2,
+            cellSize,
+            context,
+            objectStyle.tree.light,
+            .48,
+          );
+          continue;
+        }
       }
     }
-    if (options.useTileset && options.tilesetProps) {
+    if (propRenderMode === "custom" && options.customProps?.tree) {
+      for (const { x, y } of points) {
+        drawCustomProp(
+          options.customProps.tree,
+          x,
+          y,
+          1,
+          cellSize,
+          context,
+        );
+      }
+    } else if (useImageProps && options.tilesetProps) {
       for (const { x, y } of points) {
         drawTilesetProp(
           options.tilesetProps.tree1x1,
