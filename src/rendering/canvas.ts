@@ -1696,57 +1696,98 @@ function drawRoadNetwork(
 
   context.save();
   context.clip(roadFootprint);
-  context.lineCap = "round";
-  for (const { x, y } of roadCells) {
-    const transition = grid[y][x].transition;
-    if (!transition || tileSurface(grid[y][x]) !== Terrain.Road) continue;
-    let normalX = grid[y][x].transitionNormalX ?? 0;
-    let normalY = grid[y][x].transitionNormalY ?? 0;
-    if (Math.hypot(normalX, normalY) < .01) {
-      const horizontalConnections =
-        Number(roadKeys.has(`${x - 1},${y}`)) +
+  const transitionKeys = new Set(
+    roadCells
+      .filter(({ x, y }) =>
+        grid[y][x].transition && tileSurface(grid[y][x]) === Terrain.Road
+      )
+      .map(({ x, y }) => `${x},${y}`),
+  );
+  const pendingTransitions = new Set(transitionKeys);
+  while (pendingTransitions.size) {
+    const first = pendingTransitions.values().next().value as string;
+    const [firstX, firstY] = first.split(",").map(Number);
+    const component = [{ x: firstX, y: firstY }];
+    pendingTransitions.delete(first);
+    for (let index = 0; index < component.length; index += 1) {
+      const point = component[index];
+      for (const [offsetX, offsetY] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const key = `${point.x + offsetX},${point.y + offsetY}`;
+        if (!pendingTransitions.has(key)) continue;
+        pendingTransitions.delete(key);
+        component.push({ x: point.x + offsetX, y: point.y + offsetY });
+      }
+    }
+
+    let horizontalConnections = 0;
+    let verticalConnections = 0;
+    for (const { x, y } of component) {
+      horizontalConnections += Number(roadKeys.has(`${x - 1},${y}`)) +
         Number(roadKeys.has(`${x + 1},${y}`));
-      const verticalConnections =
-        Number(roadKeys.has(`${x},${y - 1}`)) +
+      verticalConnections += Number(roadKeys.has(`${x},${y - 1}`)) +
         Number(roadKeys.has(`${x},${y + 1}`));
-      normalX = horizontalConnections >= verticalConnections ? 1 : 0;
-      normalY = verticalConnections > horizontalConnections ? 1 : 0;
     }
-    const normalLength = Math.hypot(normalX, normalY) || 1;
-    normalX /= normalLength;
-    normalY /= normalLength;
-    const tangentX = -normalY;
-    const tangentY = normalX;
-    const centerX = (x + .5) * cellSize;
-    const centerY = (y + .5) * cellSize;
-    const steps = transition === "stairs" ? 6 : 3;
-    for (let index = 1; index <= steps; index += 1) {
-      const ratio = index / (steps + 1) - .5;
-      const bandX = centerX + normalX * ratio * cellSize * .88;
-      const bandY = centerY + normalY * ratio * cellSize * .88;
-      const halfLength = cellSize * .43;
-      const curve = cellSize * (transition === "stairs" ? .035 : .07);
-      context.strokeStyle = transition === "stairs"
-        ? index % 2
-          ? "rgba(55, 48, 40, .56)"
-          : "rgba(230, 216, 183, .3)"
-        : "rgba(77, 67, 52, .2)";
-      context.lineWidth = transition === "stairs"
-        ? Math.max(1, cellSize * .035)
-        : Math.max(1.5, cellSize * .07);
-      context.beginPath();
-      context.moveTo(
-        bandX - tangentX * halfLength,
-        bandY - tangentY * halfLength,
-      );
-      context.quadraticCurveTo(
-        bandX + normalX * curve,
-        bandY + normalY * curve,
-        bandX + tangentX * halfLength,
-        bandY + tangentY * halfLength,
-      );
-      context.stroke();
+    let axisX = horizontalConnections >= verticalConnections ? 1 : 0;
+    let axisY = verticalConnections > horizontalConnections ? 1 : 0;
+    const endpointHeight = (direction: number) => {
+      const heights = component.flatMap(({ x, y }) => {
+        const neighborX = x + axisX * direction;
+        const neighborY = y + axisY * direction;
+        if (transitionKeys.has(`${neighborX},${neighborY}`)) return [];
+        const height = grid[neighborY]?.[neighborX]?.height;
+        return height === undefined ? [] : [height];
+      });
+      return heights.length
+        ? heights.reduce((sum, height) => sum + height, 0) / heights.length
+        : undefined;
+    };
+    const negativeHeight = endpointHeight(-1);
+    const positiveHeight = endpointHeight(1);
+    const storedDirection = component.reduce((score, { x, y }) =>
+      score + (grid[y][x].transitionNormalX ?? 0) * axisX +
+        (grid[y][x].transitionNormalY ?? 0) * axisY, 0);
+    const highSide = negativeHeight !== undefined && positiveHeight !== undefined
+      ? Math.sign(positiveHeight - negativeHeight)
+      : Math.sign(storedDirection);
+    // Keep the drawing axis directed from the low end towards the high end.
+    if (highSide < 0) {
+      axisX *= -1;
+      axisY *= -1;
     }
+    const minimumX = Math.min(...component.map(({ x }) => x));
+    const maximumX = Math.max(...component.map(({ x }) => x));
+    const minimumY = Math.min(...component.map(({ y }) => y));
+    const maximumY = Math.max(...component.map(({ y }) => y));
+    const startX = axisX >= 0
+      ? minimumX * cellSize
+      : (maximumX + 1) * cellSize;
+    const startY = axisY >= 0
+      ? minimumY * cellSize
+      : (maximumY + 1) * cellSize;
+    const endX = axisX >= 0
+      ? (maximumX + 1) * cellSize
+      : minimumX * cellSize;
+    const endY = axisY >= 0
+      ? (maximumY + 1) * cellSize
+      : minimumY * cellSize;
+    const rampFootprint = new Path2D();
+    for (const { x, y } of component) {
+      rampFootprint.rect(x * cellSize, y * cellSize, cellSize, cellSize);
+    }
+
+    context.save();
+    const rampGradient = context.createLinearGradient(startX, startY, endX, endY);
+    rampGradient.addColorStop(0, "rgba(255, 241, 205, 0)");
+    rampGradient.addColorStop(.2, "rgba(255, 241, 205, .07)");
+    rampGradient.addColorStop(.52, "rgba(92, 69, 47, .025)");
+    rampGradient.addColorStop(.82, "rgba(49, 38, 28, .1)");
+    rampGradient.addColorStop(1, "rgba(49, 38, 28, 0)");
+    context.fillStyle = rampGradient;
+    // Blurring the component itself feathers every edge into the normal road;
+    // transparent gradient ends avoid a visible seam on flat terrain.
+    context.filter = `blur(${Math.max(1, cellSize * .28)}px)`;
+    context.fill(rampFootprint);
+    context.restore();
   }
   context.restore();
 

@@ -105,11 +105,17 @@ function selectConnectedRegions(
   random: Random,
   allowed: (region: number) => boolean,
   preferredSeeds?: number[],
+  preference?: (region: number) => number,
 ): Set<number> {
   const possibleSeeds = (preferredSeeds?.filter(allowed).length ? preferredSeeds : map.cells.map((_, index) => index))
     ?.filter(allowed) ?? [];
   if (!possibleSeeds.length || targetCells <= 0) return new Set();
-  const seed = possibleSeeds[Math.floor(random() * possibleSeeds.length)];
+  const seed = preference
+    ? possibleSeeds.map((region) => ({
+      region,
+      score: preference(region) + random() * .35,
+    })).sort((a, b) => b.score - a.score)[0].region
+    : possibleSeeds[Math.floor(random() * possibleSeeds.length)];
   const selected = new Set([seed]);
   const frontier = new Set(map.neighbors[seed].filter(allowed));
   let size = map.cells[seed].length;
@@ -119,7 +125,8 @@ function selectConnectedRegions(
     let bestScore = -Infinity;
     for (const candidate of frontier) {
       const touching = map.neighbors[candidate].filter((neighbor) => selected.has(neighbor)).length;
-      const score = touching * 1.4 + random() * 2;
+      const score = touching * 1.4 + random() * 2 +
+        (preference?.(candidate) ?? 0) * 2.4;
       if (score > bestScore) {
         best = candidate;
         bestScore = score;
@@ -133,6 +140,24 @@ function selectConnectedRegions(
     }
   }
   return selected;
+}
+
+function regionHeight(grid: Grid, map: RegionMap, region: number) {
+  const cells = map.cells[region];
+  if (!cells.length) return .5;
+  return cells.reduce((sum, { x, y }) => sum + (grid[y][x].height ?? .5), 0) /
+    cells.length;
+}
+
+function preferredRegion(
+  regions: number[],
+  preference: (region: number) => number,
+  random: Random,
+) {
+  return regions.map((region) => ({
+    region,
+    score: preference(region) + random() * .25,
+  })).sort((a, b) => b.score - a.score)[0]?.region;
 }
 
 function paintRegions(grid: Grid, map: RegionMap, regions: Set<number>, terrain: TerrainKind) {
@@ -163,6 +188,7 @@ function shortestRegionPath(
   end: number,
   random: Random,
   allowed: (region: number) => boolean = () => true,
+  preference?: (region: number) => number,
 ): number[] {
   const previous = map.cells.map(() => -1);
   const queue = [start];
@@ -170,6 +196,7 @@ function shortestRegionPath(
   for (let index = 0; index < queue.length && previous[end] === -1; index += 1) {
     const region = queue[index];
     const next = shuffled(map.neighbors[region], random);
+    if (preference) next.sort((a, b) => preference(b) - preference(a));
     for (const neighbor of next) {
       if (previous[neighbor] === -1 && allowed(neighbor)) {
         previous[neighbor] = region;
@@ -297,13 +324,20 @@ function pathAcrossMap(
   horizontal: boolean,
   random: Random,
   allowed: (region: number) => boolean = () => true,
+  preference?: (region: number) => number,
 ) {
   const starts = edgeRegions(map, width, height, horizontal ? "left" : "top").filter(allowed);
   const ends = edgeRegions(map, width, height, horizontal ? "right" : "bottom").filter(allowed);
   if (!starts.length || !ends.length) return [];
-  const start = starts[Math.floor(random() * starts.length)];
-  const end = ends[Math.floor(random() * ends.length)];
-  return shortestRegionPath(map, start, end, random, allowed);
+  const choose = (regions: number[]) => preference
+    ? regions.map((region) => ({
+      region,
+      score: preference(region) + random() * .2,
+    })).sort((a, b) => b.score - a.score)[0].region
+    : regions[Math.floor(random() * regions.length)];
+  const start = choose(starts);
+  const end = choose(ends);
+  return shortestRegionPath(map, start, end, random, allowed, preference);
 }
 
 function paintShore(grid: Grid, random: Random, maxDepth: number) {
@@ -710,10 +744,14 @@ export function generateTerrain(options: TerrainOptions): Grid {
   const total = width * height;
   const map = buildRegionMap(width, height, options.scale, seededRandom(`${seed}:mesh`));
   assignHeightField(grid, options.mode, seed);
+  const regionHeights = map.cells.map((_, region) => regionHeight(grid, map, region));
+  const preferLowland = (region: number) => 1 - regionHeights[region];
+  const preferHighland = (region: number) => regionHeights[region];
 
   if (options.mode === "countryside") {
     const pond = selectConnectedRegions(
       map, Math.round(total * .035 * options.waterWeight), seededRandom(`${seed}:pond`), () => true,
+      undefined, preferLowland,
     );
     paintRegions(grid, map, pond, Terrain.Water);
     paintShore(grid, seededRandom(`${seed}:pond-shore`), 2);
@@ -751,6 +789,7 @@ export function generateTerrain(options: TerrainOptions): Grid {
       seededRandom(`${seed}:coast`),
       () => true,
       coastSeeds,
+      preferLowland,
     );
     paintRegions(grid, map, sea, Terrain.Water);
     paintShore(grid, seededRandom(`${seed}:coast-shore`), 3);
@@ -759,7 +798,10 @@ export function generateTerrain(options: TerrainOptions): Grid {
 
   if (options.mode === "desert-canyon") {
     const canyonRandom = seededRandom(`${seed}:desert-canyon`);
-    const ravine = pathAcrossMap(map, width, height, canyonRandom() > .5, canyonRandom);
+    const ravine = pathAcrossMap(
+      map, width, height, canyonRandom() > .5, canyonRandom,
+      () => true, preferLowland,
+    );
     drawRegionPath(
       grid, map, ravine, Terrain.Ravine,
       Math.max(0, Math.round(options.reliefWeight) - 1),
@@ -767,11 +809,15 @@ export function generateTerrain(options: TerrainOptions): Grid {
     const mesa = selectConnectedRegions(
       map, Math.round(total * .13 * options.reliefWeight), canyonRandom,
       (region) => !ravine.includes(region),
+      undefined,
+      preferHighland,
     );
     paintRegions(grid, map, mesa, Terrain.Cliff);
     const oasis = selectConnectedRegions(
       map, Math.round(total * .025 * options.waterWeight), canyonRandom,
       (region) => !mesa.has(region),
+      undefined,
+      preferLowland,
     );
     paintRegions(grid, map, oasis, Terrain.Water);
     scatterDifficultTerrain(
@@ -801,12 +847,15 @@ export function generateTerrain(options: TerrainOptions): Grid {
     const frozenLake = selectConnectedRegions(
       map, Math.round(total * .34 * options.waterWeight),
       seededRandom(`${seed}:frozen-lake`), () => true,
+      undefined, preferLowland,
     );
     paintRegions(grid, map, frozenLake, Terrain.Ice);
     const openWater = selectConnectedRegions(
       map, Math.round(total * .045 * options.waterWeight),
       seededRandom(`${seed}:open-water`),
       (region) => frozenLake.has(region),
+      undefined,
+      preferLowland,
     );
     paintRegions(grid, map, openWater, Terrain.Water);
     scatterDifficultTerrain(
@@ -821,6 +870,8 @@ export function generateTerrain(options: TerrainOptions): Grid {
       const path = pathAcrossMap(
         map, width, height, badlandsRandom() > .5,
         seededRandom(`${seed}:badlands-ridge:${index}`),
+        () => true,
+        index % 2 ? preferLowland : preferHighland,
       );
       drawRegionPath(grid, map, path, index % 2 ? Terrain.Ravine : Terrain.Cliff, 0);
     }
@@ -853,6 +904,8 @@ export function generateTerrain(options: TerrainOptions): Grid {
       const island = selectConnectedRegions(
         map, Math.round(landTarget / 4), islandRandom,
         (region) => !occupied.has(region),
+        undefined,
+        preferHighland,
       );
       for (const region of island) occupied.add(region);
       paintRegions(grid, map, island, Terrain.Ground);
@@ -865,10 +918,12 @@ export function generateTerrain(options: TerrainOptions): Grid {
     const leftMass = selectConnectedRegions(
       map, Math.round(total * .22 * options.reliefWeight), passRandom,
       () => true, edgeRegions(map, width, height, "left"),
+      preferHighland,
     );
     const rightMass = selectConnectedRegions(
       map, Math.round(total * .22 * options.reliefWeight), passRandom,
       (region) => !leftMass.has(region), edgeRegions(map, width, height, "right"),
+      preferHighland,
     );
     paintRegions(grid, map, leftMass, Terrain.Cliff);
     paintRegions(grid, map, rightMass, Terrain.Cliff);
@@ -899,6 +954,8 @@ export function generateTerrain(options: TerrainOptions): Grid {
       Math.round(total * .16 * options.waterWeight),
       wetlandRandom,
       () => true,
+      undefined,
+      preferLowland,
     );
     paintRegions(grid, map, firstPool, Terrain.Water);
 
@@ -907,6 +964,8 @@ export function generateTerrain(options: TerrainOptions): Grid {
       Math.round(total * .08 * options.waterWeight),
       seededRandom(`${seed}:wetlands-pool`),
       (region) => !firstPool.has(region),
+      undefined,
+      preferLowland,
     );
     paintRegions(grid, map, secondPool, Terrain.Water);
 
@@ -972,6 +1031,7 @@ export function generateTerrain(options: TerrainOptions): Grid {
         seededRandom(`${seed}:lava-lake`),
         () => true,
         preferred,
+        preferLowland,
       );
       paintRegions(grid, map, lavaLake, Terrain.Lava);
     }
@@ -984,7 +1044,11 @@ export function generateTerrain(options: TerrainOptions): Grid {
     );
 
     const ridgeRandom = seededRandom(`${seed}:volcanic-ridge`);
-    const ridgeStart = Math.floor(ridgeRandom() * map.centers.length);
+    const ridgeStart = preferredRegion(
+      map.centers.map((_, region) => region),
+      preferHighland,
+      ridgeRandom,
+    ) ?? 0;
     const ridgeDistances = distanceFromRegions(map, new Set([ridgeStart]));
     const ridgeEnds = ridgeDistances
       .map((distance, region) => ({ distance, region }))
@@ -994,7 +1058,9 @@ export function generateTerrain(options: TerrainOptions): Grid {
       drawRegionPath(
         grid,
         map,
-        shortestRegionPath(map, ridgeStart, ridgeEnd, ridgeRandom),
+        shortestRegionPath(
+          map, ridgeStart, ridgeEnd, ridgeRandom, () => true, preferHighland,
+        ),
         Terrain.Cliff,
         Math.max(0, Math.round(options.reliefWeight) - 1),
       );
@@ -1012,7 +1078,11 @@ export function generateTerrain(options: TerrainOptions): Grid {
 
   if (options.mode === "highlands") {
     const ridgeRandom = seededRandom(`${seed}:ridge`);
-    const ridgeStart = Math.floor(ridgeRandom() * map.centers.length);
+    const ridgeStart = preferredRegion(
+      map.centers.map((_, region) => region),
+      preferHighland,
+      ridgeRandom,
+    ) ?? 0;
     const ridgeDistances = distanceFromRegions(map, new Set([ridgeStart]));
     const ridgeEnds = ridgeDistances
       .map((distance, region) => ({ distance, region }))
@@ -1022,13 +1092,17 @@ export function generateTerrain(options: TerrainOptions): Grid {
       drawRegionPath(
         grid,
         map,
-        shortestRegionPath(map, ridgeStart, ridgeEnd, ridgeRandom),
+        shortestRegionPath(
+          map, ridgeStart, ridgeEnd, ridgeRandom, () => true, preferHighland,
+        ),
         Terrain.Cliff,
         Math.max(0, Math.round(options.reliefWeight)),
       );
     }
     const ravinePath = pathAcrossMap(
       map, width, height, ridgeRandom() > .5, seededRandom(`${seed}:ravine`),
+      () => true,
+      preferLowland,
     );
     if (options.reliefWeight > 0) {
       drawRegionPath(

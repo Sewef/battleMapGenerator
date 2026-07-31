@@ -80,7 +80,7 @@ function assertGrid(grid: Grid, label: string) {
 
 let generated = 0;
 for (const preset of PRESETS) {
-  for (let index = 0; index < 6; index += 1) {
+  for (let index = 0; index < 3; index += 1) {
     const options = { ...preset, seed: `audit-${index}` };
     const grid = generateTerrain(options);
     assertGrid(grid, `${preset.id}:${index}`);

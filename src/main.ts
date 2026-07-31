@@ -7,7 +7,11 @@ import {
   type Preset,
 } from "./generator";
 import { drawGrid, type TilesetPropImages } from "./rendering/canvas";
-import { PARAMETER_FIELDS, renderApp } from "./ui/template";
+import {
+  BIOME_PARAMETER_PROFILES,
+  PARAMETER_FIELDS,
+  renderApp,
+} from "./ui/template";
 import { copyWebp, downloadWebp } from "./export/webp";
 import {
   createOwlbearSceneJson,
@@ -88,13 +92,31 @@ function updateLabels() {
   document.querySelector("#width-value")!.textContent = widthInput.value;
   document.querySelector("#height-value")!.textContent = heightInput.value;
   for (const field of PARAMETER_FIELDS) {
-    document.querySelector(`#${field.id}-value`)!.textContent =
-      field.percent ? `${inputs[field.id].value}%` : inputs[field.id].value;
+    const value = inputs[field.id].value;
+    document.querySelector(`#${field.id}-value`)!.textContent = field.group === "terrain"
+      ? `×${(Number(value) / 100).toFixed(1)}`
+      : field.percent ? `${value}%` : value;
   }
+}
+
+function updateBiomeParameterFields(preset: Preset) {
+  const profile = BIOME_PARAMETER_PROFILES[preset.mode];
+  for (const field of PARAMETER_FIELDS) {
+    const label = profile[field.id];
+    document.querySelector<HTMLElement>(`#${field.id}-field`)!.hidden = !label;
+    if (label) {
+      document.querySelector<HTMLElement>(`#${field.id}-label`)!.textContent = label;
+    }
+  }
+  document.querySelectorAll<HTMLElement>("[data-parameter-group]").forEach((group) => {
+    group.hidden = ![...group.querySelectorAll<HTMLElement>(".field")]
+      .some((field) => !field.hidden);
+  });
 }
 
 function applyPreset(preset: Preset, useNewSeed = true) {
   activePreset = preset;
+  updateBiomeParameterFields(preset);
   widthInput.value = String(preset.width);
   heightInput.value = String(preset.height);
   for (const field of PARAMETER_FIELDS) {

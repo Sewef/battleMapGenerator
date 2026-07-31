@@ -354,7 +354,7 @@ export function validateAndRepairGrid(
       if (surface === Terrain.Road && tile.terrain === Terrain.Cliff) {
         const elevation = tile.elevation ?? 1;
         const normal = transitionNormals.get(`${x},${y}`) ?? { x: 1, y: 0 };
-        tile.transition = elevation >= 2 ? "stairs" : "slope";
+        tile.transition = "slope";
         tile.transitionNormalX = normal.x;
         tile.transitionNormalY = normal.y;
         tile.terrain = elevation >= 2 ? Terrain.Ground : Terrain.Difficult;
@@ -429,7 +429,7 @@ export function validateAndRepairGrid(
       const tile = grid[point.y][point.x];
       if (tile.terrain === Terrain.Cliff) {
         const normal = cliffTransitionNormal(point.x, point.y);
-        tile.transition = "stairs";
+        tile.transition = "slope";
         tile.transitionNormalX = normal.x;
         tile.transitionNormalY = normal.y;
         tile.terrain = Terrain.Ground;

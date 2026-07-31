@@ -1,4 +1,5 @@
 import { PRESETS } from "../domain/biomes";
+import type { LandscapeMode } from "../domain/map";
 
 export const PARAMETER_FIELDS = [
   { id: "water", key: "waterWeight", label: "Water / lava", min: 0, max: 200, step: 10, percent: true, group: "terrain" },
@@ -8,6 +9,32 @@ export const PARAMETER_FIELDS = [
   { id: "trees", key: "treeRatio", label: "Trees", min: 0, max: 32, step: 1, percent: true, group: "obstacles" },
   { id: "buildings", key: "buildingCount", label: "Buildings", min: 0, max: 8, step: 1, percent: false, group: "obstacles" },
 ] as const;
+
+export type ParameterId = (typeof PARAMETER_FIELDS)[number]["id"];
+
+export const BIOME_PARAMETER_PROFILES: Record<
+  LandscapeMode,
+  Partial<Record<ParameterId, string>>
+> = {
+  countryside: { water: "Pond coverage", rocks: "Rock density", trees: "Tree density", buildings: "Farm buildings" },
+  river: { water: "River width", rocks: "Rock density", trees: "Riverbank trees", buildings: "Buildings" },
+  coast: { water: "Sea coverage", rocks: "Coastal rocks", trees: "Tree density", buildings: "Buildings" },
+  wetlands: { water: "Wetland coverage", difficult: "Mud coverage", rocks: "Rock density", trees: "Vegetation density", buildings: "Buildings" },
+  underground: { water: "Pool frequency", difficult: "Rough floor", rocks: "Rock density" },
+  volcanic: { water: "Lava coverage", difficult: "Ash coverage", relief: "Volcanic ridges", rocks: "Rock density" },
+  highlands: { relief: "Ridges / ravines", rocks: "Rock density", trees: "Tree density", buildings: "Buildings" },
+  city: { difficult: "Damaged ground", trees: "Street trees", buildings: "Urban density" },
+  "desert-canyon": { water: "Oasis size", difficult: "Scree coverage", relief: "Canyon relief", rocks: "Rock density", trees: "Vegetation density", buildings: "Buildings" },
+  "ancient-forest": { water: "Stream width", difficult: "Undergrowth", rocks: "Rock density", trees: "Forest density", buildings: "Ruins / buildings" },
+  "frozen-lake": { water: "Frozen basin size", difficult: "Snowdrifts", rocks: "Rock density", trees: "Tree density", buildings: "Buildings" },
+  badlands: { difficult: "Broken ground", relief: "Ridge density", rocks: "Rock density", trees: "Dry vegetation", buildings: "Buildings" },
+  "ruined-battlefield": { difficult: "Crater / trench density", rocks: "Debris density", trees: "Vegetation density", buildings: "Ruined structures" },
+  farmland: { difficult: "Field coverage", rocks: "Rock density", trees: "Hedgerow trees", buildings: "Farm buildings" },
+  archipelago: { water: "Island separation", rocks: "Coastal rocks", trees: "Vegetation density", buildings: "Buildings" },
+  "mountain-pass": { difficult: "Mountain scree", relief: "Mountain mass", rocks: "Rock density", trees: "Tree density", buildings: "Buildings" },
+  sewer: { water: "Channel width", rocks: "Debris density" },
+  "ancient-ruins": { difficult: "Overgrowth", rocks: "Rubble density", trees: "Vegetation density", buildings: "Ruined structures" },
+};
 
 const PRESET_GROUPS = [
   {
@@ -86,11 +113,11 @@ export function renderApp(root: HTMLElement) {
             ["terrain", "Terrain weight"],
             ["obstacles", "Obstacle population"],
           ].map(([group, title]) => `
-          <div class="parameter-section">
+          <div class="parameter-section" data-parameter-group="${group}">
             <p>${title}</p>
             ${PARAMETER_FIELDS.filter((field) => field.group === group).map((field) => `
-              <label class="field compact">
-                <span>${field.label} <output id="${field.id}-value"></output></span>
+              <label class="field compact" id="${field.id}-field">
+                <span><span id="${field.id}-label">${field.label}</span> <output id="${field.id}-value"></output></span>
                 <input id="${field.id}" type="range" min="${field.min}" max="${field.max}" step="${field.step}" />
               </label>
             `).join("")}

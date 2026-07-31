@@ -49,7 +49,7 @@ export interface Tile {
   obstacleId?: number;
   elevation?: number;
   height?: number;
-  transition?: "slope" | "stairs";
+  transition?: "slope";
   transitionNormalX?: number;
   transitionNormalY?: number;
 }
