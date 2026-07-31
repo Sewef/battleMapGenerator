@@ -207,6 +207,11 @@ canvas { display: block; max-width: 100%; height: auto !important; box-shadow: 0
 .swatch.building { background: #b66347; }
 .map-note { margin: 10px 0 0; font-family: "DM Mono", monospace; text-transform: uppercase; font-size: 8px; letter-spacing: .08em; color: #747c76; }
 .map-note span { color: #b45e38; margin-right: 6px; }
+.asset-credit { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 14px; padding: 11px 14px; border: 1px solid #cfccbd; background: rgba(248,246,237,.62); color: #707873; font: 9px/1.5 "DM Mono", monospace; letter-spacing: .04em; text-transform: uppercase; }
+.asset-credit > span { flex: 0 0 auto; color: #4e5b54; font-weight: 600; }
+.asset-credit p { margin: 0; text-align: right; }
+.asset-credit a { color: #536b51; text-underline-offset: 2px; }
+.asset-credit a:hover { color: #b45e38; }
 
 @media (max-width: 900px) {
   .shell { width: min(100% - 28px, 720px); }
@@ -240,4 +245,6 @@ canvas { display: block; max-width: 100%; height: auto !important; box-shadow: 0
   .owlbear-instructions { grid-template-columns: 22px 1fr; }
   .owlbear-actions { align-items: stretch; flex-direction: column; }
   .owlbear-actions #owlbear-status { margin: 0 0 3px; }
+  .asset-credit { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .asset-credit p { text-align: left; }
 }

@@ -211,6 +211,14 @@ export function renderApp(root: HTMLElement) {
           </section>
         </div>
       </section>
+      <footer class="asset-credit">
+        <span>Art credits</span>
+        <p>
+          Tileset assets from
+          <a href="https://opengameart.org/content/16x16-game-assets" target="_blank" rel="noopener noreferrer">16x16 Game Assets</a>
+          by George Bailey · CC BY 4.0
+        </p>
+      </footer>
     </main>
   `;
 }
