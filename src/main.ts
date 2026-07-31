@@ -82,6 +82,8 @@ const inputs = Object.fromEntries(
 let activePreset = PRESETS[0];
 let currentGrid: Grid = [];
 let mapRevision = 0;
+let pendingGenerationFrame: number | undefined;
+let pendingSeedGeneration: number | undefined;
 const hiddenLegendItems = new Set<string>();
 let owlbearExportCache: {
   key: string;
@@ -151,6 +153,14 @@ function renderMap(grid: Grid, targetCanvas = previewCanvas, cellSize?: number) 
 }
 
 function generate() {
+  if (pendingGenerationFrame !== undefined) {
+    cancelAnimationFrame(pendingGenerationFrame);
+    pendingGenerationFrame = undefined;
+  }
+  if (pendingSeedGeneration !== undefined) {
+    window.clearTimeout(pendingSeedGeneration);
+    pendingSeedGeneration = undefined;
+  }
   updateLabels();
   const seed = seedInput.value.trim() || randomSeed();
   seedInput.value = seed;
@@ -169,6 +179,16 @@ function generate() {
   });
   mapRevision += 1;
   renderMap(currentGrid);
+}
+
+function scheduleGeneration() {
+  if (pendingGenerationFrame !== undefined) {
+    cancelAnimationFrame(pendingGenerationFrame);
+  }
+  pendingGenerationFrame = requestAnimationFrame(() => {
+    pendingGenerationFrame = undefined;
+    generate();
+  });
 }
 
 document.querySelectorAll<HTMLButtonElement>(".preset-card").forEach((button) => {
@@ -477,8 +497,22 @@ document.querySelector("#legend")!.addEventListener("click", (event) => {
   renderMap(currentGrid);
 });
 for (const input of [widthInput, heightInput, ...Object.values(inputs)]) {
-  input.addEventListener("input", updateLabels);
+  input.addEventListener("input", () => {
+    updateLabels();
+    scheduleGeneration();
+  });
 }
+seedInput.addEventListener("input", () => {
+  if (pendingSeedGeneration !== undefined) {
+    window.clearTimeout(pendingSeedGeneration);
+  }
+  if (!seedInput.value.trim()) return;
+  pendingSeedGeneration = window.setTimeout(() => {
+    pendingSeedGeneration = undefined;
+    generate();
+  }, 250);
+});
+seedInput.addEventListener("change", generate);
 document.querySelectorAll<HTMLButtonElement>("[data-randomize-group]")
   .forEach((button) => {
     button.addEventListener("click", () => {
