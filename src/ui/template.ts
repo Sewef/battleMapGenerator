@@ -123,10 +123,16 @@ export function renderApp(root: HTMLElement) {
                 <h2 id="map-content-title">Map content</h2>
                 <p>These settings affect the preview, WebP and Owlbear exports.</p>
               </div>
-              <label class="grid-option shared-tileset-option">
-                <input id="use-tileset" type="checkbox" />
-                <span>Use tileset</span>
-              </label>
+              <div class="shared-render-options">
+                <label class="grid-option">
+                  <input id="use-tileset" type="checkbox" />
+                  <span>Use tileset</span>
+                </label>
+                <label class="grid-option" title="Adds directional relief, ambient shading and subtle light emitted by liquids.">
+                  <input id="stylized-lighting" type="checkbox" checked />
+                  <span>Stylized lighting</span>
+                </label>
+              </div>
             </div>
             <div class="map-footer">
               <div class="legend" id="legend"></div>

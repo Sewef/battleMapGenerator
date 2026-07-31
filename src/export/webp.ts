@@ -12,6 +12,7 @@ export function renderExportCanvas(
   useTileset: boolean,
   tilesetImage: CanvasImageSource | undefined,
   tilesetProps?: TilesetPropImages,
+  stylizedLighting = false,
 ) {
   const canvas = document.createElement("canvas");
   drawGrid(grid, {
@@ -27,6 +28,7 @@ export function renderExportCanvas(
     useTileset,
     tilesetImage,
     tilesetProps,
+    stylizedLighting,
   });
   return canvas;
 }
@@ -47,6 +49,7 @@ export function downloadWebp(
   useTileset = false,
   tilesetImage?: CanvasImageSource,
   tilesetProps?: TilesetPropImages,
+  stylizedLighting = false,
   cellSize = 64,
 ) {
   const link = document.createElement("a");
@@ -60,6 +63,7 @@ export function downloadWebp(
     useTileset,
     tilesetImage,
     tilesetProps,
+    stylizedLighting,
   ).toDataURL(
     "image/webp",
     WEBP_QUALITY,

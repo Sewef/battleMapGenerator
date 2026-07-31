@@ -7,6 +7,7 @@ import {
   type TerrainKind,
 } from "../domain/map";
 import { getBiomeObjectStyle, getTerrainStyle } from "./palettes";
+import { drawStylizedLighting } from "./lighting";
 
 export interface RenderOptions {
   targetCanvas: HTMLCanvasElement;
@@ -21,6 +22,7 @@ export interface RenderOptions {
   useTileset?: boolean;
   tilesetImage?: CanvasImageSource;
   tilesetProps?: TilesetPropImages;
+  stylizedLighting?: boolean;
 }
 
 export interface TilesetPropImages {
@@ -2354,6 +2356,18 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     options.useTileset ? options.tilesetImage : undefined,
     context,
   );
+  if (options.stylizedLighting) {
+    drawStylizedLighting(
+      grid,
+      mode,
+      cellSize,
+      width,
+      height,
+      hiddenItems,
+      hiddenOpacity,
+      context,
+    );
+  }
   drawLavaRockEdges(
     grid,
     cellSize,

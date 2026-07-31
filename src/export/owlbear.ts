@@ -47,6 +47,7 @@ export interface OwlbearExportOptions {
   treeUrl?: string;
   rockUrl?: string;
   tilesetImage?: CanvasImageSource;
+  stylizedLighting?: boolean;
 }
 
 export interface OwlbearSceneExport {
@@ -288,6 +289,8 @@ export async function createOwlbearSceneJson(
     options.showGrid ?? false,
     options.useTileset ?? false,
     options.tilesetImage,
+    undefined,
+    options.stylizedLighting ?? false,
   );
 
   const shared: Record<string, ReturnType<typeof imageItem>> = {};

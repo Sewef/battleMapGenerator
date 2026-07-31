@@ -129,7 +129,8 @@ canvas { display: block; max-width: 100%; height: auto !important; box-shadow: 0
 .map-content-heading .eyebrow { margin-bottom: 3px; }
 .map-content-heading h2 { margin: 0; font-size: 17px; letter-spacing: -.02em; }
 .map-content-heading p:last-child { margin: 5px 0 0; color: #68716b; font-size: 10px; }
-.shared-tileset-option { flex: 0 0 auto; min-height: 34px; padding: 0 10px; border: 1px solid #c8c4b6; background: #f8f6ed; }
+.shared-render-options { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+.shared-render-options .grid-option { min-height: 34px; padding: 0 10px; border: 1px solid #c8c4b6; background: #f8f6ed; }
 .export-panel { display: grid; grid-template-columns: minmax(210px, .65fr) minmax(0, 1.35fr); gap: 14px; margin-top: 24px; padding: 20px; border: 1px solid #bdb9a8; background: #dedbcc; }
 .export-panel-heading { grid-column: 1 / -1; padding-bottom: 15px; border-bottom: 1px solid #c4c0b1; }
 .export-panel-heading .eyebrow { margin-bottom: 4px; }
@@ -228,6 +229,7 @@ canvas { display: block; max-width: 100%; height: auto !important; box-shadow: 0
   .canvas-wrap { padding: 10px; min-height: 320px; }
   .map-content-panel { padding: 14px; }
   .map-content-heading { align-items: flex-start; flex-direction: column; }
+  .shared-render-options { justify-content: flex-start; }
   .export-panel { padding: 14px; }
   .export-card { padding: 16px 14px; }
   .owlbear-heading { align-items: flex-start; }

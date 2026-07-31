@@ -29,6 +29,8 @@ const previewGridInput =
 const showGridInput = document.querySelector<HTMLInputElement>("#show-grid")!;
 const useTilesetInput =
   document.querySelector<HTMLInputElement>("#use-tileset")!;
+const stylizedLightingInput =
+  document.querySelector<HTMLInputElement>("#stylized-lighting")!;
 const owlbearGridInput =
   document.querySelector<HTMLInputElement>("#owlbear-grid")!;
 const owlbearTreeUrlInput =
@@ -118,6 +120,7 @@ function renderMap(grid: Grid, targetCanvas = previewCanvas, cellSize?: number) 
     useTileset: useTilesetInput.checked && tilesetReady(),
     tilesetImage,
     tilesetProps: tilesetPropsReady() ? tilesetProps : undefined,
+    stylizedLighting: stylizedLightingInput.checked,
   });
 }
 
@@ -179,6 +182,7 @@ document.querySelector("#download")!.addEventListener("click", () => {
     useTilesetInput.checked && tilesetReady(),
     tilesetImage,
     tilesetPropsReady() ? tilesetProps : undefined,
+    stylizedLightingInput.checked,
   );
 });
 async function copyText(text: string) {
@@ -205,6 +209,7 @@ function owlbearExportKey() {
     hiddenItems: [...hiddenLegendItems].sort(),
     showGrid: owlbearGridInput.checked,
     useTileset: useTilesetInput.checked && tilesetReady(),
+    stylizedLighting: stylizedLightingInput.checked,
     treeUrl: owlbearTreeUrlInput.value.trim(),
     rockUrl: owlbearRockUrlInput.value.trim(),
   });
@@ -289,6 +294,7 @@ async function runOwlbearExport(action: "copy" | "download") {
         treeUrl: owlbearTreeUrlInput.value,
         rockUrl: owlbearRockUrlInput.value,
         tilesetImage,
+        stylizedLighting: stylizedLightingInput.checked,
       },
     );
     if (!cachedScene) {
@@ -332,6 +338,7 @@ bindPropPreview(
 );
 previewGridInput.addEventListener("change", () => renderMap(currentGrid));
 useTilesetInput.addEventListener("change", () => renderMap(currentGrid));
+stylizedLightingInput.addEventListener("change", () => renderMap(currentGrid));
 tilesetImage.addEventListener("load", () => {
   if (useTilesetInput.checked) renderMap(currentGrid);
 });
