@@ -186,10 +186,6 @@ export function renderApp(root: HTMLElement) {
                 </span>
               </label>
             </div>
-            <div class="owlbear-notice">
-              <strong>Map background required</strong>
-              <p>No image is uploaded automatically. Download the prop-free background below, upload it to your Owlbear scene as a map, then remove the placeholder map included in the JSON.</p>
-            </div>
             <div class="owlbear-instructions">
               <span>1</span>
               <p>Download and upload the background WebP to your Owlbear scene.</p>
