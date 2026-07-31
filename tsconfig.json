@@ -9,6 +9,8 @@
     "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "moduleDetection": "force",
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "noEmit": true,
     "strict": true
   },

@@ -1,49 +1,55 @@
 # Touch Grass
 
-Prototype outdoor battlemap generator. Each reproducible map uses two layers:
+Deterministic outdoor battlemap generator built with TypeScript, Canvas and Vite.
+Maps are generated entirely in the browser from a biome, a seed and tactical
+terrain parameters.
 
-- terrain: ground, void, water, difficult ground, rocks, cliffs, or ravines;
-- obstacles: trees and buildings.
+## Features
 
-Tactical rules live in the data model. Water and difficult terrain slow
-movement; rocks and cliffs block movement and line of sight; ravines block
-movement without blocking sight.
+- 18 biome presets with reproducible terrain generation;
+- procedural and pixel-art tileset renderers;
+- optional grid and stylized lighting;
+- WebP exports with or without tree and rock props;
+- Owlbear Rodeo JSON exports with an uploaded WebP background and editable props.
 
-## Run locally
+## Local development
+
+Install dependencies and run the browser-only Vite application:
 
 ```bash
 npm install
 npm run dev
 ```
 
-Generation always covers the full grid: void remains available in the model but
-is never generated automatically. The engine first builds a Delaunay/Voronoi
-geographic mesh with `d3-delaunay`, then rasterizes it onto the tactical grid.
-Each map type has its own pipeline:
-
-- open countryside: pond and road;
-- river valley: river, banks, road, and bridge;
-- coastline: sea, beach, and coastal road;
-- wetlands: shallow pools, channels, muddy ground, and no generated roads;
-- underground: tight connected passages, rare chambers, rough ground, a
-  guaranteed entrance, an optional exit, and occasional pools;
-- volcanic wastes: lava lakes and rivers, ash fields, broken ridges, and rocks;
-- highlands: ridge, ravine, and mountain pass.
-
-A separate second pass populates trees, rocks, and buildings without changing
-the primary terrain morphology.
-
-## Production
+To test the complete application, including the Owlbear image upload endpoint,
+build the static assets and start the Worker locally:
 
 ```bash
 npm run build
+npx wrangler dev
 ```
 
-The static site is generated in `dist/`.
-
-Cloudflare Workers serves that directory:
+## Validation
 
 ```bash
+npm run typecheck
+npm run test:generation
 npm run deploy:check
+```
+
+The generation test checks map invariants and deterministic output for every
+biome preset.
+
+## Cloudflare architecture
+
+The Worker serves `dist/` and exposes `/api/map-images` for Owlbear exports.
+The browser renders the exact map background as WebP and uploads it to R2. A
+SQLite-backed Durable Object serializes writes, deduplicates identical images
+and evicts the oldest objects before the shared map storage exceeds 5 GiB.
+
+Uploaded backgrounds expire after 30 days. The daily cron removes expired
+objects and reapplies the storage limit. Run the deployment with:
+
+```bash
 npm run deploy
 ```

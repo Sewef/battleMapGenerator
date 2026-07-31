@@ -5,11 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite --configLoader runner",
-    "build": "tsc && tsc -p tsconfig.worker.json && vite build --configLoader runner",
-    "test:generation": "vite build --configLoader runner --ssr src/generation/generation-test.ts --outDir dist/generation-test && node dist/generation-test/generation-test.js",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json",
+    "build": "npm run typecheck && vite build --configLoader runner",
+    "test:generation": "vite build --configLoader runner --ssr src/generation/generation-test.ts --outDir .test-dist/generation-test --emptyOutDir && node .test-dist/generation-test/generation-test.js",
     "preview": "vite preview --configLoader runner",
     "types:worker": "wrangler types worker/worker-configuration.d.ts --include-runtime=false",
-    "deploy:check": "npm run build && wrangler types worker/worker-configuration.d.ts --include-runtime=false --check && wrangler deploy --dry-run",
+    "deploy:check": "wrangler types worker/worker-configuration.d.ts --include-runtime=false --check && npm run build && wrangler deploy --dry-run",
     "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {

@@ -151,7 +151,6 @@ function applyPreset(preset: Preset, useNewSeed = true) {
     inputs[field.id].value = String(field.percent ? Number(value) * 100 : value);
   }
   if (useNewSeed || !seedInput.value) seedInput.value = randomSeed();
-  // seedInput.value = "oak-2889";
   document.querySelectorAll(".preset-card").forEach((card) => {
     card.classList.toggle(
       "active",
@@ -461,18 +460,9 @@ async function runOwlbearExport(action: "copy" | "download") {
     let scene = cachedScene;
     if (!scene) {
       owlbearStatus.textContent = "Rendering and uploading the exact background...";
-      const mapHiddenItems = new Set(hiddenLegendItems);
-      mapHiddenItems.add(Obstacle.Tree);
-      mapHiddenItems.add(Obstacle.Rock);
       const mapCanvas = renderExportCanvas(currentGrid, generation.mode, {
+        ...webpRenderOptions(false),
         cellSize: 48,
-        hiddenItems: mapHiddenItems,
-        showGrid: showGridInput.checked,
-        useTileset: useTileset && tilesetReady(),
-        tilesetImage: tilesetReady() ? tilesetImage : undefined,
-        tilesetProps: tilesetPropsReady() ? tilesetProps : undefined,
-        customProps: activeCustomProps(),
-        stylizedLighting: stylizedLightingInput.checked,
       });
       const mapImage = await uploadMapCanvas(mapCanvas);
       scene = await createOwlbearSceneJson(
@@ -480,7 +470,6 @@ async function runOwlbearExport(action: "copy" | "download") {
         generation.seed,
         hiddenLegendItems,
         {
-          generation,
           mapImage,
           useTileset,
           treeUrl: useTileset

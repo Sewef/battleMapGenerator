@@ -1,10 +1,11 @@
 /// <reference types="@cloudflare/workers-types" />
 
 import { DurableObject } from "cloudflare:workers";
-
-const MAP_IMAGE_PREFIX = "generated-maps/";
-const MAP_IMAGE_RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
-const MAX_MAP_STORAGE_BYTES = 5 * 1024 * 1024 * 1024;
+import {
+  MAP_IMAGE_PREFIX,
+  MAP_IMAGE_RETENTION_MS,
+  MAX_MAP_STORAGE_BYTES,
+} from "./map-settings";
 
 export type StoredMapImage = {
   key: string;
@@ -21,7 +22,6 @@ type MapStorageEnv = {
 type IndexedMapImage = {
   key: string;
   size: number;
-  uploadedAt: number;
 };
 
 export class MapStorageCoordinator extends DurableObject<MapStorageEnv> {
@@ -57,9 +57,20 @@ export class MapStorageCoordinator extends DurableObject<MapStorageEnv> {
         "SELECT value FROM coordinator_state WHERE key = 'r2-indexed'",
       )
       .toArray()[0]?.value;
-    if (initialized) return;
+    if (initialized) {
+      if (this.stateValue("total-bytes") === undefined) {
+        const total = this.ctx.storage.sql
+          .exec<{ total: number }>(
+            "SELECT COALESCE(SUM(size), 0) AS total FROM map_images",
+          )
+          .one().total;
+        this.setStateValue("total-bytes", total);
+      }
+      return;
+    }
 
     let cursor: string | undefined;
+    let totalBytes = 0;
     do {
       const page = await this.env.MAP_IMAGES.list({
         prefix: MAP_IMAGE_PREFIX,
@@ -80,30 +91,33 @@ export class MapStorageCoordinator extends DurableObject<MapStorageEnv> {
           object.uploaded.getTime(),
           expiresAt,
         );
+        totalBytes += object.size;
       }
       cursor = page.truncated ? page.cursor : undefined;
     } while (cursor);
-    this.ctx.storage.sql.exec(
-      "INSERT OR REPLACE INTO coordinator_state (key, value) VALUES ('r2-indexed', 1)",
-    );
+    this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec(
+        "INSERT OR REPLACE INTO coordinator_state (key, value) VALUES ('r2-indexed', 1)",
+      );
+      this.setStateValue("total-bytes", totalBytes);
+    });
   }
 
-  private indexedImages() {
+  private stateValue(key: string) {
     return this.ctx.storage.sql
-      .exec<{
-        key: string;
-        size: number;
-        uploaded_at: number;
-      }>(
-        `SELECT key, size, uploaded_at
-         FROM map_images ORDER BY uploaded_at ASC, key ASC`,
+      .exec<{ value: number }>(
+        "SELECT value FROM coordinator_state WHERE key = ?",
+        key,
       )
-      .toArray()
-      .map((row): IndexedMapImage => ({
-        key: row.key,
-        size: row.size,
-        uploadedAt: row.uploaded_at,
-      }));
+      .toArray()[0]?.value;
+  }
+
+  private setStateValue(key: string, value: number) {
+    this.ctx.storage.sql.exec(
+      "INSERT OR REPLACE INTO coordinator_state (key, value) VALUES (?, ?)",
+      key,
+      value,
+    );
   }
 
   private async deleteR2Objects(keys: string[]) {
@@ -118,11 +132,21 @@ export class MapStorageCoordinator extends DurableObject<MapStorageEnv> {
     }
   }
 
+  private commitRemoval(keys: string[], remainingBytes: number) {
+    this.ctx.storage.transactionSync(() => {
+      this.removeIndexEntries(keys);
+      this.setStateValue("total-bytes", Math.max(0, remainingBytes));
+    });
+  }
+
   private async evictOldestToFit(additionalBytes: number) {
-    const indexed = this.indexedImages();
-    let storedBytes = indexed.reduce((total, item) => total + item.size, 0);
+    let storedBytes = this.stateValue("total-bytes") ?? 0;
+    if (storedBytes + additionalBytes <= MAX_MAP_STORAGE_BYTES) return;
     const evicted: string[] = [];
-    for (const item of indexed) {
+    const oldest = this.ctx.storage.sql.exec<IndexedMapImage>(
+      "SELECT key, size FROM map_images ORDER BY uploaded_at ASC, key ASC",
+    );
+    for (const item of oldest) {
       if (storedBytes + additionalBytes <= MAX_MAP_STORAGE_BYTES) break;
       evicted.push(item.key);
       storedBytes -= item.size;
@@ -132,7 +156,7 @@ export class MapStorageCoordinator extends DurableObject<MapStorageEnv> {
     }
     if (evicted.length) {
       await this.deleteR2Objects(evicted);
-      this.removeIndexEntries(evicted);
+      this.commitRemoval(evicted, storedBytes);
     }
   }
 
@@ -141,15 +165,18 @@ export class MapStorageCoordinator extends DurableObject<MapStorageEnv> {
       await this.initializeIndex();
       await this.evictOldestToFit(0);
       const existing = this.ctx.storage.sql
-        .exec<{ expires_at: number }>(
-          "SELECT expires_at FROM map_images WHERE key = ?",
+        .exec<{ expires_at: number; size: number }>(
+          "SELECT expires_at, size FROM map_images WHERE key = ?",
           image.key,
         )
         .toArray()[0];
       if (existing?.expires_at && existing.expires_at > Date.now()) return;
       if (existing) {
         await this.env.MAP_IMAGES.delete(image.key);
-        this.removeIndexEntries([image.key]);
+        this.commitRemoval(
+          [image.key],
+          (this.stateValue("total-bytes") ?? 0) - existing.size,
+        );
       }
 
       await this.evictOldestToFit(image.bytes.byteLength);
@@ -163,14 +190,20 @@ export class MapStorageCoordinator extends DurableObject<MapStorageEnv> {
         },
       });
       try {
-        this.ctx.storage.sql.exec(
-          `INSERT INTO map_images
-            (key, size, uploaded_at, expires_at) VALUES (?, ?, ?, ?)`,
-          image.key,
-          image.bytes.byteLength,
-          Date.now(),
-          image.expiresAt,
-        );
+        this.ctx.storage.transactionSync(() => {
+          this.ctx.storage.sql.exec(
+            `INSERT INTO map_images
+              (key, size, uploaded_at, expires_at) VALUES (?, ?, ?, ?)`,
+            image.key,
+            image.bytes.byteLength,
+            Date.now(),
+            image.expiresAt,
+          );
+          this.setStateValue(
+            "total-bytes",
+            (this.stateValue("total-bytes") ?? 0) + image.bytes.byteLength,
+          );
+        });
       } catch (error) {
         await this.env.MAP_IMAGES.delete(image.key);
         throw error;
@@ -181,8 +214,21 @@ export class MapStorageCoordinator extends DurableObject<MapStorageEnv> {
   async deleteImage(key: string): Promise<void> {
     return this.exclusive(async () => {
       await this.initializeIndex();
+      const existing = this.ctx.storage.sql
+        .exec<{ size: number }>(
+          "SELECT size FROM map_images WHERE key = ?",
+          key,
+        )
+        .toArray()[0];
       await this.env.MAP_IMAGES.delete(key);
-      this.removeIndexEntries([key]);
+      if (existing) {
+        this.commitRemoval(
+          [key],
+          (this.stateValue("total-bytes") ?? 0) - existing.size,
+        );
+      } else {
+        this.removeIndexEntries([key]);
+      }
     });
   }
 
@@ -190,15 +236,19 @@ export class MapStorageCoordinator extends DurableObject<MapStorageEnv> {
     return this.exclusive(async () => {
       await this.initializeIndex();
       const expired = this.ctx.storage.sql
-        .exec<{ key: string }>(
-          "SELECT key FROM map_images WHERE expires_at <= ?",
+        .exec<IndexedMapImage>(
+          "SELECT key, size FROM map_images WHERE expires_at <= ?",
           now,
         )
         .toArray()
-        .map(({ key }) => key);
-      if (expired.length) {
-        await this.deleteR2Objects(expired);
-        this.removeIndexEntries(expired);
+      const expiredKeys = expired.map(({ key }) => key);
+      if (expiredKeys.length) {
+        await this.deleteR2Objects(expiredKeys);
+        const removedBytes = expired.reduce((total, item) => total + item.size, 0);
+        this.commitRemoval(
+          expiredKeys,
+          (this.stateValue("total-bytes") ?? 0) - removedBytes,
+        );
       }
       await this.evictOldestToFit(0);
     });

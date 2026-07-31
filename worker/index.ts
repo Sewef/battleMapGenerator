@@ -1,13 +1,14 @@
 import { MapStorageCoordinator } from "./map-storage";
+import {
+  MAP_IMAGE_COLLECTION_PATH,
+  MAP_IMAGE_PREFIX,
+  MAP_IMAGE_RETENTION_MS,
+  MAX_MAP_IMAGE_BYTES,
+  MAX_MAP_IMAGE_DIMENSION,
+  MAX_MAP_IMAGE_PIXELS,
+} from "./map-settings";
 
 export { MapStorageCoordinator };
-
-const MAP_IMAGE_COLLECTION_PATH = "/api/map-images";
-const MAP_IMAGE_PREFIX = "generated-maps/";
-const MAP_IMAGE_RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
-const MAX_MAP_IMAGE_BYTES = 8 * 1024 * 1024;
-const MAX_MAP_IMAGE_DIMENSION = 4096;
-const MAX_MAP_IMAGE_PIXELS = 4096 * 4096;
 
 type ImageDimensions = { width: number; height: number };
 
@@ -105,23 +106,43 @@ async function sha256Hex(bytes: ArrayBuffer) {
   return [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+async function readBodyWithLimit(request: Request, maximumBytes: number) {
+  if (!request.body) return new ArrayBuffer(0);
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > maximumBytes) {
+      await reader.cancel();
+      return undefined;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes.buffer;
+}
+
 function objectExpired(object: R2Object) {
   const expiresAt = Number(object.customMetadata?.expiresAt);
   return !Number.isFinite(expiresAt) || expiresAt <= Date.now();
 }
 
-function imageResponse(
-  object: R2ObjectBody,
-  method: string,
-) {
-  const headers = new Headers({
+function storedImageHeaders(object: R2Object) {
+  return new Headers({
     ...corsHeaders(),
     "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
     "Content-Length": object.size.toString(),
     "Content-Type": "image/webp",
     ETag: object.httpEtag,
   });
-  return new Response(method === "HEAD" ? null : object.body, { headers });
 }
 
 async function uploadMapImage(request: Request, env: Env) {
@@ -156,8 +177,8 @@ async function uploadMapImage(request: Request, env: Env) {
     });
   }
 
-  const bytes = await request.arrayBuffer();
-  if (!bytes.byteLength || bytes.byteLength > MAX_MAP_IMAGE_BYTES) {
+  const bytes = await readBodyWithLimit(request, MAX_MAP_IMAGE_BYTES);
+  if (!bytes?.byteLength) {
     return errorResponse("The WebP is empty or larger than 8 MiB.", 413);
   }
   const dimensions = parseWebpDimensions(bytes);
@@ -191,13 +212,22 @@ async function getMapImage(
     return errorResponse("Method not allowed.", 405, { Allow: "GET, HEAD" });
   }
   const key = `${MAP_IMAGE_PREFIX}${hash}.webp`;
+  if (request.method === "HEAD") {
+    const object = await env.MAP_IMAGES.head(key);
+    if (!object) return errorResponse("Map image not found.", 404);
+    if (objectExpired(object)) {
+      ctx.waitUntil(storageCoordinator(env).deleteImage(key));
+      return errorResponse("This temporary map image has expired.", 410);
+    }
+    return new Response(null, { headers: storedImageHeaders(object) });
+  }
   const object = await env.MAP_IMAGES.get(key);
   if (!object) return errorResponse("Map image not found.", 404);
   if (objectExpired(object)) {
     ctx.waitUntil(storageCoordinator(env).deleteImage(key));
     return errorResponse("This temporary map image has expired.", 410);
   }
-  return imageResponse(object, request.method);
+  return new Response(object.body, { headers: storedImageHeaders(object) });
 }
 
 export default {

@@ -2,7 +2,6 @@ import {
   Obstacle,
   type Grid,
   type ObstacleKind,
-  type TerrainOptions,
 } from "../domain/map";
 import type { UploadedMapImage } from "./map-image";
 
@@ -15,6 +14,7 @@ const PUBLIC_TILESET_ASSET_BASE =
 type ExportedObstacle = {
   kind: Exclude<ObstacleKind, "none">;
   id: number;
+  points: Array<{ x: number; y: number }>;
 };
 
 type PropPlacement = { x: number; y: number; size: 1 | 2 };
@@ -41,9 +41,16 @@ const PROP_MIME_BY_EXTENSION: Record<string, OwlbearPropAsset["mime"]> = {
 const SUPPORTED_PROP_MIMES = new Set<OwlbearPropAsset["mime"]>(
   Object.values(PROP_MIME_BY_EXTENSION),
 );
+const DEFAULT_PROP_DIMENSIONS: Record<string, number> = {
+  "tree_1x1.png": 32,
+  "tree_2x2.png": 64,
+  "rock_1x1.png": 32,
+  "rock_2x2.png": 64,
+  "tree.png": 64,
+  "rock.png": 64,
+};
 
 export interface OwlbearExportOptions {
-  generation: TerrainOptions;
   mapImage: UploadedMapImage;
   useTileset?: boolean;
   treeUrl?: string;
@@ -91,7 +98,13 @@ function collectObstacles(grid: Grid): ExportedObstacle[] {
       if (tile.obstacle === Obstacle.None) continue;
       const id = tile.obstacleId ?? y * grid[y].length + x;
       const key = `${tile.obstacle}:${id}`;
-      obstacles.set(key, { kind: tile.obstacle, id });
+      const obstacle = obstacles.get(key) ?? {
+        kind: tile.obstacle,
+        id,
+        points: [],
+      };
+      obstacle.points.push({ x, y });
+      obstacles.set(key, obstacle);
     }
   }
   return [...obstacles.values()];
@@ -217,12 +230,14 @@ export async function inspectPropAsset(
   if (!value) {
     const filename = defaultAssetPath.split("/").at(-1);
     if (!filename) throw new Error("Missing default prop asset name.");
+    const size = DEFAULT_PROP_DIMENSIONS[filename];
+    if (!size) throw new Error(`Unknown default prop asset: ${filename}`);
     const url = new URL(filename, PUBLIC_TILESET_ASSET_BASE).href;
-    const dimensions = await imageDimensions(url);
     return {
       url,
       mime: "image/png",
-      ...dimensions,
+      width: size,
+      height: size,
     };
   }
   let parsed: URL;
@@ -274,12 +289,6 @@ export async function createOwlbearSceneJson(
   options: OwlbearExportOptions,
 ): Promise<OwlbearSceneExport> {
   if (!grid.length) throw new Error("Generate a map before exporting.");
-  if (
-    options.generation.width !== grid[0].length ||
-    options.generation.height !== grid.length
-  ) {
-    throw new Error("The generated map dimensions no longer match the preview.");
-  }
   const [treeAssets, rockAssets] = await Promise.all([
     owlBearPropAssets(options.treeUrl, "tree", options.useTileset ?? false),
     owlBearPropAssets(options.rockUrl, "rock", options.useTileset ?? false),
@@ -321,17 +330,8 @@ export async function createOwlbearSceneJson(
       hiddenItems.has(obstacle.kind) ||
       obstacle.kind === Obstacle.Building
     ) return;
-    const points = grid.flatMap((row, y) =>
-      row.map((tile, x) => ({ tile, x, y }))
-        .filter(({ tile }) =>
-          tile.obstacle === obstacle.kind
-        ),
-    ).filter(({ tile, x, y }) =>
-      (tile.obstacleId ?? y * grid[y].length + x) === obstacle.id
-    );
-    if (!points.length) return;
     const assets = obstacle.kind === Obstacle.Tree ? treeAssets : rockAssets;
-    propPlacements(points).forEach(({ x, y, size }, pointIndex) => {
+    propPlacements(obstacle.points).forEach(({ x, y, size }, pointIndex) => {
       const asset = size === 2 ? assets.twoByTwo : assets.oneByOne;
       const id = crypto.randomUUID();
       shared[id] = imageItem(
@@ -382,5 +382,5 @@ export function downloadOwlbearJson(scene: OwlbearSceneExport) {
   link.download = scene.filename;
   link.href = url;
   link.click();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
 }

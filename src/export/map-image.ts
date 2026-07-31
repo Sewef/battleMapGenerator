@@ -44,5 +44,10 @@ export async function uploadMapCanvas(
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error("The map image host returned an invalid URL.");
   }
-  return { ...result, url: url.href } as UploadedMapImage;
+  return {
+    url: url.href,
+    mime: result.mime,
+    width: result.width,
+    height: result.height,
+  };
 }
