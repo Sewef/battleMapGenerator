@@ -193,7 +193,7 @@ export function renderApp(root: HTMLElement) {
             </div>
             <div class="owlbear-notice">
               <strong>Public image hosting</strong>
-              <p>The map background is uploaded anonymously to Litterbox. The resulting URL is public and expires after 72 hours; after that, the background will no longer load in Owlbear. Consider downloading a local copy with the WebP export.</p>
+              <p>The map background is uploaded anonymously to Litterbox. The resulting URL is public and expires after 72 hours; after that, the background will no longer load. Consider downloading a local copy with the WebP export.</p>
             </div>
             <div class="owlbear-instructions">
               <span>1</span>
