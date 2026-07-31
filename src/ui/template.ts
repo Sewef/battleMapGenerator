@@ -170,7 +170,7 @@ export function renderApp(root: HTMLElement) {
             <div class="owlbear-options">
               <label class="owlbear-field">
                 <span>Tree prop URL <small>Optional</small></span>
-                <input id="owlbear-tree-url" type="url" placeholder="Direct URL" />
+                <input id="owlbear-tree-url" name="owlbear-tree-prop-url" type="url" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" placeholder="Direct URL" />
                 <span class="prop-preview" id="owlbear-tree-preview">
                   <img alt="Tree prop preview" />
                   <small>Loading default prop…</small>
@@ -178,7 +178,7 @@ export function renderApp(root: HTMLElement) {
               </label>
               <label class="owlbear-field">
                 <span>Rock prop URL <small>Optional</small></span>
-                <input id="owlbear-rock-url" type="url" placeholder="Direct URL" />
+                <input id="owlbear-rock-url" name="owlbear-rock-prop-url" type="url" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" placeholder="Direct URL" />
                 <span class="prop-preview" id="owlbear-rock-preview">
                   <img alt="Rock prop preview" />
                   <small>Loading default prop…</small>
@@ -187,7 +187,7 @@ export function renderApp(root: HTMLElement) {
             </div>
             <div class="owlbear-notice">
               <strong>Public image hosting</strong>
-              <p>The map background is uploaded anonymously to Litterbox. The resulting URL is public and expires after 72 hours; after that, the background will no longer load in Owlbear. Consider downloading a local copy.</p>
+              <p>The map background is uploaded anonymously to Litterbox. The resulting URL is public and expires after 72 hours; after that, the background will no longer load in Owlbear. Consider downloading a local copy with the WebP export.</p>
             </div>
             <div class="owlbear-instructions">
               <span>1</span>
