@@ -1,13 +1,14 @@
 import "./style.css";
 import {
   generateTerrain,
+  Obstacle,
   PRESETS,
   type Grid,
   type Preset,
 } from "./generator";
 import { drawGrid, type TilesetPropImages } from "./rendering/canvas";
 import { PARAMETER_FIELDS, renderApp } from "./ui/template";
-import { downloadWebp } from "./export/webp";
+import { copyWebp, downloadWebp } from "./export/webp";
 import {
   createOwlbearSceneJson,
   downloadOwlbearJson,
@@ -30,8 +31,6 @@ const useTilesetInput =
   document.querySelector<HTMLInputElement>("#use-tileset")!;
 const stylizedLightingInput =
   document.querySelector<HTMLInputElement>("#stylized-lighting")!;
-const owlbearGridInput =
-  document.querySelector<HTMLInputElement>("#owlbear-grid")!;
 const owlbearTreeUrlInput =
   document.querySelector<HTMLInputElement>("#owlbear-tree-url")!;
 const owlbearRockUrlInput =
@@ -46,10 +45,14 @@ const webpStatus =
   document.querySelector<HTMLParagraphElement>("#webp-status")!;
 const webpDownloadButton =
   document.querySelector<HTMLButtonElement>("#download")!;
+const webpCopyButton =
+  document.querySelector<HTMLButtonElement>("#copy-webp")!;
 const owlbearCopyButton =
   document.querySelector<HTMLButtonElement>("#copy-owlbear")!;
 const owlbearDownloadButton =
   document.querySelector<HTMLButtonElement>("#download-owlbear")!;
+const owlbearBackgroundButton =
+  document.querySelector<HTMLButtonElement>("#download-owlbear-background")!;
 const tilesetImage = new Image();
 tilesetImage.src = "/assets/tilesets/terrain.png";
 const tilesetReady = () => tilesetImage.naturalWidth > 0;
@@ -173,37 +176,63 @@ document.querySelector("#reset")!.addEventListener("click", () => {
   applyPreset(activePreset);
   generate();
 });
-webpDownloadButton.addEventListener("click", async () => {
-  const previousLabel = webpDownloadButton.textContent;
+async function runWebpExport(action: "copy" | "download") {
+  const activeButton = action === "copy" ? webpCopyButton : webpDownloadButton;
+  const previousLabel = activeButton.textContent;
+  webpCopyButton.disabled = true;
   webpDownloadButton.disabled = true;
-  webpDownloadButton.textContent = "Encoding…";
+  activeButton.textContent = "Encoding…";
   webpStatus.classList.remove("is-error");
   webpStatus.textContent = "Rendering and encoding the WebP…";
 
   // Let the busy state paint before rendering a potentially large map.
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
   try {
-    await downloadWebp(
+    const commonArguments = [
       currentGrid,
       activePreset.mode,
-      seedInput.value.trim(),
       hiddenLegendItems,
       showGridInput.checked,
       useTilesetInput.checked && tilesetReady(),
       tilesetImage,
       tilesetPropsReady() ? tilesetProps : undefined,
       stylizedLightingInput.checked,
-    );
-    webpStatus.textContent = "WebP ready. The download has started.";
+    ] as const;
+    if (action === "copy") {
+      const clipboardFormat = await copyWebp(...commonArguments);
+      webpStatus.textContent = clipboardFormat === "webp"
+        ? "WebP copied to the clipboard."
+        : "Map copied to the clipboard (PNG compatibility format).";
+    } else {
+      await downloadWebp(
+        currentGrid,
+        activePreset.mode,
+        seedInput.value.trim(),
+        hiddenLegendItems,
+        showGridInput.checked,
+        useTilesetInput.checked && tilesetReady(),
+        tilesetImage,
+        tilesetPropsReady() ? tilesetProps : undefined,
+        stylizedLightingInput.checked,
+      );
+      webpStatus.textContent = "WebP ready. The download has started.";
+    }
   } catch (error) {
     webpStatus.classList.add("is-error");
     webpStatus.textContent = error instanceof Error
       ? `Export failed: ${error.message}`
       : "WebP export failed.";
   } finally {
+    webpCopyButton.disabled = false;
     webpDownloadButton.disabled = false;
-    webpDownloadButton.textContent = previousLabel;
+    activeButton.textContent = previousLabel;
   }
+}
+webpCopyButton.addEventListener("click", () => {
+  void runWebpExport("copy");
+});
+webpDownloadButton.addEventListener("click", () => {
+  void runWebpExport("download");
 });
 async function copyText(text: string) {
   if (navigator.clipboard?.writeText) {
@@ -224,12 +253,9 @@ async function copyText(text: string) {
 function owlbearExportKey() {
   return JSON.stringify({
     mapRevision,
-    mode: activePreset.mode,
     seed: seedInput.value.trim(),
     hiddenItems: [...hiddenLegendItems].sort(),
-    showGrid: owlbearGridInput.checked,
     useTileset: useTilesetInput.checked && tilesetReady(),
-    stylizedLighting: stylizedLightingInput.checked,
     treeUrl: owlbearTreeUrlInput.value.trim(),
     rockUrl: owlbearRockUrlInput.value.trim(),
   });
@@ -297,24 +323,21 @@ async function runOwlbearExport(action: "copy" | "download") {
     : undefined;
   owlbearCopyButton.disabled = true;
   owlbearDownloadButton.disabled = true;
-  activeButton.textContent = cachedScene ? "Preparing…" : "Uploading…";
+  owlbearBackgroundButton.disabled = true;
+  activeButton.textContent = "Preparing…";
   owlbearStatus.classList.remove("is-error");
   owlbearStatus.textContent = cachedScene
     ? "Reusing the latest Owlbear export…"
-    : "Uploading the map background to Litterbox…";
+    : "Preparing the Owlbear JSON…";
   try {
     const scene = cachedScene ?? await createOwlbearSceneJson(
       currentGrid,
-      activePreset.mode,
       seedInput.value.trim(),
       hiddenLegendItems,
       {
-        showGrid: owlbearGridInput.checked,
         useTileset: useTilesetInput.checked && tilesetReady(),
         treeUrl: owlbearTreeUrlInput.value,
         rockUrl: owlbearRockUrlInput.value,
-        tilesetImage,
-        stylizedLighting: stylizedLightingInput.checked,
       },
     );
     if (!cachedScene) {
@@ -337,9 +360,50 @@ async function runOwlbearExport(action: "copy" | "download") {
   } finally {
     owlbearCopyButton.disabled = false;
     owlbearDownloadButton.disabled = false;
+    owlbearBackgroundButton.disabled = false;
     activeButton.textContent = previousLabel;
   }
 }
+owlbearBackgroundButton.addEventListener("click", async () => {
+  const previousLabel = owlbearBackgroundButton.textContent;
+  owlbearBackgroundButton.disabled = true;
+  owlbearCopyButton.disabled = true;
+  owlbearDownloadButton.disabled = true;
+  owlbearBackgroundButton.textContent = "Encoding…";
+  owlbearStatus.classList.remove("is-error");
+  owlbearStatus.textContent = "Preparing the prop-free background…";
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  try {
+    const backgroundHiddenItems = new Set(hiddenLegendItems);
+    backgroundHiddenItems.add(Obstacle.Tree);
+    backgroundHiddenItems.add(Obstacle.Rock);
+    await downloadWebp(
+      currentGrid,
+      activePreset.mode,
+      seedInput.value.trim(),
+      backgroundHiddenItems,
+      showGridInput.checked,
+      useTilesetInput.checked && tilesetReady(),
+      tilesetImage,
+      tilesetPropsReady() ? tilesetProps : undefined,
+      stylizedLightingInput.checked,
+      64,
+      "-background",
+    );
+    owlbearStatus.textContent =
+      "Background downloaded. Upload it as a map in Owlbear.";
+  } catch (error) {
+    owlbearStatus.classList.add("is-error");
+    owlbearStatus.textContent = error instanceof Error
+      ? `Export failed: ${error.message}`
+      : "Background export failed.";
+  } finally {
+    owlbearBackgroundButton.disabled = false;
+    owlbearCopyButton.disabled = false;
+    owlbearDownloadButton.disabled = false;
+    owlbearBackgroundButton.textContent = previousLabel;
+  }
+});
 owlbearCopyButton.addEventListener("click", () => {
   void runOwlbearExport("copy");
 });

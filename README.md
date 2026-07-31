@@ -41,8 +41,7 @@ npm run build
 
 The static site is generated in `dist/`.
 
-Cloudflare Workers serves that directory and proxies the Owlbear image upload
-endpoint through the same origin:
+Cloudflare Workers serves that directory:
 
 ```bash
 npm run deploy:check

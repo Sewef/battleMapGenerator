@@ -1,15 +1,16 @@
 import {
   Obstacle,
   type Grid,
-  type LandscapeMode,
   type ObstacleKind,
 } from "../domain/map";
-import { uploadCanvasToLitterbox } from "./litterbox";
-import { renderExportCanvas } from "./webp";
 
 const OWLBEAR_SCENE_DPI = 150;
 const MAP_IMAGE_DPI = 64;
 const PROP_IMAGE_DPI = 512;
+const DEFAULT_MAP_URL =
+  "https://images.owlbear.rodeo/shared/items/owlbear-maps/Wasteland.jpeg";
+const PUBLIC_TILESET_ASSET_BASE =
+  "https://cdn.jsdelivr.net/gh/Sewef/battleMapGenerator@main/public/assets/tilesets/";
 
 type ExportedObstacle = {
   kind: Exclude<ObstacleKind, "none">;
@@ -42,18 +43,14 @@ const SUPPORTED_PROP_MIMES = new Set<OwlbearPropAsset["mime"]>(
 );
 
 export interface OwlbearExportOptions {
-  showGrid?: boolean;
   useTileset?: boolean;
   treeUrl?: string;
   rockUrl?: string;
-  tilesetImage?: CanvasImageSource;
-  stylizedLighting?: boolean;
 }
 
 export interface OwlbearSceneExport {
   json: string;
   filename: string;
-  mapUrl: string;
 }
 
 function safeSeed(seed: string) {
@@ -216,7 +213,9 @@ export async function inspectOwlbearProp(
 ): Promise<OwlbearPropAsset> {
   const value = customUrl?.trim();
   if (!value) {
-    const url = new URL(defaultAssetPath, window.location.origin).href;
+    const filename = defaultAssetPath.split("/").at(-1);
+    if (!filename) throw new Error("Missing default prop asset name.");
+    const url = new URL(filename, PUBLIC_TILESET_ASSET_BASE).href;
     const dimensions = await imageDimensions(url);
     return {
       url,
@@ -268,7 +267,6 @@ async function owlBearPropAssets(
 
 export async function createOwlbearSceneJson(
   grid: Grid,
-  mode: LandscapeMode,
   seed: string,
   hiddenItems: ReadonlySet<string>,
   options: OwlbearExportOptions = {},
@@ -278,36 +276,19 @@ export async function createOwlbearSceneJson(
     owlBearPropAssets(options.treeUrl, "tree", options.useTileset ?? false),
     owlBearPropAssets(options.rockUrl, "rock", options.useTileset ?? false),
   ]);
-  const mapHiddenItems = new Set(hiddenItems);
-  mapHiddenItems.add(Obstacle.Tree);
-  mapHiddenItems.add(Obstacle.Rock);
-  const mapCanvas = renderExportCanvas(
-    grid,
-    mode,
-    MAP_IMAGE_DPI,
-    mapHiddenItems,
-    options.showGrid ?? false,
-    options.useTileset ?? false,
-    options.tilesetImage,
-    undefined,
-    options.stylizedLighting ?? false,
-  );
-
   const shared: Record<string, ReturnType<typeof imageItem>> = {};
   const baseZIndex = Date.now();
   const mapId = crypto.randomUUID();
-  const mapUrl = await uploadCanvasToLitterbox(
-    mapCanvas,
-    `terra-${safeSeed(seed)}.webp`,
-  );
+  const mapWidth = grid[0].length * MAP_IMAGE_DPI;
+  const mapHeight = grid.length * MAP_IMAGE_DPI;
   shared[mapId] = imageItem(
     mapId,
-    `Terra ${safeSeed(seed)}`,
+    "Replace with uploaded Terra map",
     "MAP",
-    mapUrl,
-    "image/webp",
-    mapCanvas.width,
-    mapCanvas.height,
+    DEFAULT_MAP_URL,
+    "image/jpeg",
+    mapWidth,
+    mapHeight,
     { x: 0, y: 0 },
     MAP_IMAGE_DPI,
     { x: 0, y: 0 },
@@ -377,7 +358,6 @@ export async function createOwlbearSceneJson(
     json: JSON.stringify(scene),
     filename:
       `terra-${safeSeed(seed)}-${grid[0].length}x${grid.length}-owlbear.json`,
-    mapUrl,
   };
 }
 

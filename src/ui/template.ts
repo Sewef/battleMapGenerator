@@ -151,12 +151,15 @@ export function renderApp(root: HTMLElement) {
               <p class="export-description">A compact image with the current terrain and selected props.</p>
               <div class="webp-options">
                 <label class="grid-option">
-                  <input id="show-grid" type="checkbox" checked />
+                  <input id="show-grid" type="checkbox" />
                   <span>Include grid in WebP</span>
                 </label>
               </div>
               <p id="webp-status" role="status" aria-live="polite"></p>
-              <button id="download" class="owlbear-primary-button export-wide-button" type="button">Download WebP ↓</button>
+              <div class="webp-actions">
+                <button id="copy-webp" class="download-button" type="button">Copy WebP</button>
+                <button id="download" class="owlbear-primary-button" type="button">Download WebP ↓</button>
+              </div>
             </div>
             <div class="export-card owlbear-export" aria-labelledby="owlbear-title">
             <div class="owlbear-heading">
@@ -164,10 +167,6 @@ export function renderApp(root: HTMLElement) {
                 <p class="eyebrow">Virtual tabletop</p>
                 <h3 id="owlbear-title">Owlbear Rodeo</h3>
               </div>
-              <label class="grid-option owlbear-grid-option">
-                <input id="owlbear-grid" type="checkbox" />
-                <span>Include grid in Owlbear</span>
-              </label>
             </div>
             <div class="owlbear-options">
               <label class="owlbear-field">
@@ -188,17 +187,18 @@ export function renderApp(root: HTMLElement) {
               </label>
             </div>
             <div class="owlbear-notice">
-              <strong>Public image hosting</strong>
-              <p>The map background is uploaded anonymously to Litterbox. The resulting URL is public and expires after 72 hours; after that, the background will no longer load. Consider downloading a local copy with the WebP export.</p>
+              <strong>Map background required</strong>
+              <p>No image is uploaded automatically. Download the prop-free background below, upload it to your Owlbear scene as a map, then remove the placeholder map included in the JSON.</p>
             </div>
             <div class="owlbear-instructions">
               <span>1</span>
-              <p>Export or copy the generated JSON.</p>
+              <p>Download and upload the background WebP to your Owlbear scene.</p>
               <span>2</span>
-              <p>Open your Owlbear scene and paste the JSON into the scene.</p>
+              <p>Paste or import the JSON, then remove its placeholder map.</p>
             </div>
             <div class="owlbear-actions">
               <p id="owlbear-status" role="status" aria-live="polite"></p>
+              <button id="download-owlbear-background" class="download-button" type="button">Download background</button>
               <button id="copy-owlbear" class="owlbear-primary-button" type="button">Copy JSON</button>
               <button id="download-owlbear" class="download-button" type="button">Download JSON ↓</button>
             </div>
