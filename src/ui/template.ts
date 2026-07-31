@@ -63,15 +63,15 @@ export function renderApp(root: HTMLElement) {
       <section class="preset-section">
         <div class="preset-groups">
           ${PRESET_GROUPS.map((group) => {
-            const initiallyOpen = group.ids.some((id) => id === PRESETS[0].id);
-            return `
+    const initiallyOpen = group.ids.some((id) => id === PRESETS[0].id);
+    return `
             <section class="preset-group${initiallyOpen ? " is-open" : ""}">
               <button class="preset-group-heading" type="button" aria-expanded="${initiallyOpen}" data-preset-group>
                 <span>${group.label}</span><span aria-hidden="true">⌄</span>
               </button>
               <div class="preset-list">
                 ${group.ids.map((id) => PRESETS.find((preset) => preset.id === id)!)
-                  .map((preset) => `
+        .map((preset) => `
                     <button class="preset-card" type="button" data-preset="${preset.id}">
                       <span class="preset-icon ${preset.id}" aria-hidden="true"></span>
                       <span><strong>${preset.name}</strong><small>${preset.description}</small></span>
@@ -79,7 +79,7 @@ export function renderApp(root: HTMLElement) {
                   `).join("")}
               </div>
             </section>`;
-          }).join("")}
+  }).join("")}
         </div>
       </section>
 
@@ -110,9 +110,9 @@ export function renderApp(root: HTMLElement) {
           </div>
 
           ${[
-            ["terrain", "Terrain weight"],
-            ["obstacles", "Obstacle population"],
-          ].map(([group, title]) => `
+      ["terrain", "Terrain weight"],
+      ["obstacles", "Obstacle population"],
+    ].map(([group, title]) => `
           <div class="parameter-section" data-parameter-group="${group}">
             <div class="parameter-heading">
               <p>${title}</p>
@@ -133,10 +133,6 @@ export function renderApp(root: HTMLElement) {
         <div class="map-panel">
           <div class="map-toolbar">
             <div><strong>Map preview</strong><span id="dimensions"></span></div>
-            <label class="grid-option preview-option">
-              <input id="preview-grid" type="checkbox" checked />
-              <span>Preview grid</span>
-            </label>
           </div>
           <div class="canvas-wrap">
             <canvas id="map" aria-label="Generated terrain grid"></canvas>
@@ -148,59 +144,49 @@ export function renderApp(root: HTMLElement) {
                 <h2 id="map-content-title">Map content</h2>
                 <p>These settings affect the preview, WebP and Owlbear exports.</p>
               </div>
-            </div>
-            <div class="render-settings">
-              <label class="render-setting">
-                <span>Terrain style</span>
-                <span class="grid-option">
+              <div class="map-content-actions">
+                <label class="grid-option preview-option">
+                  <input id="preview-grid" type="checkbox" />
+                  <span>Preview grid</span>
+                </label>
+                <label class="grid-option">
                   <input id="use-tileset" type="checkbox" />
-                  <span>Use terrain tileset</span>
-                </span>
-              </label>
-              <label class="render-setting">
-                <span>Prop rendering</span>
-                <select id="prop-render-mode">
-                  <option value="procedural">Procedural</option>
-                  <option value="tileset">Tileset</option>
-                  <option value="custom">Tileset + custom images</option>
-                </select>
-              </label>
-              <label class="render-setting" title="Adds directional relief, ambient shading and subtle light emitted by liquids.">
-                <span>Lighting</span>
-                <span class="grid-option">
+                  <span>Use tileset</span>
+                </label>
+                <label class="grid-option" title="Adds directional relief, ambient shading and subtle light emitted by liquids.">
                   <input id="stylized-lighting" type="checkbox" checked />
                   <span>Stylized lighting</span>
-                </span>
-              </label>
+                </label>
+              </div>
             </div>
-            <div class="custom-prop-settings" id="custom-prop-settings" hidden>
-              <div class="custom-prop-heading">
-                <div>
-                  <strong>Custom prop images</strong>
-                  <p>Square direct image URLs. Empty fields fall back to tileset assets.</p>
+            <details class="custom-prop-settings" id="custom-prop-settings">
+              <summary>
+                <span>Custom tree &amp; rock images</span>
+                <small>Optional tileset overrides</small>
+              </summary>
+              <div class="custom-prop-body">
+                <p>Square direct image URLs. Empty fields use the standard tileset props.</p>
+                <div class="custom-prop-fields">
+                  <label class="owlbear-field">
+                    <span>Tree image URL <small>Optional</small></span>
+                    <input id="custom-tree-url" name="tree-prop-url" type="url" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" placeholder="https://example.com/tree.png" />
+                    <span class="prop-preview" id="custom-tree-preview">
+                      <img src="/assets/tilesets/tree_1x1.png" alt="Tree prop preview" />
+                      <small>Tileset fallback</small>
+                    </span>
+                  </label>
+                  <label class="owlbear-field">
+                    <span>Rock image URL <small>Optional</small></span>
+                    <input id="custom-rock-url" name="rock-prop-url" type="url" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" placeholder="https://example.com/rock.png" />
+                    <span class="prop-preview" id="custom-rock-preview">
+                      <img src="/assets/tilesets/rock_1x1.png" alt="Rock prop preview" />
+                      <small>Tileset fallback</small>
+                    </span>
+                  </label>
                 </div>
-                <span>Used everywhere</span>
+                <p class="custom-prop-notice">Used only when the tileset is enabled. The image host must allow cross-origin canvas use and remain publicly accessible to Owlbear.</p>
               </div>
-              <div class="custom-prop-fields">
-                <label class="owlbear-field">
-                  <span>Tree image URL <small>Optional</small></span>
-                  <input id="custom-tree-url" name="tree-prop-url" type="url" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" placeholder="https://example.com/tree.png" />
-                  <span class="prop-preview" id="custom-tree-preview">
-                    <img src="/assets/tilesets/tree_1x1.png" alt="Tree prop preview" />
-                    <small>Tileset fallback</small>
-                  </span>
-                </label>
-                <label class="owlbear-field">
-                  <span>Rock image URL <small>Optional</small></span>
-                  <input id="custom-rock-url" name="rock-prop-url" type="url" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" placeholder="https://example.com/rock.png" />
-                  <span class="prop-preview" id="custom-rock-preview">
-                    <img src="/assets/tilesets/rock_1x1.png" alt="Rock prop preview" />
-                    <small>Tileset fallback</small>
-                  </span>
-                </label>
-              </div>
-              <p class="custom-prop-notice">The image host must allow cross-origin canvas use for preview and WebP export. Owlbear also needs the URL to remain publicly accessible.</p>
-            </div>
+            </details>
             <div class="map-footer">
               <div class="legend" id="legend"></div>
               <p class="map-note"><span>◆</span> Click legend items to include or exclude layers everywhere.</p>
@@ -224,7 +210,7 @@ export function renderApp(root: HTMLElement) {
               <div class="webp-options">
                 <label class="grid-option">
                   <input id="show-grid" type="checkbox" />
-                  <span>Include grid in WebP</span>
+                  <span>Export grid</span>
                 </label>
               </div>
               <div class="webp-variants">

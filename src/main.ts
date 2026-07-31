@@ -9,7 +9,6 @@ import {
 import {
   drawGrid,
   type CustomPropImages,
-  type PropRenderMode,
   type TilesetPropImages,
 } from "./rendering/canvas";
 import {
@@ -38,10 +37,6 @@ const previewGridInput =
 const showGridInput = document.querySelector<HTMLInputElement>("#show-grid")!;
 const useTilesetInput =
   document.querySelector<HTMLInputElement>("#use-tileset")!;
-const propRenderModeInput =
-  document.querySelector<HTMLSelectElement>("#prop-render-mode")!;
-const customPropSettings =
-  document.querySelector<HTMLElement>("#custom-prop-settings")!;
 const stylizedLightingInput =
   document.querySelector<HTMLInputElement>("#stylized-lighting")!;
 const treePropUrlInput =
@@ -164,7 +159,7 @@ function applyPreset(preset: Preset, useNewSeed = true) {
 }
 
 function renderMap(grid: Grid, targetCanvas = previewCanvas, cellSize?: number) {
-  const propRenderMode = propRenderModeInput.value as PropRenderMode;
+  const useTileset = useTilesetInput.checked && tilesetReady();
   drawGrid(grid, {
     targetCanvas,
     mode: activePreset.mode,
@@ -173,11 +168,10 @@ function renderMap(grid: Grid, targetCanvas = previewCanvas, cellSize?: number) 
     updateInterface: targetCanvas === previewCanvas,
     hiddenItems: hiddenLegendItems,
     showGrid: previewGridInput.checked,
-    useTileset: useTilesetInput.checked && tilesetReady(),
+    useTileset,
     tilesetImage: tilesetReady() ? tilesetImage : undefined,
     tilesetProps: tilesetPropsReady() ? tilesetProps : undefined,
-    propRenderMode,
-    customProps: propRenderMode === "custom" ? activeCustomProps() : undefined,
+    customProps: useTileset ? activeCustomProps() : undefined,
     stylizedLighting: stylizedLightingInput.checked,
   });
 }
@@ -254,15 +248,14 @@ function webpRenderOptions(includeProps: boolean) {
     hiddenItems.add(Obstacle.Tree);
     hiddenItems.add(Obstacle.Rock);
   }
-  const propRenderMode = propRenderModeInput.value as PropRenderMode;
+  const useTileset = useTilesetInput.checked && tilesetReady();
   return {
     hiddenItems,
     showGrid: showGridInput.checked,
-    useTileset: useTilesetInput.checked && tilesetReady(),
+    useTileset,
     tilesetImage: tilesetReady() ? tilesetImage : undefined,
     tilesetProps: tilesetPropsReady() ? tilesetProps : undefined,
-    propRenderMode,
-    customProps: propRenderMode === "custom" ? activeCustomProps() : undefined,
+    customProps: useTileset ? activeCustomProps() : undefined,
     stylizedLighting: stylizedLightingInput.checked,
     cellSize: 64,
   };
@@ -343,16 +336,16 @@ async function copyText(text: string) {
 }
 
 function owlbearExportKey() {
-  const propRenderMode = propRenderModeInput.value as PropRenderMode;
+  const useTileset = useTilesetInput.checked;
   return JSON.stringify({
     mapRevision,
     seed: seedInput.value.trim(),
     hiddenItems: [...hiddenLegendItems].sort(),
-    propRenderMode,
-    treeUrl: propRenderMode === "custom"
+    useTileset,
+    treeUrl: useTileset
       ? treePropUrlInput.value.trim()
       : "",
-    rockUrl: propRenderMode === "custom"
+    rockUrl: useTileset
       ? rockPropUrlInput.value.trim()
       : "",
   });
@@ -375,7 +368,7 @@ async function updatePropPreview(
     previewImage.style.display = "block";
     information.textContent = "Tileset fallback";
     preview.classList.remove("is-loading");
-    if (propRenderModeInput.value === "custom") renderMap(currentGrid);
+    if (useTilesetInput.checked) renderMap(currentGrid);
     return;
   }
   information.textContent = "Checking image…";
@@ -397,7 +390,7 @@ async function updatePropPreview(
     previewImage.style.display = "block";
     information.textContent =
       `${asset.width} × ${asset.height} · ${asset.mime.replace("image/", "").toUpperCase()}`;
-    if (propRenderModeInput.value === "custom") renderMap(currentGrid);
+    if (useTilesetInput.checked) renderMap(currentGrid);
   } catch (error) {
     if (input.value.trim() !== requestedUrl) return;
     delete customProps[kind];
@@ -407,7 +400,7 @@ async function updatePropPreview(
     information.textContent = error instanceof Error
       ? error.message
       : "Unable to inspect this prop.";
-    if (propRenderModeInput.value === "custom") renderMap(currentGrid);
+    if (useTilesetInput.checked) renderMap(currentGrid);
   } finally {
     if (input.value.trim() === requestedUrl) {
       preview.classList.remove("is-loading");
@@ -423,7 +416,7 @@ function bindPropPreview(
   let timeout = 0;
   const schedule = () => {
     window.clearTimeout(timeout);
-    if (propRenderModeInput.value === "custom") renderMap(currentGrid);
+    if (useTilesetInput.checked) renderMap(currentGrid);
     timeout = window.setTimeout(() => {
       void updatePropPreview(input, preview, kind);
     }, 450);
@@ -452,17 +445,17 @@ async function runOwlbearExport(action: "copy" | "download") {
     ? "Reusing the latest Owlbear export…"
     : "Preparing the Owlbear JSON…";
   try {
-    const propRenderMode = propRenderModeInput.value as PropRenderMode;
+    const useTileset = useTilesetInput.checked;
     const scene = cachedScene ?? await createOwlbearSceneJson(
       currentGrid,
       seedInput.value.trim(),
       hiddenLegendItems,
       {
-        useTileset: propRenderMode !== "procedural",
-        treeUrl: propRenderMode === "custom"
+        useTileset,
+        treeUrl: useTileset
           ? treePropUrlInput.value
           : undefined,
-        rockUrl: propRenderMode === "custom"
+        rockUrl: useTileset
           ? rockPropUrlInput.value
           : undefined,
       },
@@ -508,20 +501,13 @@ bindPropPreview(
 );
 previewGridInput.addEventListener("change", () => renderMap(currentGrid));
 useTilesetInput.addEventListener("change", () => renderMap(currentGrid));
-propRenderModeInput.addEventListener("change", () => {
-  customPropSettings.hidden = propRenderModeInput.value !== "custom";
-  renderMap(currentGrid);
-});
 stylizedLightingInput.addEventListener("change", () => renderMap(currentGrid));
 tilesetImage.addEventListener("load", () => {
-  if (
-    useTilesetInput.checked ||
-    propRenderModeInput.value !== "procedural"
-  ) renderMap(currentGrid);
+  if (useTilesetInput.checked) renderMap(currentGrid);
 });
 Object.values(tilesetProps).forEach((image) => {
   image.addEventListener("load", () => {
-    if (propRenderModeInput.value !== "procedural") renderMap(currentGrid);
+    if (useTilesetInput.checked) renderMap(currentGrid);
   });
 });
 document.querySelector("#legend")!.addEventListener("click", (event) => {

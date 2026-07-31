@@ -2,7 +2,6 @@ import type { Grid, LandscapeMode } from "../domain/map";
 import {
   drawGrid,
   type CustomPropImages,
-  type PropRenderMode,
   type TilesetPropImages,
 } from "../rendering/canvas";
 
@@ -14,7 +13,6 @@ export interface WebpRenderOptions {
   useTileset?: boolean;
   tilesetImage?: CanvasImageSource;
   tilesetProps?: TilesetPropImages;
-  propRenderMode?: PropRenderMode;
   customProps?: CustomPropImages;
   stylizedLighting?: boolean;
   cellSize?: number;
@@ -72,7 +70,6 @@ export function renderExportCanvas(
     useTileset: options.useTileset ?? false,
     tilesetImage: options.tilesetImage,
     tilesetProps: options.tilesetProps,
-    propRenderMode: options.propRenderMode,
     customProps: options.customProps,
     stylizedLighting: options.stylizedLighting ?? false,
   });

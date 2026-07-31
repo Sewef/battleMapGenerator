@@ -22,7 +22,6 @@ export interface RenderOptions {
   useTileset?: boolean;
   tilesetImage?: CanvasImageSource;
   tilesetProps?: TilesetPropImages;
-  propRenderMode?: PropRenderMode;
   customProps?: CustomPropImages;
   stylizedLighting?: boolean;
 }
@@ -33,8 +32,6 @@ export interface TilesetPropImages {
   rock1x1: CanvasImageSource;
   rock2x2: CanvasImageSource;
 }
-
-export type PropRenderMode = "procedural" | "tileset" | "custom";
 
 export interface CustomPropImages {
   tree?: CanvasImageSource;
@@ -2544,9 +2541,7 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   const hiddenItems = options.hiddenItems ?? new Set<string>();
   const hiddenOpacity = options.hiddenOpacity ?? .14;
   const showGrid = options.showGrid ?? true;
-  const propRenderMode = options.propRenderMode ??
-    (options.useTileset ? "tileset" : "procedural");
-  const useImageProps = propRenderMode !== "procedural";
+  const useImageProps = options.useTileset ?? false;
   const width = columns * cellSize;
   const height = rows * cellSize;
 
@@ -2725,7 +2720,7 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
         formation.every((key) => rockCells.has(key)) &&
         formation.every((key) => !renderedRockCells.has(key))
       ) {
-        if (propRenderMode === "custom" && options.customProps?.rock) {
+        if (useImageProps && options.customProps?.rock) {
           drawCustomProp(
             options.customProps.rock,
             x,
@@ -2755,7 +2750,7 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   for (const key of rockCells) {
     if (renderedRockCells.has(key)) continue;
     const [x, y] = key.split(",").map(Number);
-    if (propRenderMode === "custom" && options.customProps?.rock) {
+    if (useImageProps && options.customProps?.rock) {
       drawCustomProp(
         options.customProps.rock,
         x,
@@ -2806,7 +2801,7 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
       ];
       const pointKeys = new Set(points.map(({ x, y }) => `${x},${y}`));
       if (completeBlock.every((key) => pointKeys.has(key))) {
-        if (propRenderMode === "custom" && options.customProps?.tree) {
+        if (useImageProps && options.customProps?.tree) {
           drawCustomProp(
             options.customProps.tree,
             minimumX,
@@ -2832,7 +2827,7 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
         }
       }
     }
-    if (propRenderMode === "custom" && options.customProps?.tree) {
+    if (useImageProps && options.customProps?.tree) {
       for (const { x, y } of points) {
         drawCustomProp(
           options.customProps.tree,
