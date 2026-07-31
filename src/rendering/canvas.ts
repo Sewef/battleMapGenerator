@@ -1863,109 +1863,66 @@ function drawRoadNetwork(
     const horizontalBridgeFootprint = new Path2D();
     const verticalBridgeFootprint = new Path2D();
     const bridgeShadow = new Path2D();
+    const bridgeUnderlay = new Path2D();
     const bridgeLightEdge = new Path2D();
     const bridgeDarkEdge = new Path2D();
-    const bridgeRampSeams = new Path2D();
-    const bridgeRampLips = new Path2D();
-    const bridgeAbutments = new Path2D();
+    const isBridgeUnderlay = (x: number, y: number) =>
+      grid[y]?.[x]?.terrain === Terrain.Water ||
+      grid[y]?.[x]?.terrain === Terrain.Ravine;
+    for (let y = 0; y < grid.length; y += 1) {
+      for (let x = 0; x < grid[y].length; x += 1) {
+        if (isBridgeUnderlay(x, y)) {
+          bridgeUnderlay.rect(
+            x * cellSize,
+            y * cellSize,
+            cellSize,
+            cellSize,
+          );
+        }
+      }
+    }
     for (const { x, y } of bridgeCells) {
       const left = x * cellSize;
       const top = y * cellSize;
       const right = left + cellSize;
       const bottom = top + cellSize;
       const axis = bridgeAxis(x, y);
-      const shadowOffset = cellSize * .12;
-      const overhang = cellSize * .08;
-      const deckLeft = axis === "vertical" ? left - overhang : left;
-      const deckTop = axis === "horizontal" ? top - overhang : top;
-      const deckWidth = axis === "vertical"
-        ? cellSize + overhang * 2
-        : cellSize;
-      const deckHeight = axis === "horizontal"
-        ? cellSize + overhang * 2
-        : cellSize;
-      bridgeFootprint.rect(deckLeft, deckTop, deckWidth, deckHeight);
+      const shadowOffset = cellSize * .08;
+      bridgeFootprint.rect(left, top, cellSize, cellSize);
       if (axis === "horizontal") {
-        horizontalBridgeFootprint.rect(deckLeft, deckTop, deckWidth, deckHeight);
+        horizontalBridgeFootprint.rect(left, top, cellSize, cellSize);
       } else {
-        verticalBridgeFootprint.rect(deckLeft, deckTop, deckWidth, deckHeight);
+        verticalBridgeFootprint.rect(left, top, cellSize, cellSize);
       }
       bridgeShadow.rect(
-        left + (axis === "vertical" ? shadowOffset : 0),
-        top + (axis === "horizontal" ? shadowOffset : 0),
+        left + shadowOffset,
+        top + shadowOffset,
         cellSize,
         cellSize,
       );
       if (axis === "horizontal") {
-        if (!bridgeKeys.has(`${x},${y - 1}`)) {
+        if (!bridgeKeys.has(`${x},${y - 1}`) && isBridgeUnderlay(x, y - 1)) {
           bridgeLightEdge.moveTo(left, top);
           bridgeLightEdge.lineTo(right, top);
         }
-        if (!bridgeKeys.has(`${x},${y + 1}`)) {
+        if (!bridgeKeys.has(`${x},${y + 1}`) && isBridgeUnderlay(x, y + 1)) {
           bridgeDarkEdge.moveTo(left, bottom);
           bridgeDarkEdge.lineTo(right, bottom);
         }
-        if (
-          !bridgeKeys.has(`${x - 1},${y}`) &&
-          grid[y]?.[x - 1] &&
-          tileSurface(grid[y][x - 1]) === Terrain.Road
-        ) {
-          bridgeRampSeams.moveTo(left, top);
-          bridgeRampSeams.lineTo(left, bottom);
-          bridgeRampLips.moveTo(left + cellSize * .1, top);
-          bridgeRampLips.lineTo(left + cellSize * .1, bottom);
-          bridgeAbutments.moveTo(left, top - overhang * 1.6);
-          bridgeAbutments.lineTo(left, bottom + overhang * 1.6);
-        }
-        if (
-          !bridgeKeys.has(`${x + 1},${y}`) &&
-          grid[y]?.[x + 1] &&
-          tileSurface(grid[y][x + 1]) === Terrain.Road
-        ) {
-          bridgeRampSeams.moveTo(right, top);
-          bridgeRampSeams.lineTo(right, bottom);
-          bridgeRampLips.moveTo(right - cellSize * .1, top);
-          bridgeRampLips.lineTo(right - cellSize * .1, bottom);
-          bridgeAbutments.moveTo(right, top - overhang * 1.6);
-          bridgeAbutments.lineTo(right, bottom + overhang * 1.6);
-        }
       } else {
-        if (!bridgeKeys.has(`${x - 1},${y}`)) {
+        if (!bridgeKeys.has(`${x - 1},${y}`) && isBridgeUnderlay(x - 1, y)) {
           bridgeLightEdge.moveTo(left, bottom);
           bridgeLightEdge.lineTo(left, top);
         }
-        if (!bridgeKeys.has(`${x + 1},${y}`)) {
+        if (!bridgeKeys.has(`${x + 1},${y}`) && isBridgeUnderlay(x + 1, y)) {
           bridgeDarkEdge.moveTo(right, top);
           bridgeDarkEdge.lineTo(right, bottom);
-        }
-        if (
-          !bridgeKeys.has(`${x},${y - 1}`) &&
-          grid[y - 1]?.[x] &&
-          tileSurface(grid[y - 1][x]) === Terrain.Road
-        ) {
-          bridgeRampSeams.moveTo(left, top);
-          bridgeRampSeams.lineTo(right, top);
-          bridgeRampLips.moveTo(left, top + cellSize * .1);
-          bridgeRampLips.lineTo(right, top + cellSize * .1);
-          bridgeAbutments.moveTo(left - overhang * 1.6, top);
-          bridgeAbutments.lineTo(right + overhang * 1.6, top);
-        }
-        if (
-          !bridgeKeys.has(`${x},${y + 1}`) &&
-          grid[y + 1]?.[x] &&
-          tileSurface(grid[y + 1][x]) === Terrain.Road
-        ) {
-          bridgeRampSeams.moveTo(left, bottom);
-          bridgeRampSeams.lineTo(right, bottom);
-          bridgeRampLips.moveTo(left, bottom - cellSize * .1);
-          bridgeRampLips.lineTo(right, bottom - cellSize * .1);
-          bridgeAbutments.moveTo(left - overhang * 1.6, bottom);
-          bridgeAbutments.lineTo(right + overhang * 1.6, bottom);
         }
       }
     }
     context.globalAlpha = hiddenItems.has(Terrain.Bridge) ? hiddenOpacity : 1;
     context.save();
+    context.clip(bridgeUnderlay);
     context.filter = `blur(${Math.max(1, cellSize * .055)}px)`;
     context.fillStyle = "rgba(28, 24, 20, .38)";
     context.fill(bridgeShadow);
@@ -2006,41 +1963,6 @@ function drawRoadNetwork(
     context.strokeStyle = "rgba(54, 39, 28, .72)";
     context.lineWidth = Math.max(2, cellSize * .105);
     context.stroke(bridgeDarkEdge);
-    context.strokeStyle = "rgba(48, 34, 25, .62)";
-    context.lineWidth = Math.max(2, cellSize * .085);
-    context.stroke(bridgeRampSeams);
-    context.strokeStyle = getTerrainStyle(Terrain.Bridge, mode).alt;
-    context.lineWidth = Math.max(3, cellSize * .16);
-    context.stroke(bridgeAbutments);
-    context.strokeStyle = "rgba(246, 224, 181, .52)";
-    context.lineWidth = Math.max(1, cellSize * .04);
-    context.stroke(bridgeRampLips);
-    context.strokeStyle = "rgba(61, 43, 30, .48)";
-    context.lineWidth = Math.max(1.5, cellSize * .075);
-    context.beginPath();
-    for (const { x, y } of bridgeCells) {
-      const left = x * cellSize;
-      const top = y * cellSize;
-      const right = left + cellSize;
-      const bottom = top + cellSize;
-      if (!bridgeKeys.has(`${x},${y - 1}`)) {
-        context.moveTo(left, top);
-        context.lineTo(right, top);
-      }
-      if (!bridgeKeys.has(`${x + 1},${y}`)) {
-        context.moveTo(right, top);
-        context.lineTo(right, bottom);
-      }
-      if (!bridgeKeys.has(`${x},${y + 1}`)) {
-        context.moveTo(right, bottom);
-        context.lineTo(left, bottom);
-      }
-      if (!bridgeKeys.has(`${x - 1},${y}`)) {
-        context.moveTo(left, bottom);
-        context.lineTo(left, top);
-      }
-    }
-    context.stroke();
   }
   context.restore();
 }
