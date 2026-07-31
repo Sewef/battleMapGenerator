@@ -43,6 +43,10 @@ const owlbearRockPreview =
   document.querySelector<HTMLElement>("#owlbear-rock-preview")!;
 const owlbearStatus =
   document.querySelector<HTMLParagraphElement>("#owlbear-status")!;
+const webpStatus =
+  document.querySelector<HTMLParagraphElement>("#webp-status")!;
+const webpDownloadButton =
+  document.querySelector<HTMLButtonElement>("#download")!;
 const owlbearCopyButton =
   document.querySelector<HTMLButtonElement>("#copy-owlbear")!;
 const owlbearDownloadButton =
@@ -172,18 +176,37 @@ document.querySelector("#reset")!.addEventListener("click", () => {
   applyPreset(activePreset);
   generate();
 });
-document.querySelector("#download")!.addEventListener("click", () => {
-  downloadWebp(
-    currentGrid,
-    activePreset.mode,
-    seedInput.value.trim(),
-    hiddenLegendItems,
-    showGridInput.checked,
-    useTilesetInput.checked && tilesetReady(),
-    tilesetImage,
-    tilesetPropsReady() ? tilesetProps : undefined,
-    stylizedLightingInput.checked,
-  );
+webpDownloadButton.addEventListener("click", async () => {
+  const previousLabel = webpDownloadButton.textContent;
+  webpDownloadButton.disabled = true;
+  webpDownloadButton.textContent = "Encoding…";
+  webpStatus.classList.remove("is-error");
+  webpStatus.textContent = "Rendering and encoding the WebP…";
+
+  // Let the busy state paint before rendering a potentially large map.
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  try {
+    await downloadWebp(
+      currentGrid,
+      activePreset.mode,
+      seedInput.value.trim(),
+      hiddenLegendItems,
+      showGridInput.checked,
+      useTilesetInput.checked && tilesetReady(),
+      tilesetImage,
+      tilesetPropsReady() ? tilesetProps : undefined,
+      stylizedLightingInput.checked,
+    );
+    webpStatus.textContent = "WebP ready. The download has started.";
+  } catch (error) {
+    webpStatus.classList.add("is-error");
+    webpStatus.textContent = error instanceof Error
+      ? `Export failed: ${error.message}`
+      : "WebP export failed.";
+  } finally {
+    webpDownloadButton.disabled = false;
+    webpDownloadButton.textContent = previousLabel;
+  }
 });
 async function copyText(text: string) {
   if (navigator.clipboard?.writeText) {

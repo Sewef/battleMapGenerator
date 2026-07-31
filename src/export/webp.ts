@@ -3,6 +3,26 @@ import { drawGrid, type TilesetPropImages } from "../rendering/canvas";
 
 const WEBP_QUALITY = 0.95;
 
+function encodeWebp(canvas: HTMLCanvasElement) {
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob?.size) {
+          reject(new Error("The browser could not encode this map as WebP."));
+          return;
+        }
+        if (blob.type !== "image/webp") {
+          reject(new Error("This browser does not support WebP export."));
+          return;
+        }
+        resolve(blob);
+      },
+      "image/webp",
+      WEBP_QUALITY,
+    );
+  });
+}
+
 export function renderExportCanvas(
   grid: Grid,
   mode: LandscapeMode,
@@ -40,7 +60,7 @@ function mapFilename(grid: Grid, seed: string, extension: "png" | "webp") {
   return `terra-${safeSeed}-${columns}x${rows}.${extension}`;
 }
 
-export function downloadWebp(
+export async function downloadWebp(
   grid: Grid,
   mode: LandscapeMode,
   seed: string,
@@ -52,9 +72,7 @@ export function downloadWebp(
   stylizedLighting = false,
   cellSize = 64,
 ) {
-  const link = document.createElement("a");
-  link.download = mapFilename(grid, seed, "webp");
-  link.href = renderExportCanvas(
+  const canvas = renderExportCanvas(
     grid,
     mode,
     cellSize,
@@ -64,9 +82,14 @@ export function downloadWebp(
     tilesetImage,
     tilesetProps,
     stylizedLighting,
-  ).toDataURL(
-    "image/webp",
-    WEBP_QUALITY,
   );
+  const blob = await encodeWebp(canvas);
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.download = mapFilename(grid, seed, "webp");
+  link.href = objectUrl;
+  document.body.append(link);
   link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
 }

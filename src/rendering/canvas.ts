@@ -64,6 +64,19 @@ const tintedTilesetPropCache = new WeakMap<
   Map<string, HTMLCanvasElement>
 >();
 
+function applyPropContactShadow(
+  cellSize: number,
+  context: CanvasRenderingContext2D,
+) {
+  // The directional light comes from the north-west, so props cast a short,
+  // soft shadow towards the south-east. Keeping this tied to one cell makes
+  // large props feel grounded without producing long, dominant silhouettes.
+  context.shadowColor = "rgba(20, 24, 22, .28)";
+  context.shadowBlur = Math.max(1.25, cellSize * .065);
+  context.shadowOffsetX = Math.max(.75, cellSize * .04);
+  context.shadowOffsetY = Math.max(1.25, cellSize * .075);
+}
+
 function tintedTilesetProp(
   image: CanvasImageSource,
   size: 1 | 2,
@@ -105,6 +118,7 @@ function drawTilesetProp(
 ) {
   context.save();
   context.imageSmoothingEnabled = false;
+  applyPropContactShadow(cellSize, context);
   context.drawImage(
     tintedTilesetProp(image, size, cellSize, tint, tintStrength),
     x * cellSize,
@@ -714,8 +728,8 @@ function drawRavineUpperEdges(
 ) {
   const segmentCount = 5;
   const effect = document.createElement("canvas");
-  effect.width = context.canvas.width;
-  effect.height = context.canvas.height;
+  effect.width = grid[0].length * cellSize;
+  effect.height = grid.length * cellSize;
   const effectContext = effect.getContext("2d")!;
   effectContext.lineCap = "round";
   effectContext.lineJoin = "round";
@@ -794,8 +808,8 @@ function drawLiquidUpperEdges(
 ) {
   const segmentCount = 5;
   const effect = document.createElement("canvas");
-  effect.width = context.canvas.width;
-  effect.height = context.canvas.height;
+  effect.width = grid[0].length * cellSize;
+  effect.height = grid.length * cellSize;
   const effectContext = effect.getContext("2d")!;
   effectContext.lineCap = "round";
   effectContext.lineJoin = "round";
@@ -1953,48 +1967,257 @@ function drawShorelines(
   context.restore();
 }
 
-function drawWaterDetails(
-  grid: Grid,
-  cellSize: number,
-  mode: LandscapeMode,
-  visibility: number,
-  context: CanvasRenderingContext2D,
-) {
-  context.save();
-  context.globalAlpha = visibility;
-  context.lineCap = "round";
-  context.lineWidth = Math.max(1, cellSize * .025);
-  const light = getTerrainStyle(Terrain.Water, mode).color;
-  const dark = getTerrainStyle(Terrain.Water, mode).alt;
+type ContinuousMaterialTerrain =
+  | typeof Terrain.Water
+  | typeof Terrain.Ice
+  | typeof Terrain.Lava;
+
+function terrainIsPresent(grid: Grid, terrain: ContinuousMaterialTerrain) {
   for (let y = 0; y < grid.length; y += 1) {
     for (let x = 0; x < grid[y].length; x += 1) {
-      if (underlyingTerrain(grid, x, y) !== Terrain.Water) continue;
-      const horizontal =
-        Number(grid[y]?.[x - 1] && underlyingTerrain(grid, x - 1, y) === Terrain.Water) +
-        Number(grid[y]?.[x + 1] && underlyingTerrain(grid, x + 1, y) === Terrain.Water);
-      const vertical =
-        Number(grid[y - 1]?.[x] && underlyingTerrain(grid, x, y - 1) === Terrain.Water) +
-        Number(grid[y + 1]?.[x] && underlyingTerrain(grid, x, y + 1) === Terrain.Water);
-      const alongX = horizontal >= vertical;
-      const variation = terrainVariation(x, y, 2081);
-      const centerX = (x + .5) * cellSize;
-      const centerY = (y + .5) * cellSize;
-      const length = cellSize * (.22 + variation * .22);
-      const bend = (variation - .5) * cellSize * .16;
-      context.strokeStyle = variation > .42 ? light : dark;
-      context.globalAlpha = visibility * (variation > .42 ? .3 : .2);
-      context.beginPath();
-      if (alongX) {
-        context.moveTo(centerX - length, centerY + bend);
-        context.quadraticCurveTo(centerX, centerY - bend, centerX + length, centerY + bend * .35);
-      } else {
-        context.moveTo(centerX + bend, centerY - length);
-        context.quadraticCurveTo(centerX - bend, centerY, centerX + bend * .35, centerY + length);
-      }
-      context.stroke();
+      if (underlyingTerrain(grid, x, y) === terrain) return true;
     }
   }
-  context.restore();
+  return false;
+}
+
+function createWavePath(
+  width: number,
+  baseY: number,
+  cellSize: number,
+  phase: number,
+  salt: number,
+  slope = 0,
+) {
+  const path = new Path2D();
+  const step = Math.max(5, cellSize * .34);
+  const amplitude = cellSize * (.045 + terrainVariation(salt, 0, 2711) * .045);
+  for (let x = -cellSize, index = 0; x <= width + cellSize; x += step, index += 1) {
+    const broadWave = Math.sin(x / (cellSize * 1.65) + phase) * amplitude;
+    const fineWave = Math.sin(x / (cellSize * .7) + phase * 1.7) * amplitude * .28;
+    const jitter = (
+      terrainVariation(index, salt, 2819) - .5
+    ) * cellSize * .018;
+    const y = baseY + x * slope + broadWave + fineWave + jitter;
+    if (index === 0) path.moveTo(x, y);
+    else path.lineTo(x, y);
+  }
+  return path;
+}
+
+function drawWaterMaterial(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  cellSize: number,
+) {
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  const spacing = cellSize * .82;
+  const bandCount = Math.ceil(height / spacing) + 4;
+  for (let band = -2; band < bandCount; band += 1) {
+    const phase = terrainVariation(band, 0, 2903) * Math.PI * 2;
+    const path = createWavePath(
+      width,
+      band * spacing + spacing * .5,
+      cellSize,
+      phase,
+      band,
+      (terrainVariation(band, 1, 2927) - .5) * .018,
+    );
+    context.strokeStyle = "rgba(24, 55, 64, .12)";
+    context.lineWidth = Math.max(1.4, cellSize * .07);
+    context.setLineDash([]);
+    context.stroke(path);
+    context.strokeStyle = "rgba(226, 244, 239, .2)";
+    context.lineWidth = Math.max(.7, cellSize * .022);
+    context.setLineDash([cellSize * .62, cellSize * .3]);
+    context.lineDashOffset = -terrainVariation(band, 2, 2953) * cellSize;
+    context.stroke(path);
+  }
+  context.setLineDash([]);
+}
+
+function drawLavaMaterial(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  cellSize: number,
+) {
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  const spacing = cellSize * 1.18;
+  const diagonalReach = width * .12;
+  const bandCount = Math.ceil((height + diagonalReach) / spacing) + 4;
+  for (let band = -3; band < bandCount; band += 1) {
+    const phase = terrainVariation(band, 0, 3011) * Math.PI * 2;
+    const path = createWavePath(
+      width,
+      band * spacing,
+      cellSize,
+      phase,
+      band + 97,
+      .1 + (terrainVariation(band, 1, 3037) - .5) * .035,
+    );
+    context.strokeStyle = "rgba(65, 21, 17, .22)";
+    context.lineWidth = Math.max(1.8, cellSize * .075);
+    context.setLineDash([]);
+    context.stroke(path);
+    context.strokeStyle = "rgba(255, 202, 101, .2)";
+    context.lineWidth = Math.max(.7, cellSize * .02);
+    context.setLineDash([cellSize * .42, cellSize * .5]);
+    context.lineDashOffset = -terrainVariation(band, 2, 3067) * cellSize * 1.6;
+    context.stroke(path);
+  }
+  context.setLineDash([]);
+}
+
+function drawIceCrack(
+  context: CanvasRenderingContext2D,
+  startX: number,
+  startY: number,
+  cellSize: number,
+  seedX: number,
+  seedY: number,
+) {
+  const segmentCount = 4 + Math.floor(terrainVariation(seedX, seedY, 3121) * 3);
+  let angle = terrainVariation(seedX, seedY, 3137) * Math.PI * 2;
+  const points = [{ x: startX, y: startY }];
+  let x = startX;
+  let y = startY;
+  for (let segment = 0; segment < segmentCount; segment += 1) {
+    angle += (terrainVariation(seedX * 11 + segment, seedY, 3163) - .5) * .82;
+    const length = cellSize * (
+      .24 + terrainVariation(seedX, seedY * 13 + segment, 3181) * .2
+    );
+    x += Math.cos(angle) * length;
+    y += Math.sin(angle) * length;
+    points.push({ x, y });
+  }
+
+  const crack = new Path2D();
+  crack.moveTo(points[0].x, points[0].y);
+  for (let index = 1; index < points.length; index += 1) {
+    crack.lineTo(points[index].x, points[index].y);
+  }
+  context.strokeStyle = "rgba(43, 82, 94, .18)";
+  context.lineWidth = Math.max(1.2, cellSize * .045);
+  context.stroke(crack);
+  context.strokeStyle = "rgba(241, 252, 250, .35)";
+  context.lineWidth = Math.max(.65, cellSize * .014);
+  context.stroke(crack);
+
+  const branchIndex = 1 + Math.floor(
+    terrainVariation(seedX, seedY, 3203) * (points.length - 2)
+  );
+  const branchStart = points[branchIndex];
+  const branchAngle = angle + (
+    terrainVariation(seedX, seedY, 3221) > .5 ? 1 : -1
+  ) * (.6 + terrainVariation(seedX, seedY, 3251) * .5);
+  const branchLength = cellSize * (
+    .3 + terrainVariation(seedX, seedY, 3271) * .28
+  );
+  const branch = new Path2D();
+  branch.moveTo(branchStart.x, branchStart.y);
+  branch.lineTo(
+    branchStart.x + Math.cos(branchAngle) * branchLength,
+    branchStart.y + Math.sin(branchAngle) * branchLength,
+  );
+  context.strokeStyle = "rgba(241, 252, 250, .27)";
+  context.lineWidth = Math.max(.6, cellSize * .012);
+  context.stroke(branch);
+}
+
+function drawIceMaterial(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  cellSize: number,
+) {
+  context.lineCap = "round";
+  context.lineJoin = "round";
+
+  const sheenSpacing = cellSize * 2.1;
+  const sheenCount = Math.ceil((height + width * .24) / sheenSpacing) + 3;
+  for (let band = -2; band < sheenCount; band += 1) {
+    const path = createWavePath(
+      width,
+      band * sheenSpacing,
+      cellSize,
+      terrainVariation(band, 0, 3301) * Math.PI * 2,
+      band + 211,
+      -.2,
+    );
+    context.strokeStyle = "rgba(245, 255, 253, .12)";
+    context.lineWidth = Math.max(2, cellSize * .11);
+    context.stroke(path);
+  }
+
+  const seedSpacing = cellSize * 2.55;
+  const columns = Math.ceil(width / seedSpacing) + 1;
+  const rows = Math.ceil(height / seedSpacing) + 1;
+  for (let seedY = 0; seedY < rows; seedY += 1) {
+    for (let seedX = 0; seedX < columns; seedX += 1) {
+      if (terrainVariation(seedX, seedY, 3323) < .38) continue;
+      const startX = (seedX + terrainVariation(seedX, seedY, 3343) * .88) * seedSpacing;
+      const startY = (seedY + terrainVariation(seedX, seedY, 3371) * .88) * seedSpacing;
+      drawIceCrack(context, startX, startY, cellSize, seedX, seedY);
+    }
+  }
+}
+
+function drawContinuousLiquidMaterials(
+  grid: Grid,
+  cellSize: number,
+  hiddenItems: ReadonlySet<string>,
+  hiddenOpacity: number,
+  context: CanvasRenderingContext2D,
+) {
+  const width = grid[0].length * cellSize;
+  const height = grid.length * cellSize;
+  const terrains: ContinuousMaterialTerrain[] = [
+    Terrain.Water,
+    Terrain.Ice,
+    Terrain.Lava,
+  ];
+
+  for (const terrain of terrains) {
+    if (hiddenItems.has(terrain) && hiddenOpacity <= 0) continue;
+    if (!terrainIsPresent(grid, terrain)) continue;
+    const effect = document.createElement("canvas");
+    effect.width = width;
+    effect.height = height;
+    const effectContext = effect.getContext("2d")!;
+    if (terrain === Terrain.Water) {
+      drawWaterMaterial(effectContext, width, height, cellSize);
+    } else if (terrain === Terrain.Ice) {
+      drawIceMaterial(effectContext, width, height, cellSize);
+    } else {
+      drawLavaMaterial(effectContext, width, height, cellSize);
+    }
+
+    const mask = createTerrainMask(
+      grid,
+      terrain,
+      cellSize,
+      width,
+      height,
+    );
+    effectContext.globalCompositeOperation = "destination-in";
+    effectContext.drawImage(mask, 0, 0);
+
+    context.save();
+    context.globalAlpha = hiddenItems.has(terrain) ? hiddenOpacity : 1;
+    context.drawImage(effect, 0, 0);
+    context.restore();
+
+    // Release the large export-sized buffers before moving to the next
+    // material instead of waiting for a later garbage-collection cycle.
+    effect.width = 1;
+    effect.height = 1;
+    mask.width = 1;
+    mask.height = 1;
+  }
 }
 
 function drawTree(
@@ -2013,10 +2236,7 @@ function drawTree(
   const radiusX = (maximumX - minimumX + 1) * size * .42;
   const radiusY = (maximumY - minimumY + 1) * size * .42;
   context.save();
-  context.shadowColor = "rgba(20, 25, 20, .38)";
-  context.shadowBlur = Math.max(2, size * .12);
-  context.shadowOffsetX = Math.max(1, size * .07);
-  context.shadowOffsetY = Math.max(2, size * .13);
+  applyPropContactShadow(size, context);
   context.fillStyle = colors.dark;
   context.beginPath();
   context.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, Math.PI * 2);
@@ -2059,10 +2279,7 @@ function drawBuilding(
   }
 
   context.save();
-  context.shadowColor = "rgba(39, 31, 25, .38)";
-  context.shadowBlur = Math.max(2, size * .14);
-  context.shadowOffsetX = Math.max(1, size * .065);
-  context.shadowOffsetY = Math.max(2, size * .12);
+  applyPropContactShadow(size, context);
   context.fillStyle = id % 2 === 0 ? colors.primary : colors.secondary;
   context.fill(footprint);
   context.shadowColor = "transparent";
@@ -2141,23 +2358,8 @@ function drawRock(
   const top = y * size;
   const rockSize = size * span;
   const colors = getBiomeObjectStyle(mode).rock;
-  context.fillStyle = "rgba(20, 22, 22, .3)";
-  context.beginPath();
-  context.ellipse(
-    left + rockSize * .52,
-    top + rockSize * .76,
-    rockSize * .4,
-    rockSize * .14,
-    0,
-    0,
-    Math.PI * 2,
-  );
-  context.fill();
   context.save();
-  context.shadowColor = "rgba(18, 20, 20, .42)";
-  context.shadowBlur = Math.max(2, rockSize * .09);
-  context.shadowOffsetX = Math.max(1, rockSize * .055);
-  context.shadowOffsetY = Math.max(2, rockSize * .1);
+  applyPropContactShadow(size, context);
   context.fillStyle = colors.fill;
   context.beginPath();
   context.moveTo(left + rockSize * .1, top + rockSize * .76);
@@ -2190,23 +2392,7 @@ function drawTerrainDetail(
   context: CanvasRenderingContext2D,
 ) {
   const tile = grid[y][x];
-  if (tile.terrain === Terrain.Water) {
-    context.strokeStyle = "rgba(223, 239, 229, .28)";
-    context.beginPath();
-    context.moveTo(x * cellSize + cellSize * .18, y * cellSize + cellSize * .55);
-    context.lineTo(x * cellSize + cellSize * .78, y * cellSize + cellSize * .55);
-    context.stroke();
-  } else if (tile.terrain === Terrain.Ice) {
-    context.strokeStyle = "rgba(239, 250, 248, .55)";
-    context.lineWidth = Math.max(1, cellSize * .025);
-    context.beginPath();
-    context.moveTo(x * cellSize + cellSize * .2, y * cellSize + cellSize * .25);
-    context.lineTo(x * cellSize + cellSize * .48, y * cellSize + cellSize * .52);
-    context.lineTo(x * cellSize + cellSize * .38, y * cellSize + cellSize * .78);
-    context.moveTo(x * cellSize + cellSize * .48, y * cellSize + cellSize * .52);
-    context.lineTo(x * cellSize + cellSize * .78, y * cellSize + cellSize * .38);
-    context.stroke();
-  } else if (tile.terrain === Terrain.Beach) {
+  if (tile.terrain === Terrain.Beach) {
     context.fillStyle = "rgba(111, 92, 59, .25)";
     context.beginPath();
     context.arc(x * cellSize + cellSize * .3, y * cellSize + cellSize * .42, Math.max(1, cellSize * .05), 0, Math.PI * 2);
@@ -2312,6 +2498,13 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     height,
     context,
   );
+  drawContinuousLiquidMaterials(
+    grid,
+    cellSize,
+    hiddenItems,
+    hiddenOpacity,
+    context,
+  );
   drawRavineUpperEdges(
     grid,
     cellSize,
@@ -2338,13 +2531,6 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     mode,
     hiddenItems,
     hiddenOpacity,
-    context,
-  );
-  drawWaterDetails(
-    grid,
-    cellSize,
-    mode,
-    hiddenItems.has(Terrain.Water) ? hiddenOpacity : 1,
     context,
   );
   drawRoadNetwork(

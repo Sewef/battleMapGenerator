@@ -401,3 +401,7 @@ FodyWeavers.xsd
 *.sln.iml
 
 dist/
+.wrangler/
+.dev.vars*
+.env*
+!.env.example

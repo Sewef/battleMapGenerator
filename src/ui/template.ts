@@ -160,6 +160,7 @@ export function renderApp(root: HTMLElement) {
                   <span>Include grid in WebP</span>
                 </label>
               </div>
+              <p id="webp-status" role="status" aria-live="polite"></p>
               <button id="download" class="owlbear-primary-button export-wide-button" type="button">Download WebP ↓</button>
             </div>
             <div class="export-card owlbear-export" aria-labelledby="owlbear-title">

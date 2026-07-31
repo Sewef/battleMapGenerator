@@ -145,7 +145,10 @@ canvas { display: block; max-width: 100%; height: auto !important; box-shadow: 0
 .webp-export { display: flex; flex-direction: column; box-shadow: inset 4px 0 #b45e38; }
 .webp-options { display: grid; gap: 10px; margin-bottom: 18px; }
 .webp-options .grid-option { min-height: 34px; padding: 0 10px; border: 1px solid #cfccbd; background: #f8f6ed; }
-.export-wide-button { width: 100%; margin-top: auto; }
+#webp-status { min-height: 16px; margin: auto 0 8px; color: #68716b; font: 9px "DM Mono", monospace; }
+#webp-status.is-error { color: #a1472d; }
+.export-wide-button { width: 100%; }
+.export-wide-button:disabled { opacity: .55; cursor: wait; }
 .owlbear-export { box-shadow: inset 4px 0 #536b51; }
 .owlbear-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .owlbear-heading .eyebrow { margin-bottom: 4px; }
