@@ -4,7 +4,7 @@ import {
   type ObstacleKind,
   type TerrainOptions,
 } from "../domain/map";
-import { buildGeneratedMapUrl } from "./map-request";
+import type { UploadedMapImage } from "./map-image";
 
 const OWLBEAR_SCENE_DPI = 150;
 const MAP_IMAGE_DPI = 48;
@@ -44,9 +44,8 @@ const SUPPORTED_PROP_MIMES = new Set<OwlbearPropAsset["mime"]>(
 
 export interface OwlbearExportOptions {
   generation: TerrainOptions;
+  mapImage: UploadedMapImage;
   useTileset?: boolean;
-  stylizedLighting?: boolean;
-  showGrid?: boolean;
   treeUrl?: string;
   rockUrl?: string;
 }
@@ -290,26 +289,18 @@ export async function createOwlbearSceneJson(
   const mapId = crypto.randomUUID();
   const mapWidth = grid[0].length * MAP_IMAGE_DPI;
   const mapHeight = grid.length * MAP_IMAGE_DPI;
-  const mapHiddenItems = new Set(hiddenItems);
-  mapHiddenItems.add(Obstacle.Tree);
-  mapHiddenItems.add(Obstacle.Rock);
-  const mapUrl = buildGeneratedMapUrl(
-    window.location.origin,
-    options.generation,
-    {
-      cellSize: MAP_IMAGE_DPI,
-      useTileset: options.useTileset ?? false,
-      stylizedLighting: options.stylizedLighting ?? false,
-      showGrid: options.showGrid ?? false,
-      hiddenItems: mapHiddenItems,
-    },
-  );
+  if (
+    options.mapImage.width !== mapWidth ||
+    options.mapImage.height !== mapHeight
+  ) {
+    throw new Error("The uploaded background dimensions do not match the map.");
+  }
   shared[mapId] = imageItem(
     mapId,
     "Terra generated background",
     "MAP",
-    mapUrl,
-    "image/webp",
+    options.mapImage.url,
+    options.mapImage.mime,
     mapWidth,
     mapHeight,
     { x: 0, y: 0 },

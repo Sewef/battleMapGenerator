@@ -22,7 +22,7 @@ export interface WebpDownloadOptions extends WebpRenderOptions {
   filenameSuffix?: string;
 }
 
-function encodeWebp(canvas: HTMLCanvasElement) {
+export function encodeWebp(canvas: HTMLCanvasElement) {
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
       (blob) => {
@@ -42,7 +42,7 @@ function encodeWebp(canvas: HTMLCanvasElement) {
   });
 }
 
-function encodePng(canvas: HTMLCanvasElement) {
+export function encodePng(canvas: HTMLCanvasElement) {
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (blob?.size) resolve(blob);

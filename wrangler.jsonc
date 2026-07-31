@@ -1,37 +1,60 @@
 {
-  "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "touchgrass",
-  "main": "./worker/index.ts",
-  "compatibility_date": "2026-07-31",
-  "compatibility_flags": ["nodejs_compat"],
-  "assets": {
-    "directory": "./dist",
-    "binding": "ASSETS",
-    "not_found_handling": "single-page-application"
-  },
-  "images": {
-    "binding": "IMAGES",
-    "remote": true
-  },
-  "ratelimits": [
-    {
-      "name": "GENERATED_MAP_RATE_LIMITER",
-      "namespace_id": "2026073101",
-      "simple": {
-        "limit": 30,
-        "period": 60
-      }
-    }
-  ],
-  "cache": {
-    "enabled": true,
-    "cross_version_cache": true
-  },
-  "observability": {
-    "enabled": true,
-    "logs": {
-      "enabled": true,
-      "head_sampling_rate": 1
-    }
-  }
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "touchgrass",
+	"main": "./worker/index.ts",
+	"compatibility_date": "2026-07-31",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"assets": {
+		"directory": "./dist",
+		"binding": "ASSETS",
+		"not_found_handling": "single-page-application"
+	},
+	"r2_buckets": [
+		{
+			"binding": "MAP_IMAGES",
+			"bucket_name": "touchgrass-map-images"
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "MAP_STORAGE_COORDINATOR",
+				"class_name": "MapStorageCoordinator"
+			}
+		]
+	},
+	"exports": {
+		"MapStorageCoordinator": {
+			"type": "durable-object",
+			"storage": "sqlite"
+		}
+	},
+	"ratelimits": [
+		{
+			"name": "MAP_IMAGE_UPLOAD_RATE_LIMITER",
+			"namespace_id": "2026073101",
+			"simple": {
+				"limit": 12,
+				"period": 60
+			}
+		}
+	],
+	"triggers": {
+		"crons": [
+			"17 3 * * *"
+		]
+	},
+	"cache": {
+		"enabled": true,
+		"cross_version_cache": true
+	},
+	"observability": {
+		"enabled": true,
+		"logs": {
+			"enabled": true,
+			"head_sampling_rate": 1
+		}
+	}
 }

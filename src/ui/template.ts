@@ -244,13 +244,16 @@ export function renderApp(root: HTMLElement) {
                 <h3 id="owlbear-title">Owlbear Rodeo</h3>
               </div>
             </div>
-            <p class="export-description">The JSON loads a generated background from this app and creates editable tree and rock props.</p>
+            <p class="export-description">Create a ready-to-import Owlbear token set with the current map as its background and trees and rocks as editable props.</p>
             <ol class="owlbear-instructions">
-              <li>Copy or download the JSON and import it into the scene.</li>
-              <li>Owlbear retrieves the background automatically from its generation URL.</li>
-              <li>If the free image quota is unavailable, use the <strong>Background only</strong> WebP as a manual fallback.</li>
+              <li>Clicking either button renders and uploads the background automatically. The <strong>Export grid</strong> option also applies here.</li>
+              <li>Paste the copied JSON directly into an open Owlbear scene, you can also download the JSON file.</li>
+              <li>Trees and rocks become separate props. Buildings and all other visual effects remain baked into the background.</li>
             </ol>
-            <p class="owlbear-notice">No map image is stored permanently. The free host supports up to 5,000 new backgrounds per month; cached backgrounds keep working, and the <strong>Background only</strong> WebP remains available as a fallback.</p>
+            <div class="owlbear-notice">
+              <strong>Temporary background hosting</strong>
+              <p>The uploaded WebP expires after 30 days maximum, so keep the <strong>Background only</strong> download for long-term use.</p>
+            </div>
             <div class="owlbear-actions">
               <p id="owlbear-status" role="status" aria-live="polite"></p>
               <button id="copy-owlbear" class="owlbear-primary-button" type="button">Copy JSON</button>

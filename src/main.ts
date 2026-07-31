@@ -17,7 +17,8 @@ import {
   PARAMETER_FIELDS,
   renderApp,
 } from "./ui/template";
-import { copyWebp, downloadWebp } from "./export/webp";
+import { copyWebp, downloadWebp, renderExportCanvas } from "./export/webp";
+import { uploadMapCanvas } from "./export/map-image";
 import {
   createOwlbearSceneJson,
   downloadOwlbearJson,
@@ -457,23 +458,40 @@ async function runOwlbearExport(action: "copy" | "download") {
     const generation = generatedOptions;
     if (!generation) throw new Error("Generate a map before exporting.");
     const useTileset = useTilesetInput.checked;
-    const scene = cachedScene ?? await createOwlbearSceneJson(
-      currentGrid,
-      generation.seed,
-      hiddenLegendItems,
-      {
-        generation,
-        useTileset,
-        stylizedLighting: stylizedLightingInput.checked,
+    let scene = cachedScene;
+    if (!scene) {
+      owlbearStatus.textContent = "Rendering and uploading the exact background...";
+      const mapHiddenItems = new Set(hiddenLegendItems);
+      mapHiddenItems.add(Obstacle.Tree);
+      mapHiddenItems.add(Obstacle.Rock);
+      const mapCanvas = renderExportCanvas(currentGrid, generation.mode, {
+        cellSize: 48,
+        hiddenItems: mapHiddenItems,
         showGrid: showGridInput.checked,
-        treeUrl: useTileset
-          ? treePropUrlInput.value
-          : undefined,
-        rockUrl: useTileset
-          ? rockPropUrlInput.value
-          : undefined,
-      },
-    );
+        useTileset: useTileset && tilesetReady(),
+        tilesetImage: tilesetReady() ? tilesetImage : undefined,
+        tilesetProps: tilesetPropsReady() ? tilesetProps : undefined,
+        customProps: activeCustomProps(),
+        stylizedLighting: stylizedLightingInput.checked,
+      });
+      const mapImage = await uploadMapCanvas(mapCanvas);
+      scene = await createOwlbearSceneJson(
+        currentGrid,
+        generation.seed,
+        hiddenLegendItems,
+        {
+          generation,
+          mapImage,
+          useTileset,
+          treeUrl: useTileset
+            ? treePropUrlInput.value
+            : undefined,
+          rockUrl: useTileset
+            ? rockPropUrlInput.value
+            : undefined,
+        },
+      );
+    }
     if (!cachedScene) {
       owlbearExportCache = { key: cacheKey, scene };
     }
