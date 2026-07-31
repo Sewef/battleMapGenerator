@@ -15,7 +15,8 @@ button { color: inherit; }
 .shell { width: min(1480px, calc(100% - 64px)); margin: 0 auto; padding-bottom: 48px; }
 .topbar { height: 82px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #cbc9b9; }
 .brand { display: flex; align-items: center; gap: 11px; color: inherit; text-decoration: none; font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
-.brand-mark { display: grid; place-items: center; width: 32px; height: 32px; background: #263736; color: #e8e4c9; font-family: Georgia, serif; border-radius: 50% 50% 44% 56%; transform: rotate(-4deg); }
+.brand-mark { display: block; flex: 0 0 auto; width: 38px; height: 38px; overflow: hidden; border: 2px solid #263736; border-radius: 50%; background: #263736; box-shadow: 0 1px 0 rgba(255,255,255,.35), 0 2px 6px rgba(31,42,40,.16); }
+.brand-mark img { display: block; width: 100%; height: 100%; object-fit: cover; transform: scale(1.45) translateY(-6%); transform-origin: center; }
 .status { font-family: "DM Mono", monospace; text-transform: uppercase; letter-spacing: .1em; font-size: 10px; display: flex; align-items: center; gap: 8px; }
 .status span { width: 7px; height: 7px; border-radius: 50%; background: #b45e38; box-shadow: 0 0 0 4px rgba(180,94,56,.12); }
 

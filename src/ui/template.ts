@@ -28,8 +28,8 @@ export function renderApp(root: HTMLElement) {
   root.innerHTML = `
     <main class="shell">
       <header class="topbar">
-        <a class="brand" href="#" aria-label="Terra, home">
-          <span class="brand-mark" aria-hidden="true">T</span><span>Terra</span>
+        <a class="brand" href="#" aria-label="Touch Grass, home">
+          <span class="brand-mark" aria-hidden="true"><img src="/assets/touchgrasslogo.png" alt="" /></span><span>Touch Grass</span>
         </a>
       </header>
 

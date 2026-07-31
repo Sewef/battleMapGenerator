@@ -1,4 +1,4 @@
-# Terra
+# Touch Grass
 
 Prototype outdoor battlemap generator. Each reproducible map uses two layers:
 
