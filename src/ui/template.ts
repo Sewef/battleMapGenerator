@@ -250,6 +250,10 @@ export function renderApp(root: HTMLElement) {
               <li>Paste the copied JSON directly into an open Owlbear scene, you can also download the JSON file.</li>
               <li>Trees and rocks become separate props. Buildings and all other visual effects remain baked into the background.</li>
             </ol>
+            <label class="grid-option owlbear-fog-option">
+              <input id="owlbear-dynamic-fog" type="checkbox" />
+              Add Dynamic Fog to terrain and buildings
+            </label>
             <div class="owlbear-notice">
               <strong>Temporary background hosting</strong>
               <p>The uploaded WebP expires after 30 days maximum, so keep the <strong>Background only</strong> download for long-term use.</p>

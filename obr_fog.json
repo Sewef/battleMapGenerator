@@ -1,0 +1,58 @@
+{
+  "createdUserId": "b93771d1-1d8c-4ade-ac08-c487bbe3be1d",
+  "id": "71d51c69-d23a-49f6-bae4-cf23b4be06ff",
+  "name": "Fog Polygon",
+  "zIndex": 1785882023725,
+  "lastModified": "2026-08-04T22:20:56.481Z",
+  "lastModifiedUserId": "b93771d1-1d8c-4ade-ac08-c487bbe3be1d",
+  "locked": false,
+  "metadata": {},
+  "position": {
+    "x": 0,
+    "y": 0
+  },
+  "rotation": 0,
+  "scale": {
+    "x": 1,
+    "y": 1
+  },
+  "type": "CURVE",
+  "visible": true,
+  "layer": "FOG",
+  "points": [
+    {
+      "x": 17700,
+      "y": -9600
+    },
+    {
+      "x": 18150,
+      "y": -9600
+    },
+    {
+      "x": 18150,
+      "y": -9750
+    },
+    {
+      "x": 18300,
+      "y": -9750
+    },
+    {
+      "x": 18300,
+      "y": -9450
+    },
+    {
+      "x": 17700,
+      "y": -9450
+    }
+  ],
+  "style": {
+    "fillColor": "#222222",
+    "fillOpacity": 1,
+    "strokeColor": "#222222",
+    "strokeOpacity": 1,
+    "strokeWidth": 15,
+    "strokeDash": [],
+    "tension": 0,
+    "closed": true
+  }
+}

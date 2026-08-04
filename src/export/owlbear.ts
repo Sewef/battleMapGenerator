@@ -1,13 +1,26 @@
 import {
   Obstacle,
+  Terrain,
   type Grid,
   type ObstacleKind,
+  type TerrainKind,
 } from "../domain/map";
 import type { UploadedMapImage } from "./map-image";
 
 const OWLBEAR_SCENE_DPI = 150;
 const MAP_IMAGE_DPI = 48;
 const PROP_IMAGE_DPI = 512;
+const FOG_TERRAINS = new Set<TerrainKind>([
+  Terrain.Ground,
+  Terrain.Difficult,
+  Terrain.Water,
+  Terrain.Ice,
+  Terrain.Lava,
+  Terrain.Beach,
+  Terrain.Road,
+  Terrain.Bridge,
+  Terrain.Ravine,
+]);
 const PUBLIC_TILESET_ASSET_BASE =
   "https://cdn.jsdelivr.net/gh/Sewef/battleMapGenerator@main/public/assets/tilesets/";
 
@@ -53,6 +66,7 @@ const DEFAULT_PROP_DIMENSIONS: Record<string, number> = {
 export interface OwlbearExportOptions {
   mapImage: UploadedMapImage;
   useTileset?: boolean;
+  dynamicFog?: boolean;
   treeUrl?: string;
   rockUrl?: string;
 }
@@ -166,6 +180,123 @@ function imageItem(
     text: emptyText(),
     textItemType: "LABEL",
     layer,
+  };
+}
+
+type FogPoint = { x: number; y: number };
+type FogEdge = { start: FogPoint; end: FogPoint; direction: number };
+
+function fogContours(
+  grid: Grid,
+  matches: (x: number, y: number) => boolean,
+  includeMapBoundary = true,
+): FogPoint[][] {
+  const edges: FogEdge[] = [];
+  const addEdge = (start: FogPoint, end: FogPoint, direction: number) => {
+    edges.push({ start, end, direction });
+  };
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      if (!matches(x, y)) continue;
+      if ((includeMapBoundary || y > 0) && !matches(x, y - 1)) {
+        addEdge({ x, y }, { x: x + 1, y }, 0);
+      }
+      if (
+        (includeMapBoundary || x < grid[y].length - 1) &&
+        !matches(x + 1, y)
+      ) {
+        addEdge({ x: x + 1, y }, { x: x + 1, y: y + 1 }, 1);
+      }
+      if (
+        (includeMapBoundary || y < grid.length - 1) &&
+        !matches(x, y + 1)
+      ) {
+        addEdge({ x: x + 1, y: y + 1 }, { x, y: y + 1 }, 2);
+      }
+      if ((includeMapBoundary || x > 0) && !matches(x - 1, y)) {
+        addEdge({ x, y: y + 1 }, { x, y }, 3);
+      }
+    }
+  }
+
+  const pointKey = ({ x, y }: FogPoint) => `${x},${y}`;
+  const outgoing = new Map<string, number[]>();
+  edges.forEach((edge, index) => {
+    const key = pointKey(edge.start);
+    outgoing.set(key, [...(outgoing.get(key) ?? []), index]);
+  });
+  const unused = new Set(edges.map((_, index) => index));
+  const contours: FogPoint[][] = [];
+  const turnPriority = [1, 0, 3, 2];
+
+  while (unused.size) {
+    const firstIndex = unused.values().next().value as number;
+    const first = edges[firstIndex];
+    const points = [first.start];
+    let edge = first;
+    unused.delete(firstIndex);
+
+    while (pointKey(edge.end) !== pointKey(first.start)) {
+      points.push(edge.end);
+      const candidates = (outgoing.get(pointKey(edge.end)) ?? [])
+        .filter((index) => unused.has(index));
+      if (!candidates.length) break;
+      candidates.sort((a, b) => {
+        const turnA = (edges[a].direction - edge.direction + 4) % 4;
+        const turnB = (edges[b].direction - edge.direction + 4) % 4;
+        return turnPriority.indexOf(turnA) - turnPriority.indexOf(turnB);
+      });
+      const nextIndex = candidates[0];
+      edge = edges[nextIndex];
+      unused.delete(nextIndex);
+    }
+
+    if (pointKey(edge.end) !== pointKey(first.start) || points.length < 4) continue;
+    const simplified = points.filter((point, index) => {
+      const previous = points[(index - 1 + points.length) % points.length];
+      const next = points[(index + 1) % points.length];
+      return !(
+        (previous.x === point.x && point.x === next.x) ||
+        (previous.y === point.y && point.y === next.y)
+      );
+    });
+    if (simplified.length >= 4) contours.push(simplified);
+  }
+  return contours;
+}
+
+function fogItem(
+  id: string,
+  name: string,
+  contour: FogPoint[],
+  zIndex: number,
+) {
+  return {
+    id,
+    name,
+    zIndex,
+    locked: false,
+    metadata: { "com.terra-map-generator/export": true },
+    position: { x: 0, y: 0 },
+    rotation: 0,
+    scale: { x: 1, y: 1 },
+    type: "CURVE",
+    visible: true,
+    layer: "FOG",
+    points: contour.map(({ x, y }) => ({
+      x: x * OWLBEAR_SCENE_DPI,
+      y: y * OWLBEAR_SCENE_DPI,
+    })),
+    style: {
+      fillColor: "#222222",
+      fillOpacity: 1,
+      strokeColor: "#222222",
+      strokeOpacity: 1,
+      strokeWidth: 15,
+      strokeDash: [],
+      tension: 0,
+      closed: true,
+    },
   };
 }
 
@@ -293,7 +424,10 @@ export async function createOwlbearSceneJson(
     owlBearPropAssets(options.treeUrl, "tree", options.useTileset ?? false),
     owlBearPropAssets(options.rockUrl, "rock", options.useTileset ?? false),
   ]);
-  const shared: Record<string, ReturnType<typeof imageItem>> = {};
+  const shared: Record<
+    string,
+    ReturnType<typeof imageItem> | ReturnType<typeof fogItem>
+  > = {};
   const baseZIndex = Date.now();
   const mapId = crypto.randomUUID();
   const mapWidth = grid[0].length * MAP_IMAGE_DPI;
@@ -358,6 +492,60 @@ export async function createOwlbearSceneJson(
       nextPropZIndex += 1;
     });
   });
+
+  if (options.dynamicFog) {
+    const addFogContours = (
+      name: string,
+      matches: (x: number, y: number) => boolean,
+      includeMapBoundary = true,
+    ) => {
+      fogContours(grid, matches, includeMapBoundary)
+        .forEach((contour, index, contours) => {
+          const id = crypto.randomUUID();
+          shared[id] = fogItem(
+            id,
+            `${name} Fog${contours.length > 1 ? ` ${index + 1}` : ""}`,
+            contour,
+            nextPropZIndex,
+          );
+          nextPropZIndex += 1;
+        });
+    };
+
+    if (!hiddenItems.has(Terrain.Cliff)) {
+      addFogContours(
+        "Cliff",
+        (x, y) => grid[y]?.[x]?.terrain === Terrain.Cliff,
+      );
+    }
+
+    if (!hiddenItems.has(Obstacle.Building)) {
+      collectObstacles(grid)
+        .filter(({ kind }) => kind === Obstacle.Building)
+        .forEach((building, buildingIndex) => {
+          const cells = new Set(
+            building.points.map(({ x, y }) => `${x},${y}`),
+          );
+          addFogContours(
+            `Building ${buildingIndex + 1}`,
+            (x, y) => cells.has(`${x},${y}`),
+          );
+        });
+    }
+
+    addFogContours(
+      "Terrain",
+      (x, y) => {
+        const tile = grid[y]?.[x];
+        return Boolean(
+          tile &&
+          FOG_TERRAINS.has(tile.terrain) &&
+          tile.obstacle !== Obstacle.Building,
+        );
+      },
+      false,
+    );
+  }
 
   const width = grid[0].length * OWLBEAR_SCENE_DPI;
   const height = grid.length * OWLBEAR_SCENE_DPI;

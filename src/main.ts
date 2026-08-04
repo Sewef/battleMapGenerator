@@ -51,6 +51,8 @@ const rockPropPreview =
   document.querySelector<HTMLElement>("#custom-rock-preview")!;
 const owlbearStatus =
   document.querySelector<HTMLParagraphElement>("#owlbear-status")!;
+const owlbearDynamicFogInput =
+  document.querySelector<HTMLInputElement>("#owlbear-dynamic-fog")!;
 const webpStatus =
   document.querySelector<HTMLParagraphElement>("#webp-status")!;
 const webpCopyWithPropsButton =
@@ -351,6 +353,7 @@ function owlbearExportKey() {
     useTileset,
     showGrid: showGridInput.checked,
     stylizedLighting: stylizedLightingInput.checked,
+    dynamicFog: owlbearDynamicFogInput.checked,
     treeUrl: useTileset
       ? treePropUrlInput.value.trim()
       : "",
@@ -472,6 +475,7 @@ async function runOwlbearExport(action: "copy" | "download") {
         {
           mapImage,
           useTileset,
+          dynamicFog: owlbearDynamicFogInput.checked,
           treeUrl: useTileset
             ? treePropUrlInput.value
             : undefined,
