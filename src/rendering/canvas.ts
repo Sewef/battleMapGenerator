@@ -51,6 +51,8 @@ const terrainPriority: Record<TerrainKind, number> = {
   [Terrain.Bridge]: 110,
   [Terrain.Cliff]: 90,
   [Terrain.Ravine]: 95,
+  [Terrain.Wall]: 115,
+  [Terrain.Door]: 116,
 };
 
 function terrainVariation(x: number, y: number, salt: number) {
@@ -171,6 +173,8 @@ const terrainPaintOrder: TerrainKind[] = [
   Terrain.Ravine,
   Terrain.Void,
   Terrain.Cliff,
+  Terrain.Wall,
+  Terrain.Door,
 ];
 
 type TilesetCoordinate = readonly [column: number, row: number];
@@ -1040,7 +1044,11 @@ function drawTerrainLayers(
     layerContext.fillStyle = terrainFill(terrain);
     layerContext.fillRect(0, 0, width, height);
 
-    if (terrain !== Terrain.Cliff) {
+    if (
+      terrain !== Terrain.Cliff &&
+      terrain !== Terrain.Wall &&
+      terrain !== Terrain.Door
+    ) {
       const gradient = layerContext.createLinearGradient(0, 0, width, height);
       gradient.addColorStop(0, "rgba(255,255,255,.09)");
       gradient.addColorStop(.48, "rgba(255,255,255,0)");
@@ -1050,7 +1058,9 @@ function drawTerrainLayers(
     }
 
     layerContext.globalCompositeOperation = "destination-in";
-    const maskBlur = terrain === Terrain.Ravine
+    const maskBlur = terrain === Terrain.Wall || terrain === Terrain.Door
+      ? 0
+      : terrain === Terrain.Ravine
       ? Math.max(.75, cellSize * .035)
       : terrain === Terrain.Cliff
         ? 0
@@ -1211,6 +1221,168 @@ function drawTerrainLayers(
     }
   }
   context.globalAlpha = 1;
+}
+
+function drawInteriorArchitecture(
+  grid: Grid,
+  cellSize: number,
+  context: CanvasRenderingContext2D,
+) {
+  const isArchitecture = (x: number, y: number) => {
+    const terrain = grid[y]?.[x]?.terrain;
+    return terrain === Terrain.Wall || terrain === Terrain.Door;
+  };
+  const roomTints = [
+    "rgba(255, 232, 184, .055)",
+    "rgba(119, 76, 48, .045)",
+    "rgba(221, 190, 129, .06)",
+    "rgba(105, 71, 52, .035)",
+  ];
+
+  context.save();
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      const tile = grid[y][x];
+      const left = x * cellSize;
+      const top = y * cellSize;
+      if (tile.terrain === Terrain.Ground) {
+        context.fillStyle = roomTints[(tile.roomId ?? 0) % roomTints.length];
+        context.fillRect(left, top, cellSize, cellSize);
+        context.strokeStyle = "rgba(89, 59, 38, .13)";
+        context.lineWidth = Math.max(.65, cellSize * .018);
+        context.beginPath();
+        context.moveTo(left, top + cellSize * .5);
+        context.lineTo(left + cellSize, top + cellSize * .5);
+        context.stroke();
+        const seamOffset = (y % 2 ? .72 : .28) * cellSize;
+        context.strokeStyle = "rgba(248, 220, 166, .12)";
+        context.beginPath();
+        context.moveTo(left + seamOffset, top + cellSize * .08);
+        context.lineTo(left + seamOffset, top + cellSize * .42);
+        context.moveTo(left + cellSize - seamOffset, top + cellSize * .58);
+        context.lineTo(left + cellSize - seamOffset, top + cellSize * .92);
+        context.stroke();
+      }
+    }
+  }
+
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      const tile = grid[y][x];
+      if (tile.terrain !== Terrain.Wall) continue;
+      const left = x * cellSize;
+      const top = y * cellSize;
+      context.fillStyle = "rgba(255, 226, 176, .12)";
+      context.fillRect(
+        left + cellSize * .08,
+        top + cellSize * .08,
+        cellSize * .84,
+        cellSize * .14,
+      );
+      context.strokeStyle = "rgba(42, 29, 24, .34)";
+      context.lineWidth = Math.max(1, cellSize * .035);
+      if (!isArchitecture(x, y - 1)) {
+        context.beginPath();
+        context.moveTo(left, top);
+        context.lineTo(left + cellSize, top);
+        context.stroke();
+      }
+      if (!isArchitecture(x + 1, y)) {
+        context.beginPath();
+        context.moveTo(left + cellSize, top);
+        context.lineTo(left + cellSize, top + cellSize);
+        context.stroke();
+      }
+      if (!isArchitecture(x, y + 1)) {
+        context.save();
+        context.shadowColor = "rgba(28, 19, 16, .42)";
+        context.shadowBlur = Math.max(2, cellSize * .14);
+        context.shadowOffsetY = Math.max(2, cellSize * .12);
+        context.beginPath();
+        context.moveTo(left, top + cellSize);
+        context.lineTo(left + cellSize, top + cellSize);
+        context.stroke();
+        context.restore();
+      }
+      if (!isArchitecture(x - 1, y)) {
+        context.beginPath();
+        context.moveTo(left, top);
+        context.lineTo(left, top + cellSize);
+        context.stroke();
+      }
+      context.strokeStyle = "rgba(226, 185, 127, .12)";
+      context.lineWidth = Math.max(.7, cellSize * .018);
+      context.beginPath();
+      if ((x + y) % 2) {
+        context.moveTo(left + cellSize * .18, top + cellSize * .55);
+        context.lineTo(left + cellSize * .82, top + cellSize * .55);
+      } else {
+        context.moveTo(left + cellSize * .5, top + cellSize * .3);
+        context.lineTo(left + cellSize * .5, top + cellSize * .8);
+      }
+      context.stroke();
+    }
+  }
+
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      const tile = grid[y][x];
+      if (tile.terrain !== Terrain.Door) continue;
+      const left = x * cellSize;
+      const top = y * cellSize;
+      const horizontal = tile.doorOrientation === "horizontal";
+      context.fillStyle = getTerrainStyle(Terrain.Ground, "house").color;
+      context.fillRect(left, top, cellSize, cellSize);
+      context.strokeStyle = "rgba(89, 59, 38, .13)";
+      context.lineWidth = Math.max(.65, cellSize * .018);
+      context.beginPath();
+      context.moveTo(left, top + cellSize * .5);
+      context.lineTo(left + cellSize, top + cellSize * .5);
+      context.stroke();
+      const slab = horizontal
+        ? {
+          x: left + cellSize * .07,
+          y: top + cellSize * .31,
+          width: cellSize * .86,
+          height: cellSize * .38,
+        }
+        : {
+          x: left + cellSize * .31,
+          y: top + cellSize * .07,
+          width: cellSize * .38,
+          height: cellSize * .86,
+        };
+      context.fillStyle = "#9f603b";
+      context.strokeStyle = "#432b22";
+      context.lineWidth = Math.max(1.2, cellSize * .05);
+      context.fillRect(slab.x, slab.y, slab.width, slab.height);
+      context.strokeRect(slab.x, slab.y, slab.width, slab.height);
+      context.strokeStyle = "rgba(244, 197, 126, .35)";
+      context.lineWidth = Math.max(.8, cellSize * .02);
+      if (horizontal) {
+        context.beginPath();
+        context.moveTo(slab.x + cellSize * .16, slab.y + slab.height * .5);
+        context.lineTo(slab.x + slab.width - cellSize * .16, slab.y + slab.height * .5);
+        context.stroke();
+      } else {
+        context.beginPath();
+        context.moveTo(slab.x + slab.width * .5, slab.y + cellSize * .16);
+        context.lineTo(slab.x + slab.width * .5, slab.y + slab.height - cellSize * .16);
+        context.stroke();
+      }
+      context.fillStyle = "#d7b065";
+      context.beginPath();
+      context.arc(
+        horizontal ? slab.x + slab.width * .78 : slab.x + slab.width * .72,
+        horizontal ? slab.y + slab.height * .65 : slab.y + slab.height * .76,
+        Math.max(1.1, cellSize * .045),
+        0,
+        Math.PI * 2,
+      );
+      context.fill();
+    }
+  }
+  context.restore();
 }
 
 function drawGlobalTexture(
@@ -2579,6 +2751,9 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     context,
   );
   drawGlobalTexture(width, height, context);
+  if (mode === "house") {
+    drawInteriorArchitecture(grid, cellSize, context);
+  }
   drawReliefBevels(
     grid,
     cellSize,

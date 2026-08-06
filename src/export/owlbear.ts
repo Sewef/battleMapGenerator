@@ -20,6 +20,7 @@ const FOG_TERRAINS = new Set<TerrainKind>([
   Terrain.Road,
   Terrain.Bridge,
   Terrain.Ravine,
+  Terrain.Door,
 ]);
 const PUBLIC_TILESET_ASSET_BASE =
   "https://cdn.jsdelivr.net/gh/Sewef/battleMapGenerator@main/public/assets/tilesets/";
@@ -300,6 +301,86 @@ function fogItem(
   };
 }
 
+function roomFogContours(grid: Grid) {
+  const rooms = new Map<
+    number,
+    { minimumX: number; minimumY: number; maximumX: number; maximumY: number }
+  >();
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      const roomId = grid[y][x].roomId;
+      if (roomId === undefined) continue;
+      const bounds = rooms.get(roomId) ?? {
+        minimumX: x,
+        minimumY: y,
+        maximumX: x,
+        maximumY: y,
+      };
+      bounds.minimumX = Math.min(bounds.minimumX, x);
+      bounds.minimumY = Math.min(bounds.minimumY, y);
+      bounds.maximumX = Math.max(bounds.maximumX, x);
+      bounds.maximumY = Math.max(bounds.maximumY, y);
+      rooms.set(roomId, bounds);
+    }
+  }
+  return [...rooms.entries()]
+    .sort(([first], [second]) => first - second)
+    .map(([roomId, bounds]) => ({
+      roomId,
+      contour: [
+        { x: bounds.minimumX - .5, y: bounds.minimumY - .5 },
+        { x: bounds.maximumX + 1.5, y: bounds.minimumY - .5 },
+        { x: bounds.maximumX + 1.5, y: bounds.maximumY + 1.5 },
+        { x: bounds.minimumX - .5, y: bounds.maximumY + 1.5 },
+      ],
+    }));
+}
+
+function fogDoorItem(
+  id: string,
+  x: number,
+  y: number,
+  orientation: "horizontal" | "vertical",
+  zIndex: number,
+) {
+  const horizontal = orientation === "horizontal";
+  const length = OWLBEAR_SCENE_DPI;
+  return {
+    id,
+    name: "Door",
+    zIndex,
+    locked: false,
+    metadata: {
+      "com.terra-map-generator/export": true,
+      "rodeo.owlbear.dynamic-fog/doors": [{
+        open: false,
+        start: { distance: 0, index: 0 },
+        end: { distance: length, index: 0 },
+      }],
+    },
+    position: {
+      x: (x + (horizontal ? 0 : .5)) * OWLBEAR_SCENE_DPI,
+      y: (y + (horizontal ? .5 : 0)) * OWLBEAR_SCENE_DPI,
+    },
+    rotation: 0,
+    scale: { x: 1, y: 1 },
+    type: "LINE",
+    visible: true,
+    layer: "FOG",
+    startPosition: { x: 0, y: 0 },
+    endPosition: {
+      x: horizontal ? length : 0,
+      y: horizontal ? 0 : length,
+    },
+    style: {
+      strokeColor: "#222222",
+      strokeOpacity: 1,
+      strokeWidth: 15,
+      strokeDash: [],
+    },
+  };
+}
+
 function imageDimensions(url: string): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
     const image = new Image();
@@ -424,10 +505,18 @@ export async function createOwlbearSceneJson(
     owlBearPropAssets(options.treeUrl, "tree", options.useTileset ?? false),
     owlBearPropAssets(options.rockUrl, "rock", options.useTileset ?? false),
   ]);
-  const shared: Record<
-    string,
-    ReturnType<typeof imageItem> | ReturnType<typeof fogItem>
-  > = {};
+  type ExportedSceneItem = (
+    ReturnType<typeof imageItem> |
+      ReturnType<typeof fogItem> |
+      ReturnType<typeof fogDoorItem>
+  ) & {
+    attachedTo?: string;
+    disableAttachmentBehavior?: Array<
+      "VISIBLE" | "SCALE" | "ROTATION" | "POSITION" |
+        "DELETE" | "LOCKED" | "COPY"
+    >;
+  };
+  const shared: Record<string, ExportedSceneItem> = {};
   const baseZIndex = Date.now();
   const mapId = crypto.randomUUID();
   const mapWidth = grid[0].length * MAP_IMAGE_DPI;
@@ -450,7 +539,7 @@ export async function createOwlbearSceneJson(
     MAP_IMAGE_DPI,
     { x: 0, y: 0 },
     baseZIndex,
-    true,
+    false,
   );
 
   const obstacleNames: Record<ExportedObstacle["kind"], string> = {
@@ -494,6 +583,8 @@ export async function createOwlbearSceneJson(
   });
 
   if (options.dynamicFog) {
+    const rooms = roomFogContours(grid);
+    const isInterior = rooms.length > 0;
     const addFogContours = (
       name: string,
       matches: (x: number, y: number) => boolean,
@@ -519,6 +610,39 @@ export async function createOwlbearSceneJson(
       );
     }
 
+    if (isInterior) {
+      rooms.forEach(({ roomId, contour }) => {
+        const id = crypto.randomUUID();
+        shared[id] = fogItem(
+          id,
+          `Room ${roomId + 1} Fog`,
+          contour,
+          nextPropZIndex,
+        );
+        nextPropZIndex += 1;
+      });
+      for (let y = 0; y < grid.length; y += 1) {
+        for (let x = 0; x < grid[y].length; x += 1) {
+          const tile = grid[y][x];
+          if (tile.terrain !== Terrain.Door || !tile.doorOrientation) continue;
+          const id = crypto.randomUUID();
+          shared[id] = fogDoorItem(
+            id,
+            x,
+            y,
+            tile.doorOrientation,
+            nextPropZIndex,
+          );
+          nextPropZIndex += 1;
+        }
+      }
+    } else if (!hiddenItems.has(Terrain.Wall)) {
+      addFogContours(
+        "Wall",
+        (x, y) => grid[y]?.[x]?.terrain === Terrain.Wall,
+      );
+    }
+
     if (!hiddenItems.has(Obstacle.Building)) {
       collectObstacles(grid)
         .filter(({ kind }) => kind === Obstacle.Building)
@@ -533,22 +657,34 @@ export async function createOwlbearSceneJson(
         });
     }
 
-    addFogContours(
-      "Terrain",
-      (x, y) => {
-        const tile = grid[y]?.[x];
-        return Boolean(
-          tile &&
-          FOG_TERRAINS.has(tile.terrain) &&
-          tile.obstacle !== Obstacle.Building,
-        );
-      },
-      false,
-    );
+    if (!isInterior) {
+      addFogContours(
+        "Terrain",
+        (x, y) => {
+          const tile = grid[y]?.[x];
+          return Boolean(
+            tile &&
+            FOG_TERRAINS.has(tile.terrain) &&
+            tile.obstacle !== Obstacle.Building,
+          );
+        },
+        false,
+      );
+    }
   }
 
   const width = grid[0].length * OWLBEAR_SCENE_DPI;
   const height = grid.length * OWLBEAR_SCENE_DPI;
+  for (const [id, item] of Object.entries(shared)) {
+    if (id === mapId) continue;
+    item.attachedTo = mapId;
+    item.disableAttachmentBehavior = [
+      "SCALE",
+      "ROTATION",
+      "VISIBLE",
+      "LOCKED",
+    ];
+  }
   const scene = {
     items: { shared, local: {} },
     bounds: {

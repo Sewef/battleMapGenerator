@@ -90,6 +90,10 @@ function tileHeight(tile: Tile) {
     height -= .11;
   } else if (tile.terrain === Terrain.Void) {
     height -= .4;
+  } else if (tile.terrain === Terrain.Wall) {
+    height += .5;
+  } else if (tile.terrain === Terrain.Door) {
+    height += .2;
   }
   return height;
 }

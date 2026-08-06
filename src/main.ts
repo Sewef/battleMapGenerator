@@ -130,6 +130,13 @@ function updateLabels() {
 
 function updateBiomeParameterFields(preset: Preset) {
   const profile = BIOME_PARAMETER_PROFILES[preset.mode];
+  const isInterior = preset.mode === "house";
+  widthInput.min = isInterior ? "30" : "16";
+  heightInput.min = isInterior ? "22" : "12";
+  inputs.buildings.min = isInterior ? "2" : "0";
+  inputs.buildings.max = isInterior ? "12" : "8";
+  useTilesetInput.closest<HTMLElement>("label")!.hidden = isInterior;
+  document.querySelector<HTMLElement>("#custom-prop-settings")!.hidden = isInterior;
   for (const field of PARAMETER_FIELDS) {
     const label = profile[field.id];
     document.querySelector<HTMLElement>(`#${field.id}-field`)!.hidden = !label;
@@ -140,6 +147,10 @@ function updateBiomeParameterFields(preset: Preset) {
   document.querySelectorAll<HTMLElement>("[data-parameter-group]").forEach((group) => {
     group.hidden = ![...group.querySelectorAll<HTMLElement>(".field")]
       .some((field) => !field.hidden);
+    const heading = group.querySelector<HTMLElement>(".parameter-heading p");
+    if (heading && group.dataset.parameterGroup === "obstacles") {
+      heading.textContent = isInterior ? "Layout" : "Obstacle population";
+    }
   });
 }
 
@@ -163,7 +174,8 @@ function applyPreset(preset: Preset, useNewSeed = true) {
 }
 
 function renderMap(grid: Grid, targetCanvas = previewCanvas, cellSize?: number) {
-  const useTileset = useTilesetInput.checked && tilesetReady();
+  const useTileset = activePreset.mode !== "house" &&
+    useTilesetInput.checked && tilesetReady();
   drawGrid(grid, {
     targetCanvas,
     mode: activePreset.mode,
@@ -257,7 +269,8 @@ function webpRenderOptions(includeProps: boolean) {
     hiddenItems.add(Obstacle.Tree);
     hiddenItems.add(Obstacle.Rock);
   }
-  const useTileset = useTilesetInput.checked && tilesetReady();
+  const useTileset = activePreset.mode !== "house" &&
+    useTilesetInput.checked && tilesetReady();
   return {
     hiddenItems,
     showGrid: showGridInput.checked,
@@ -345,7 +358,7 @@ async function copyText(text: string) {
 }
 
 function owlbearExportKey() {
-  const useTileset = useTilesetInput.checked;
+  const useTileset = activePreset.mode !== "house" && useTilesetInput.checked;
   return JSON.stringify({
     mapRevision,
     seed: generatedOptions?.seed ?? seedInput.value.trim(),
@@ -459,7 +472,7 @@ async function runOwlbearExport(action: "copy" | "download") {
   try {
     const generation = generatedOptions;
     if (!generation) throw new Error("Generate a map before exporting.");
-    const useTileset = useTilesetInput.checked;
+    const useTileset = activePreset.mode !== "house" && useTilesetInput.checked;
     let scene = cachedScene;
     if (!scene) {
       owlbearStatus.textContent = "Rendering and uploading the exact background...";

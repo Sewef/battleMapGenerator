@@ -18,6 +18,7 @@ import {
   scatterRocks,
 } from "./obstacles";
 import { generateCity } from "./city";
+import { generateHouseInterior } from "./interior";
 import {
   generateAncientRuins,
   generateBattlefield,
@@ -741,6 +742,14 @@ export function generateTerrain(options: TerrainOptions): Grid {
       obstacle: Obstacle.None,
     })),
   );
+  if (options.mode === "house") {
+    generateHouseInterior(
+      grid,
+      options.buildingCount,
+      seededRandom(`${seed}:house`),
+    );
+    return grid;
+  }
   const total = width * height;
   const map = buildRegionMap(width, height, options.scale, seededRandom(`${seed}:mesh`));
   assignHeightField(grid, options.mode, seed);

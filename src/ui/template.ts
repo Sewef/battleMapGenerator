@@ -34,9 +34,14 @@ export const BIOME_PARAMETER_PROFILES: Record<
   "mountain-pass": { difficult: "Mountain scree", relief: "Mountain mass", rocks: "Rock density", trees: "Tree density", buildings: "Buildings" },
   sewer: { water: "Channel width", rocks: "Debris density" },
   "ancient-ruins": { difficult: "Overgrowth", rocks: "Rubble density", trees: "Vegetation density", buildings: "Ruined structures" },
+  house: { buildings: "Rooms" },
 };
 
 const PRESET_GROUPS = [
+  {
+    label: "Interiors",
+    ids: ["house"],
+  },
   {
     label: "Nature",
     ids: ["countryside", "river", "coast", "wetlands", "ancient-forest", "farmland", "archipelago"],
@@ -248,11 +253,12 @@ export function renderApp(root: HTMLElement) {
             <ol class="owlbear-instructions">
               <li>Clicking either button renders and uploads the background automatically. The <strong>Export grid</strong> option also applies here.</li>
               <li>Paste the copied JSON directly into an open Owlbear scene, you can also download the JSON file.</li>
+              <li>The background stays unlocked for alignment. With scene snapping enabled, move only the map into place: every prop, room outline and door follows it. Lock the map afterwards.</li>
               <li>Trees and rocks become separate props. Buildings and all other visual effects remain baked into the background.</li>
             </ol>
             <label class="grid-option owlbear-fog-option">
               <input id="owlbear-dynamic-fog" type="checkbox" />
-              Add Dynamic Fog to terrain and buildings
+              Add Dynamic Fog to terrain, buildings, rooms and doors
             </label>
             <div class="owlbear-notice">
               <strong>Temporary background hosting</strong>

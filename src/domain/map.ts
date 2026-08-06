@@ -10,6 +10,8 @@ export const Terrain = {
   Bridge: "bridge",
   Cliff: "cliff",
   Ravine: "ravine",
+  Wall: "wall",
+  Door: "door",
 } as const;
 
 export const Obstacle = {
@@ -40,7 +42,8 @@ export type LandscapeMode =
   | "archipelago"
   | "mountain-pass"
   | "sewer"
-  | "ancient-ruins";
+  | "ancient-ruins"
+  | "house";
 
 export interface Tile {
   terrain: TerrainKind;
@@ -52,6 +55,8 @@ export interface Tile {
   transition?: "slope";
   transitionNormalX?: number;
   transitionNormalY?: number;
+  roomId?: number;
+  doorOrientation?: "horizontal" | "vertical";
 }
 
 export function tileSurface(tile: Tile): SurfaceKind | undefined {
@@ -105,6 +110,8 @@ export const TERRAIN_RULES: Record<
   [Terrain.Bridge]: { label: "Bridge", movement: "normal", blocksSight: false },
   [Terrain.Cliff]: { label: "Cliff", movement: "blocked", blocksSight: true },
   [Terrain.Ravine]: { label: "Ravine", movement: "blocked", blocksSight: false },
+  [Terrain.Wall]: { label: "Wall", movement: "blocked", blocksSight: true },
+  [Terrain.Door]: { label: "Door", movement: "normal", blocksSight: false },
 };
 
 export const OBSTACLE_RULES: Record<

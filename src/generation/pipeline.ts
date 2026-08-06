@@ -38,6 +38,7 @@ export const BIOME_RECIPES: Record<
   "mountain-pass": { ruggedness: .9, smoothing: 1, roadSlopeCost: 5 },
   sewer: { ruggedness: .05, smoothing: 0, roadSlopeCost: 1 },
   "ancient-ruins": { ruggedness: .2, smoothing: 1, roadSlopeCost: 2 },
+  house: { ruggedness: 0, smoothing: 0, roadSlopeCost: 1 },
 };
 
 const clamp = (value: number, minimum: number, maximum: number) =>

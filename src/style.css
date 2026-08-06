@@ -103,6 +103,9 @@ h1 em { font-family: "Newsreader", serif; font-weight: 500; color: #617553; }
 .preset-icon.city::after { width: 44px; height: 5px; left: -2px; top: 19px; background: #c7b893; transform: rotate(-8deg); }
 .preset-icon.highlands { background: #9b9c84; }
 .preset-icon.highlands::before { width: 34px; height: 30px; left: 3px; bottom: 0; background: #666d5f; clip-path: polygon(0 100%, 35% 20%, 52% 57%, 72% 0, 100% 100%); }
+.preset-icon.house { border-radius: 8px; background: #d5b67e; box-shadow: inset 0 0 0 5px #59463a; }
+.preset-icon.house::before { width: 5px; height: 30px; left: 17px; top: 5px; background: #59463a; box-shadow: -9px 9px 0 -1px #59463a; }
+.preset-icon.house::after { width: 8px; height: 5px; left: 15px; bottom: 0; background: #b86f42; }
 
 .workspace { display: grid; grid-template-columns: 330px minmax(0, 1fr); min-height: 740px; background: #f8f6ed; border: 1px solid #d3d0c0; box-shadow: 0 14px 45px rgba(51,58,50,.08); }
 .controls { padding: 27px 24px 24px; border-right: 1px solid #d3d0c0; display: flex; flex-direction: column; gap: 20px; }
@@ -240,6 +243,8 @@ canvas { display: block; max-width: 100%; height: auto !important; box-shadow: 0
 .swatch.rock { background: #85877c; }
 .swatch.cliff { background: #161614; }
 .swatch.ravine { background: #776b59; }
+.swatch.wall { background: #5b4638; }
+.swatch.door { background: #a9683f; }
 .swatch.tree { border-radius: 50%; background: #344f3e; }
 .swatch.building { background: #b66347; }
 .map-note { margin: 10px 0 0; font-size: 8px; letter-spacing: .08em; color: #565c58; }

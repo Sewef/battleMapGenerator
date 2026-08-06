@@ -28,6 +28,8 @@ const terrainStyles: Record<TerrainKind, TerrainStyle> = {
   [Terrain.Bridge]: { color: "#876d4f", alt: "#7e6448", label: "Bridge" },
   [Terrain.Cliff]: { color: "#66685f", alt: "#575950", label: "Cliff" },
   [Terrain.Ravine]: { color: "#59483f", alt: "#493a34", label: "Ravine" },
+  [Terrain.Wall]: { color: "#5b4638", alt: "#3d3029", label: "Wall" },
+  [Terrain.Door]: { color: "#a9683f", alt: "#6d402b", label: "Door" },
 };
 
 const biomePalettes: Record<
@@ -106,6 +108,10 @@ const biomePalettes: Record<
     ground: { color: "#a9aa7d", alt: "#9d9f73" },
     difficult: { color: "#858360", alt: "#797858" },
   },
+  house: {
+    ground: { color: "#c8a972", alt: "#b7935d" },
+    difficult: { color: "#987653", alt: "#806044" },
+  },
 };
 
 type VisualProfile = {
@@ -180,6 +186,7 @@ const visualProfileByMode: Record<LandscapeMode, VisualProfileName> = {
   "ruined-battlefield": "arid", volcanic: "arid",
   "frozen-lake": "cold", highlands: "cold", "mountain-pass": "cold",
   underground: "dark", sewer: "dark", "ancient-ruins": "dark",
+  house: "temperate",
 };
 
 export function getTerrainStyle(kind: TerrainKind, mode: LandscapeMode): TerrainStyle {

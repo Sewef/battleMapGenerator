@@ -135,4 +135,11 @@ export const PRESETS: Preset[] = [
     waterWeight: 1, difficultWeight: 1, reliefWeight: 1,
     rockRatio: 0.06, treeRatio: 0.03, buildingCount: 1,
   },
+  {
+    id: "house", name: "Generic house",
+    description: "A connected indoor floor plan with separate rooms, doors, and an entrance.",
+    width: 30, height: 22, seed: "", scale: 6, mode: "house",
+    waterWeight: 0, difficultWeight: 0, reliefWeight: 0,
+    rockRatio: 0, treeRatio: 0, buildingCount: 6,
+  },
 ];
