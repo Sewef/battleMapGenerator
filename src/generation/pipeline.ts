@@ -39,6 +39,12 @@ export const BIOME_RECIPES: Record<
   sewer: { ruggedness: .05, smoothing: 0, roadSlopeCost: 1 },
   "ancient-ruins": { ruggedness: .2, smoothing: 1, roadSlopeCost: 2 },
   house: { ruggedness: 0, smoothing: 0, roadSlopeCost: 1 },
+  spaceship: { ruggedness: 0, smoothing: 0, roadSlopeCost: 1 },
+  ship: { ruggedness: 0, smoothing: 0, roadSlopeCost: 1 },
+  castle: { ruggedness: 0, smoothing: 0, roadSlopeCost: 1 },
+  cathedral: { ruggedness: 0, smoothing: 0, roadSlopeCost: 1 },
+  tavern: { ruggedness: 0, smoothing: 0, roadSlopeCost: 1 },
+  crypt: { ruggedness: 0, smoothing: 0, roadSlopeCost: 1 },
 };
 
 const clamp = (value: number, minimum: number, maximum: number) =>

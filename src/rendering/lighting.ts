@@ -19,16 +19,22 @@ const warmModes = new Set<LandscapeMode>([
   "badlands",
   "ruined-battlefield",
   "volcanic",
+  "ship",
+  "tavern",
+  "cathedral",
 ]);
 const coldModes = new Set<LandscapeMode>([
   "frozen-lake",
   "highlands",
   "mountain-pass",
+  "spaceship",
+  "castle",
 ]);
 const darkModes = new Set<LandscapeMode>([
   "underground",
   "sewer",
   "ancient-ruins",
+  "crypt",
 ]);
 
 function lightingProfile(mode: LandscapeMode): LightingProfile {

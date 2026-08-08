@@ -16,6 +16,20 @@ export interface BiomeObjectStyle {
   building: { primary: string; secondary: string; edge: string };
 }
 
+export interface InteriorVisualStyle {
+  floorPattern: "wood" | "metal" | "stone";
+  roomTints: string[];
+  wall: string;
+  wallAlt: string;
+  wallHighlight: string;
+  wallEdge: string;
+  wallDetail: string;
+  door: string;
+  doorEdge: string;
+  doorHighlight: string;
+  hardware: string;
+}
+
 const terrainStyles: Record<TerrainKind, TerrainStyle> = {
   [Terrain.Void]: { color: "#263334", alt: "#222f30", label: "Void" },
   [Terrain.Ground]: { color: "#b8ca8e", alt: "#afc382", label: "Ground" },
@@ -112,6 +126,68 @@ const biomePalettes: Record<
     ground: { color: "#c8a972", alt: "#b7935d" },
     difficult: { color: "#987653", alt: "#806044" },
   },
+  spaceship: {
+    ground: { color: "#87999d", alt: "#708287" },
+    difficult: { color: "#65757a", alt: "#52636a" },
+  },
+  ship: {
+    ground: { color: "#b18152", alt: "#96683f" },
+    difficult: { color: "#815b3f", alt: "#674634" },
+  },
+  castle: {
+    ground: { color: "#99988f", alt: "#85857e" },
+    difficult: { color: "#74746e", alt: "#62635f" },
+  },
+  cathedral: {
+    ground: { color: "#c8c1ab", alt: "#afa791" },
+    difficult: { color: "#968e7d", alt: "#7f786b" },
+  },
+  tavern: {
+    ground: { color: "#bb8d58", alt: "#a37447" },
+    difficult: { color: "#866344", alt: "#6e4e38" },
+  },
+  crypt: {
+    ground: { color: "#6d706d", alt: "#5b5f5d" },
+    difficult: { color: "#4f5553", alt: "#414746" },
+  },
+};
+
+const interiorVisualStyles: Partial<Record<LandscapeMode, InteriorVisualStyle>> = {
+  house: {
+    floorPattern: "wood", roomTints: ["rgba(255,232,184,.055)", "rgba(119,76,48,.045)", "rgba(221,190,129,.06)", "rgba(105,71,52,.035)"],
+    wall: "#5b4638", wallAlt: "#3d3029", wallHighlight: "rgba(255,226,176,.12)", wallEdge: "rgba(42,29,24,.34)", wallDetail: "rgba(226,185,127,.12)",
+    door: "#9f603b", doorEdge: "#432b22", doorHighlight: "rgba(244,197,126,.35)", hardware: "#d7b065",
+  },
+  spaceship: {
+    floorPattern: "metal", roomTints: ["rgba(190,230,235,.05)", "rgba(45,74,82,.055)", "rgba(155,190,198,.045)"],
+    wall: "#40535b", wallAlt: "#293940", wallHighlight: "rgba(193,229,233,.18)", wallEdge: "rgba(20,31,36,.55)", wallDetail: "rgba(104,180,192,.22)",
+    door: "#60777e", doorEdge: "#1f3036", doorHighlight: "rgba(164,226,232,.5)", hardware: "#d28b46",
+  },
+  ship: {
+    floorPattern: "wood", roomTints: ["rgba(255,211,145,.05)", "rgba(83,48,28,.05)", "rgba(202,146,81,.05)"],
+    wall: "#513a2c", wallAlt: "#34261f", wallHighlight: "rgba(236,184,116,.13)", wallEdge: "rgba(38,24,18,.5)", wallDetail: "rgba(205,141,77,.17)",
+    door: "#875232", doorEdge: "#35231b", doorHighlight: "rgba(236,177,102,.35)", hardware: "#c9a258",
+  },
+  castle: {
+    floorPattern: "stone", roomTints: ["rgba(233,230,214,.045)", "rgba(59,64,63,.045)", "rgba(174,174,161,.05)"],
+    wall: "#555957", wallAlt: "#383d3c", wallHighlight: "rgba(221,221,204,.14)", wallEdge: "rgba(28,32,32,.52)", wallDetail: "rgba(194,195,182,.15)",
+    door: "#75513a", doorEdge: "#30251f", doorHighlight: "rgba(200,158,104,.3)", hardware: "#aa9266",
+  },
+  cathedral: {
+    floorPattern: "stone", roomTints: ["rgba(255,248,220,.06)", "rgba(123,105,76,.035)", "rgba(216,197,151,.05)"],
+    wall: "#756f62", wallAlt: "#514c45", wallHighlight: "rgba(255,244,210,.18)", wallEdge: "rgba(47,42,37,.43)", wallDetail: "rgba(221,201,158,.2)",
+    door: "#8a6238", doorEdge: "#3d3024", doorHighlight: "rgba(242,207,129,.44)", hardware: "#d2b35d",
+  },
+  tavern: {
+    floorPattern: "wood", roomTints: ["rgba(255,218,158,.065)", "rgba(103,57,31,.045)", "rgba(217,151,78,.055)"],
+    wall: "#624632", wallAlt: "#3f2e25", wallHighlight: "rgba(255,205,137,.14)", wallEdge: "rgba(47,29,21,.42)", wallDetail: "rgba(226,154,82,.15)",
+    door: "#9a5d35", doorEdge: "#43291e", doorHighlight: "rgba(242,182,103,.4)", hardware: "#cfaa5b",
+  },
+  crypt: {
+    floorPattern: "stone", roomTints: ["rgba(185,196,187,.035)", "rgba(20,29,29,.07)", "rgba(101,118,111,.04)"],
+    wall: "#363d3c", wallAlt: "#222929", wallHighlight: "rgba(163,180,168,.11)", wallEdge: "rgba(13,19,20,.64)", wallDetail: "rgba(112,133,124,.14)",
+    door: "#55463a", doorEdge: "#201d1a", doorHighlight: "rgba(155,134,105,.25)", hardware: "#787765",
+  },
 };
 
 type VisualProfile = {
@@ -187,6 +263,8 @@ const visualProfileByMode: Record<LandscapeMode, VisualProfileName> = {
   "frozen-lake": "cold", highlands: "cold", "mountain-pass": "cold",
   underground: "dark", sewer: "dark", "ancient-ruins": "dark",
   house: "temperate",
+  spaceship: "cold", ship: "temperate", castle: "cold",
+  cathedral: "temperate", tavern: "temperate", crypt: "dark",
 };
 
 export function getTerrainStyle(kind: TerrainKind, mode: LandscapeMode): TerrainStyle {
@@ -196,12 +274,23 @@ export function getTerrainStyle(kind: TerrainKind, mode: LandscapeMode): Terrain
     : kind === Terrain.Difficult
       ? { ...base, ...biomePalettes[mode].difficult }
       : base;
+  const interiorStyle = interiorVisualStyles[mode];
+  const architectureStyle = interiorStyle && kind === Terrain.Wall
+    ? { color: interiorStyle.wall, alt: interiorStyle.wallAlt }
+    : interiorStyle && kind === Terrain.Door
+      ? { color: interiorStyle.door, alt: interiorStyle.doorEdge }
+      : undefined;
   return {
     ...biomeBase,
     ...visualProfiles[visualProfileByMode[mode]].terrain[kind],
+    ...architectureStyle,
   };
 }
 
 export function getBiomeObjectStyle(mode: LandscapeMode): BiomeObjectStyle {
   return visualProfiles[visualProfileByMode[mode]].objects;
+}
+
+export function getInteriorVisualStyle(mode: LandscapeMode) {
+  return interiorVisualStyles[mode];
 }

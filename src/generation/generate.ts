@@ -2,6 +2,7 @@ import { Delaunay } from "d3-delaunay";
 import {
   Obstacle,
   Terrain,
+  isInteriorMode,
   setTileSurface,
   type Grid,
   type TerrainKind,
@@ -18,7 +19,7 @@ import {
   scatterRocks,
 } from "./obstacles";
 import { generateCity } from "./city";
-import { generateHouseInterior } from "./interior";
+import { generateInterior } from "./interior";
 import {
   generateAncientRuins,
   generateBattlefield,
@@ -742,11 +743,12 @@ export function generateTerrain(options: TerrainOptions): Grid {
       obstacle: Obstacle.None,
     })),
   );
-  if (options.mode === "house") {
-    generateHouseInterior(
+  if (isInteriorMode(options.mode)) {
+    generateInterior(
       grid,
       options.buildingCount,
-      seededRandom(`${seed}:house`),
+      seededRandom(`${seed}:${options.mode}`),
+      options.mode,
     );
     return grid;
   }

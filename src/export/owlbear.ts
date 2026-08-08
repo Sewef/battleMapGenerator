@@ -187,8 +187,9 @@ function imageItem(
 type FogPoint = { x: number; y: number };
 type FogEdge = { start: FogPoint; end: FogPoint; direction: number };
 
-function fogContours(
-  grid: Grid,
+function traceContours(
+  columns: number,
+  rows: number,
   matches: (x: number, y: number) => boolean,
   includeMapBoundary = true,
 ): FogPoint[][] {
@@ -196,20 +197,20 @@ function fogContours(
   const addEdge = (start: FogPoint, end: FogPoint, direction: number) => {
     edges.push({ start, end, direction });
   };
-  for (let y = 0; y < grid.length; y += 1) {
-    for (let x = 0; x < grid[y].length; x += 1) {
+  for (let y = 0; y < rows; y += 1) {
+    for (let x = 0; x < columns; x += 1) {
       if (!matches(x, y)) continue;
       if ((includeMapBoundary || y > 0) && !matches(x, y - 1)) {
         addEdge({ x, y }, { x: x + 1, y }, 0);
       }
       if (
-        (includeMapBoundary || x < grid[y].length - 1) &&
+        (includeMapBoundary || x < columns - 1) &&
         !matches(x + 1, y)
       ) {
         addEdge({ x: x + 1, y }, { x: x + 1, y: y + 1 }, 1);
       }
       if (
-        (includeMapBoundary || y < grid.length - 1) &&
+        (includeMapBoundary || y < rows - 1) &&
         !matches(x, y + 1)
       ) {
         addEdge({ x: x + 1, y: y + 1 }, { x, y: y + 1 }, 2);
@@ -266,6 +267,19 @@ function fogContours(
   return contours;
 }
 
+function fogContours(
+  grid: Grid,
+  matches: (x: number, y: number) => boolean,
+  includeMapBoundary = true,
+) {
+  return traceContours(
+    grid[0].length,
+    grid.length,
+    matches,
+    includeMapBoundary,
+  );
+}
+
 function fogItem(
   id: string,
   name: string,
@@ -302,38 +316,46 @@ function fogItem(
 }
 
 function roomFogContours(grid: Grid) {
-  const rooms = new Map<
-    number,
-    { minimumX: number; minimumY: number; maximumX: number; maximumY: number }
-  >();
+  const rooms = new Map<number, { role: string; cells: FogPoint[] }>();
   for (let y = 0; y < grid.length; y += 1) {
     for (let x = 0; x < grid[y].length; x += 1) {
-      const roomId = grid[y][x].roomId;
+      const current = grid[y][x];
+      const roomId = current.roomId;
       if (roomId === undefined) continue;
-      const bounds = rooms.get(roomId) ?? {
-        minimumX: x,
-        minimumY: y,
-        maximumX: x,
-        maximumY: y,
+      const room = rooms.get(roomId) ?? {
+        role: current.roomRole ?? `Room ${roomId + 1}`,
+        cells: [],
       };
-      bounds.minimumX = Math.min(bounds.minimumX, x);
-      bounds.minimumY = Math.min(bounds.minimumY, y);
-      bounds.maximumX = Math.max(bounds.maximumX, x);
-      bounds.maximumY = Math.max(bounds.maximumY, y);
-      rooms.set(roomId, bounds);
+      room.cells.push({ x, y });
+      rooms.set(roomId, room);
     }
   }
+  const maskWidth = grid[0].length * 2 + 2;
+  const maskHeight = grid.length * 2 + 2;
   return [...rooms.entries()]
     .sort(([first], [second]) => first - second)
-    .map(([roomId, bounds]) => ({
-      roomId,
-      contour: [
-        { x: bounds.minimumX - .5, y: bounds.minimumY - .5 },
-        { x: bounds.maximumX + 1.5, y: bounds.minimumY - .5 },
-        { x: bounds.maximumX + 1.5, y: bounds.maximumY + 1.5 },
-        { x: bounds.minimumX - .5, y: bounds.maximumY + 1.5 },
-      ],
-    }));
+    .flatMap(([roomId, room]) => {
+      const mask = new Set<string>();
+      for (const cell of room.cells) {
+        for (let y = cell.y * 2; y < cell.y * 2 + 4; y += 1) {
+          for (let x = cell.x * 2; x < cell.x * 2 + 4; x += 1) {
+            mask.add(`${x},${y}`);
+          }
+        }
+      }
+      return traceContours(
+        maskWidth,
+        maskHeight,
+        (x, y) => mask.has(`${x},${y}`),
+      ).map((contour) => ({
+        roomId,
+        role: room.role,
+        contour: contour.map(({ x, y }) => ({
+          x: (x - 1) / 2,
+          y: (y - 1) / 2,
+        })),
+      }));
+    });
 }
 
 function fogDoorItem(
@@ -611,11 +633,11 @@ export async function createOwlbearSceneJson(
     }
 
     if (isInterior) {
-      rooms.forEach(({ roomId, contour }) => {
+      rooms.forEach(({ roomId, role, contour }) => {
         const id = crypto.randomUUID();
         shared[id] = fogItem(
           id,
-          `Room ${roomId + 1} Fog`,
+          `${role || `Room ${roomId + 1}`} Fog`,
           contour,
           nextPropZIndex,
         );

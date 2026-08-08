@@ -106,6 +106,24 @@ h1 em { font-family: "Newsreader", serif; font-weight: 500; color: #617553; }
 .preset-icon.house { border-radius: 8px; background: #d5b67e; box-shadow: inset 0 0 0 5px #59463a; }
 .preset-icon.house::before { width: 5px; height: 30px; left: 17px; top: 5px; background: #59463a; box-shadow: -9px 9px 0 -1px #59463a; }
 .preset-icon.house::after { width: 8px; height: 5px; left: 15px; bottom: 0; background: #b86f42; }
+.preset-icon.spaceship { border-radius: 8px; background: #7d929b; box-shadow: inset 0 0 0 5px #31444e; }
+.preset-icon.spaceship::before { width: 26px; height: 5px; left: 7px; top: 18px; background: #c8d7d7; box-shadow: 7px -9px 0 -1px #c8d7d7, -7px 9px 0 -1px #c8d7d7; }
+.preset-icon.spaceship::after { width: 6px; height: 6px; right: 6px; top: 7px; border-radius: 50%; background: #70c5d3; box-shadow: 0 20px #dd9b55; }
+.preset-icon.ship { background: #6f91a0; }
+.preset-icon.ship::before { width: 30px; height: 13px; left: 5px; bottom: 7px; border-radius: 2px 2px 14px 14px; background: #79533a; }
+.preset-icon.ship::after { width: 4px; height: 25px; left: 18px; top: 4px; background: #3f342c; box-shadow: 6px 3px 0 2px #d7c18e; }
+.preset-icon.castle { border-radius: 8px; background: #999a94; box-shadow: inset 0 0 0 5px #4d504f; }
+.preset-icon.castle::before { width: 8px; height: 27px; left: 6px; bottom: 4px; background: #656866; box-shadow: 20px 0 #656866, 10px 7px #747674; }
+.preset-icon.castle::after { width: 6px; height: 10px; left: 17px; bottom: 4px; border-radius: 4px 4px 0 0; background: #313837; }
+.preset-icon.cathedral { border-radius: 8px; background: #c8c1a9; box-shadow: inset 0 0 0 4px #6f6a5f; }
+.preset-icon.cathedral::before { width: 8px; height: 32px; left: 16px; top: 4px; background: #8b8069; box-shadow: -10px 9px #8b8069, 10px 9px #8b8069; }
+.preset-icon.cathedral::after { width: 8px; height: 8px; left: 16px; top: 7px; border-radius: 50%; background: #d6b665; }
+.preset-icon.tavern { border-radius: 8px; background: #c39359; box-shadow: inset 0 0 0 5px #654733; }
+.preset-icon.tavern::before { width: 24px; height: 5px; left: 8px; top: 10px; background: #efd394; box-shadow: 0 14px #efd394; }
+.preset-icon.tavern::after { width: 5px; height: 24px; left: 17px; top: 8px; background: #654733; }
+.preset-icon.crypt { border-radius: 8px; background: #4e5453; box-shadow: inset 0 0 0 5px #292f30; }
+.preset-icon.crypt::before { width: 22px; height: 24px; left: 9px; bottom: 5px; border-radius: 12px 12px 2px 2px; background: #777870; }
+.preset-icon.crypt::after { width: 5px; height: 13px; left: 17px; bottom: 5px; background: #292f30; }
 
 .workspace { display: grid; grid-template-columns: 330px minmax(0, 1fr); min-height: 740px; background: #f8f6ed; border: 1px solid #d3d0c0; box-shadow: 0 14px 45px rgba(51,58,50,.08); }
 .controls { padding: 27px 24px 24px; border-right: 1px solid #d3d0c0; display: flex; flex-direction: column; gap: 20px; }

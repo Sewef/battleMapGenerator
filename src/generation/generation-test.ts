@@ -1,9 +1,13 @@
 import { PRESETS } from "../domain/biomes";
 import {
+  INTERIOR_ROOM_LIMITS,
+  INTERIOR_MINIMUM_DIMENSIONS,
   Obstacle,
   Terrain,
+  isInteriorMode,
   tileSurface,
   type Grid,
+  type InteriorMode,
 } from "../domain/map";
 import { generateTerrain } from "./generate";
 import { createOwlbearSceneJson } from "../export/owlbear";
@@ -79,7 +83,7 @@ function assertGrid(grid: Grid, label: string) {
   }
 }
 
-function assertHouse(grid: Grid, expectedRooms: number, label: string) {
+function assertInterior(grid: Grid, expectedRooms: number, label: string) {
   const roomIds = new Set<number>();
   const walkable = new Set<string>();
   let doorCount = 0;
@@ -88,6 +92,7 @@ function assertHouse(grid: Grid, expectedRooms: number, label: string) {
       const tile = grid[y][x];
       if (tile.terrain === Terrain.Ground) {
         assert(tile.roomId !== undefined, `${label}: floor without a room`);
+        assert(tile.roomRole, `${label}: floor without a functional role`);
         roomIds.add(tile.roomId);
         walkable.add(`${x},${y}`);
       } else if (tile.terrain === Terrain.Door) {
@@ -101,7 +106,7 @@ function assertHouse(grid: Grid, expectedRooms: number, label: string) {
   assert(doorCount === expectedRooms, `${label}: expected one entrance plus ${expectedRooms - 1} internal doors`);
 
   const start = walkable.values().next().value as string | undefined;
-  assert(start, `${label}: house has no walkable floor`);
+  assert(start, `${label}: interior has no walkable floor`);
   const visited = new Set([start]);
   const queue = [start];
   for (let index = 0; index < queue.length; index += 1) {
@@ -117,14 +122,66 @@ function assertHouse(grid: Grid, expectedRooms: number, label: string) {
   assert(visited.size === walkable.size, `${label}: disconnected rooms`);
 }
 
+function roomRoles(grid: Grid) {
+  return new Set(
+    grid.flatMap((row) => row.map(({ roomRole }) => roomRole))
+      .filter((role): role is string => Boolean(role)),
+  );
+}
+
+function hasNonRectangularRoom(grid: Grid) {
+  const rooms = new Map<number, Array<{ x: number; y: number }>>();
+  grid.forEach((row, y) => row.forEach((tile, x) => {
+    if (tile.terrain !== Terrain.Ground || tile.roomId === undefined) return;
+    const cells = rooms.get(tile.roomId) ?? [];
+    cells.push({ x, y });
+    rooms.set(tile.roomId, cells);
+  }));
+  return [...rooms.values()].some((cells) => {
+    const width = Math.max(...cells.map(({ x }) => x)) - Math.min(...cells.map(({ x }) => x)) + 1;
+    const height = Math.max(...cells.map(({ y }) => y)) - Math.min(...cells.map(({ y }) => y)) + 1;
+    return cells.length < width * height;
+  });
+}
+
+function doorConnections(grid: Grid) {
+  const connections = new Set<string>();
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      const current = grid[y][x];
+      if (current.terrain !== Terrain.Door || !current.doorOrientation) continue;
+      const neighbors = current.doorOrientation === "horizontal"
+        ? [grid[y - 1]?.[x], grid[y + 1]?.[x]]
+        : [grid[y]?.[x - 1], grid[y]?.[x + 1]];
+      const roles = neighbors
+        .map((neighbor) => neighbor?.roomRole)
+        .filter((role): role is string => Boolean(role));
+      if (roles.length === 2 && roles[0] !== roles[1]) {
+        connections.add([...roles].sort().join(" | "));
+      }
+    }
+  }
+  return connections;
+}
+
+const requiredInteriorRoles: Record<InteriorMode, string[]> = {
+  house: ["Living room", "Kitchen", "Hallway", "Bedroom 1"],
+  tavern: ["Common room", "Kitchen", "Hallway", "Guest room 1"],
+  spaceship: ["Central spine", "Cockpit", "Engineering"],
+  ship: ["Main gangway", "Captain's cabin", "Galley"],
+  castle: ["Great hall and galleries", "Guardroom", "Armory"],
+  cathedral: ["Nave and transept", "Sacristy", "Reliquary"],
+  crypt: ["Processional passage", "Inner sanctum", "Burial vault 2"],
+};
+
 let generated = 0;
 for (const preset of PRESETS) {
   for (let index = 0; index < 3; index += 1) {
     const options = { ...preset, seed: `audit-${index}` };
     const grid = generateTerrain(options);
     assertGrid(grid, `${preset.id}:${index}`);
-    if (preset.mode === "house") {
-      assertHouse(grid, preset.buildingCount, `${preset.id}:${index}`);
+    if (isInteriorMode(preset.mode)) {
+      assertInterior(grid, preset.buildingCount, `${preset.id}:${index}`);
     }
     if (index === 0) {
       const duplicate = generateTerrain(options);
@@ -137,9 +194,90 @@ for (const preset of PRESETS) {
   }
 }
 
+for (const preset of PRESETS.filter(({ mode }) => isInteriorMode(mode))) {
+  if (!isInteriorMode(preset.mode)) continue;
+  const grid = generateTerrain({ ...preset, seed: `${preset.id}-semantics` });
+  const roles = roomRoles(grid);
+  for (const role of requiredInteriorRoles[preset.mode]) {
+    assert(roles.has(role), `${preset.id}: missing required ${role}`);
+  }
+  const connections = doorConnections(grid);
+  if (preset.mode === "tavern") {
+    assert(
+      connections.has(["Common room", "Kitchen"].sort().join(" | ")),
+      `${preset.id}: kitchen must open directly into the main room`,
+    );
+    assert(
+      connections.has(["Common room", "Hallway"].sort().join(" | ")),
+      `${preset.id}: hallway must open from the main room`,
+    );
+  }
+  if (preset.mode === "house") {
+    assert(
+      connections.has(["Living room", "Hallway"].sort().join(" | ")),
+      "house: living room must open onto the central hallway",
+    );
+    assert(
+      connections.has(["Kitchen", "Hallway"].sort().join(" | ")),
+      "house: kitchen must open onto the central hallway",
+    );
+    assert(
+      !connections.has(["Living room", "Kitchen"].sort().join(" | ")),
+      "house: must not reuse the tavern's common-room/kitchen topology",
+    );
+  }
+  if (preset.mode === "spaceship") {
+    assert(
+      connections.has(["Central spine", "Cockpit"].sort().join(" | ")),
+      "spaceship: the central spine must lead directly to the cockpit",
+    );
+    assert(
+      connections.has(["Central spine", "Engineering"].sort().join(" | ")),
+      "spaceship: engineering must open onto the central spine",
+    );
+  }
+  if (preset.mode === "spaceship" || preset.mode === "ship") {
+    assert(
+      hasNonRectangularRoom(grid),
+      `${preset.id}: vessel must contain at least one shaped compartment`,
+    );
+  }
+  if (preset.mode === "cathedral") {
+    const naveCells = grid.flatMap((row, y) =>
+      row.map((tile, x) => tile.roomRole === "Nave and transept" ? { x, y } : undefined)
+    ).filter((point): point is { x: number; y: number } => Boolean(point));
+    const width = Math.max(...naveCells.map(({ x }) => x)) -
+      Math.min(...naveCells.map(({ x }) => x)) + 1;
+    const height = Math.max(...naveCells.map(({ y }) => y)) -
+      Math.min(...naveCells.map(({ y }) => y)) + 1;
+    assert(
+      naveCells.length < width * height * .8,
+      "cathedral: central nave must retain a cross-shaped footprint",
+    );
+  }
+}
+
+for (const preset of PRESETS.filter(({ mode }) => isInteriorMode(mode))) {
+  const layouts = new Set<string>();
+  for (let index = 0; index < 12; index += 1) {
+    const grid = generateTerrain({ ...preset, seed: `${preset.id}-variation-${index}` });
+    layouts.add(grid.map((row) => row.map((tile) =>
+      `${tile.terrain}:${tile.roomId ?? ""}`
+    ).join(",")).join(";"));
+  }
+  assert(
+    layouts.size >= 8,
+    `${preset.id}: seed produces too little structural variation (${layouts.size}/12)`,
+  );
+}
+
 const housePreset = PRESETS.find(({ mode }) => mode === "house");
 assert(housePreset, "missing house preset");
-for (let roomCount = 2; roomCount <= 12; roomCount += 1) {
+for (
+  let roomCount = INTERIOR_ROOM_LIMITS.house.minimum;
+  roomCount <= INTERIOR_ROOM_LIMITS.house.maximum;
+  roomCount += 1
+) {
   const grid = generateTerrain({
     ...housePreset,
     width: 30,
@@ -147,7 +285,21 @@ for (let roomCount = 2; roomCount <= 12; roomCount += 1) {
     buildingCount: roomCount,
     seed: `house-room-count-${roomCount}`,
   });
-  assertHouse(grid, roomCount, `house:${roomCount}-rooms`);
+  assertInterior(grid, roomCount, `house:${roomCount}-rooms`);
+}
+
+for (const preset of PRESETS.filter(({ mode }) => isInteriorMode(mode))) {
+  if (!isInteriorMode(preset.mode)) continue;
+  const maximumRooms = INTERIOR_ROOM_LIMITS[preset.mode].maximum;
+  const minimumDimensions = INTERIOR_MINIMUM_DIMENSIONS[preset.mode];
+  const compactGrid = generateTerrain({
+    ...preset,
+    width: minimumDimensions.width,
+    height: minimumDimensions.height,
+    buildingCount: maximumRooms,
+    seed: `${preset.id}-compact-interior`,
+  });
+  assertInterior(compactGrid, maximumRooms, `${preset.id}:compact-interior`);
 }
 
 const fogExportGrid = generateTerrain({
@@ -196,9 +348,7 @@ for (const [id, item] of fogEntries) {
     `house fog export: ${item.name} will not follow the background`,
   );
 }
-const roomFogItems = fogItems.filter(({ name, type }) =>
-  type === "CURVE" && /^Room \d+ Fog$/.test(name)
-);
+const roomFogItems = fogItems.filter(({ type }) => type === "CURVE");
 const doorFogItems = fogItems.filter(({ type, metadata }) =>
   type === "LINE" && Array.isArray(
     metadata?.["rodeo.owlbear.dynamic-fog/doors"],

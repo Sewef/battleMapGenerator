@@ -1,28 +1,28 @@
 import {
+  INTERIOR_ROOM_LIMITS,
   Obstacle,
   Terrain,
   type Grid,
+  type InteriorMode,
   type Tile,
 } from "../domain/map";
 import type { Random } from "./types";
 
-type Room = { x: number; y: number; width: number; height: number };
+type Rectangle = { x: number; y: number; width: number; height: number };
+type Bounds = { left: number; top: number; right: number; bottom: number };
+type Door = {
+  x: number;
+  y: number;
+  orientation: "horizontal" | "vertical";
+};
 
-const MINIMUM_ROOM_SPAN = 3;
-
-function floorTile(): Tile {
-  return {
-    terrain: Terrain.Ground,
-    obstacle: Obstacle.None,
-    height: .32,
-  };
-}
-
-function architectureTile(terrain: typeof Terrain.Wall | typeof Terrain.Door): Tile {
+function tile(terrain: typeof Terrain.Void | typeof Terrain.Ground | typeof Terrain.Wall | typeof Terrain.Door): Tile {
   return {
     terrain,
     obstacle: Obstacle.None,
-    height: terrain === Terrain.Wall ? .82 : .48,
+    height: terrain === Terrain.Wall
+      ? .82
+      : terrain === Terrain.Door ? .48 : terrain === Terrain.Void ? .08 : .32,
   };
 }
 
@@ -30,135 +30,345 @@ function randomInteger(random: Random, minimum: number, maximum: number) {
   return minimum + Math.floor(random() * (maximum - minimum + 1));
 }
 
-function splitRoom(
-  room: Room,
-  random: Random,
-): { rooms: [Room, Room]; wall: Room; door: { x: number; y: number; orientation: "horizontal" | "vertical" } } | undefined {
-  const canSplitVertically = room.width >= MINIMUM_ROOM_SPAN * 2 + 1;
-  const canSplitHorizontally = room.height >= MINIMUM_ROOM_SPAN * 2 + 1;
-  if (!canSplitVertically && !canSplitHorizontally) return undefined;
-
-  const vertical = canSplitVertically && (
-    !canSplitHorizontally ||
-    room.width / room.height > 1.3 ||
-    (room.height / room.width <= 1.3 && random() < .5)
-  );
-
-  if (vertical) {
-    const wallX = randomInteger(
-      random,
-      room.x + MINIMUM_ROOM_SPAN,
-      room.x + room.width - MINIMUM_ROOM_SPAN - 1,
-    );
-    const doorY = randomInteger(random, room.y + 1, room.y + room.height - 2);
-    return {
-      rooms: [
-        { ...room, width: wallX - room.x },
-        {
-          x: wallX + 1,
-          y: room.y,
-          width: room.x + room.width - wallX - 1,
-          height: room.height,
-        },
-      ],
-      wall: { x: wallX, y: room.y, width: 1, height: room.height },
-      door: { x: wallX, y: doorY, orientation: "vertical" },
-    };
+function initialize(grid: Grid) {
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      grid[y][x] = tile(Terrain.Void);
+    }
   }
+}
 
-  const wallY = randomInteger(
-    random,
-    room.y + MINIMUM_ROOM_SPAN,
-    room.y + room.height - MINIMUM_ROOM_SPAN - 1,
-  );
-  const doorX = randomInteger(random, room.x + 1, room.x + room.width - 2);
+function buildingBounds(grid: Grid, random: Random): Bounds {
+  const maximumMarginX = grid[0].length >= 32 ? 3 : grid[0].length >= 24 ? 2 : 1;
+  const maximumMarginY = grid.length >= 24 ? 3 : grid.length >= 18 ? 2 : 1;
+  const left = randomInteger(random, 1, maximumMarginX);
+  const top = randomInteger(random, 1, maximumMarginY);
+  const rightMargin = randomInteger(random, 1, maximumMarginX);
+  const bottomMargin = randomInteger(random, 1, maximumMarginY);
   return {
-    rooms: [
-      { ...room, height: wallY - room.y },
-      {
-        x: room.x,
-        y: wallY + 1,
-        width: room.width,
-        height: room.y + room.height - wallY - 1,
-      },
-    ],
-    wall: { x: room.x, y: wallY, width: room.width, height: 1 },
-    door: { x: doorX, y: wallY, orientation: "horizontal" },
+    left,
+    top,
+    right: grid[0].length - rightMargin - 1,
+    bottom: grid.length - bottomMargin - 1,
   };
 }
 
-function paintRectangle(
+function paintRectangle(grid: Grid, rectangle: Rectangle, terrain: typeof Terrain.Ground | typeof Terrain.Wall) {
+  for (let y = rectangle.y; y < rectangle.y + rectangle.height; y += 1) {
+    for (let x = rectangle.x; x < rectangle.x + rectangle.width; x += 1) {
+      grid[y][x] = tile(terrain);
+    }
+  }
+}
+
+function buildShell(grid: Grid, bounds: Bounds) {
+  paintRectangle(
+    grid,
+    {
+      x: bounds.left + 1,
+      y: bounds.top + 1,
+      width: bounds.right - bounds.left - 1,
+      height: bounds.bottom - bounds.top - 1,
+    },
+    Terrain.Ground,
+  );
+  horizontalWall(grid, bounds.top, bounds.left, bounds.right);
+  horizontalWall(grid, bounds.bottom, bounds.left, bounds.right);
+  verticalWall(grid, bounds.left, bounds.top, bounds.bottom);
+  verticalWall(grid, bounds.right, bounds.top, bounds.bottom);
+}
+
+function horizontalWall(grid: Grid, y: number, startX: number, endX: number) {
+  for (let x = startX; x <= endX; x += 1) grid[y][x] = tile(Terrain.Wall);
+}
+
+function verticalWall(grid: Grid, x: number, startY: number, endY: number) {
+  for (let y = startY; y <= endY; y += 1) grid[y][x] = tile(Terrain.Wall);
+}
+
+function placeDoor(grid: Grid, door: Door) {
+  grid[door.y][door.x] = {
+    ...tile(Terrain.Door),
+    doorOrientation: door.orientation,
+  };
+}
+
+function assignRoom(
   grid: Grid,
-  rectangle: Room,
-  tile: () => Tile,
+  rectangle: Rectangle,
+  roomId: number,
+  role: string,
 ) {
   for (let y = rectangle.y; y < rectangle.y + rectangle.height; y += 1) {
     for (let x = rectangle.x; x < rectangle.x + rectangle.width; x += 1) {
-      grid[y][x] = tile();
+      if (grid[y]?.[x]?.terrain !== Terrain.Ground) continue;
+      grid[y][x].roomId = roomId;
+      grid[y][x].roomRole = role;
     }
   }
 }
 
-function addExteriorEntrance(
+function assignRemainingGround(
   grid: Grid,
-  bounds: { left: number; top: number; right: number; bottom: number },
-  random: Random,
+  roomId: number,
+  role: string,
 ) {
-  const edge = randomInteger(random, 0, 3);
-  const candidates: Array<{ x: number; y: number; orientation: "horizontal" | "vertical" }> = [];
-  if (edge === 0 || edge === 2) {
-    const y = edge === 0 ? bounds.top : bounds.bottom;
-    const insideY = edge === 0 ? y + 1 : y - 1;
-    for (let x = bounds.left + 2; x <= bounds.right - 2; x += 1) {
-      if (grid[insideY][x].terrain === Terrain.Ground) {
-        candidates.push({ x, y, orientation: "horizontal" });
-      }
-    }
-  } else {
-    const x = edge === 1 ? bounds.right : bounds.left;
-    const insideX = edge === 1 ? x - 1 : x + 1;
-    for (let y = bounds.top + 2; y <= bounds.bottom - 2; y += 1) {
-      if (grid[y][insideX].terrain === Terrain.Ground) {
-        candidates.push({ x, y, orientation: "vertical" });
-      }
+  for (const row of grid) {
+    for (const current of row) {
+      if (current.terrain !== Terrain.Ground || current.roomId !== undefined) continue;
+      current.roomId = roomId;
+      current.roomRole = role;
     }
   }
-  const entrance = candidates[randomInteger(random, 0, candidates.length - 1)];
-  if (!entrance) return;
-  grid[entrance.y][entrance.x] = {
-    ...architectureTile(Terrain.Door),
-    doorOrientation: entrance.orientation,
+}
+
+function balancedSplit(random: Random, minimum: number, maximum: number) {
+  const center = (minimum + maximum) / 2;
+  const jitter = Math.min(2, (maximum - minimum) * .22);
+  return Math.max(
+    minimum,
+    Math.min(maximum, Math.round(center + (random() - .5) * jitter * 2)),
+  );
+}
+
+function splitRectangle(
+  rectangle: Rectangle,
+  random: Random,
+): { rooms: [Rectangle, Rectangle]; wall: Rectangle; door: Door } | undefined {
+  const minimumSpan = 2;
+  const verticalPossible = rectangle.width >= minimumSpan * 2 + 1;
+  const horizontalPossible = rectangle.height >= minimumSpan * 2 + 1;
+  if (!verticalPossible && !horizontalPossible) return undefined;
+  const vertical = verticalPossible && (
+    !horizontalPossible ||
+    rectangle.width / rectangle.height > 1.2 ||
+    (rectangle.height / rectangle.width <= 1.2 && random() < .5)
+  );
+  if (vertical) {
+    const wallX = balancedSplit(
+      random,
+      rectangle.x + minimumSpan,
+      rectangle.x + rectangle.width - minimumSpan - 1,
+    );
+    return {
+      rooms: [
+        { ...rectangle, width: wallX - rectangle.x },
+        {
+          x: wallX + 1,
+          y: rectangle.y,
+          width: rectangle.x + rectangle.width - wallX - 1,
+          height: rectangle.height,
+        },
+      ],
+      wall: { x: wallX, y: rectangle.y, width: 1, height: rectangle.height },
+      door: {
+        x: wallX,
+        y: randomInteger(random, rectangle.y, rectangle.y + rectangle.height - 1),
+        orientation: "vertical",
+      },
+    };
+  }
+  const wallY = balancedSplit(
+    random,
+    rectangle.y + minimumSpan,
+    rectangle.y + rectangle.height - minimumSpan - 1,
+  );
+  return {
+    rooms: [
+      { ...rectangle, height: wallY - rectangle.y },
+      {
+        x: rectangle.x,
+        y: wallY + 1,
+        width: rectangle.width,
+        height: rectangle.y + rectangle.height - wallY - 1,
+      },
+    ],
+    wall: { x: rectangle.x, y: wallY, width: rectangle.width, height: 1 },
+    door: {
+      x: randomInteger(random, rectangle.x, rectangle.x + rectangle.width - 1),
+      y: wallY,
+      orientation: "horizontal",
+    },
   };
 }
 
-function repairBlockedInternalDoors(grid: Grid) {
-  const doors: Array<{ x: number; y: number; orientation: "horizontal" | "vertical" }> = [];
-  for (let y = 0; y < grid.length; y += 1) {
-    for (let x = 0; x < grid[y].length; x += 1) {
-      const tile = grid[y][x];
-      if (tile.terrain === Terrain.Door && tile.doorOrientation) {
-        doors.push({ x, y, orientation: tile.doorOrientation });
+function subdivide(
+  grid: Grid,
+  rectangle: Rectangle,
+  count: number,
+  random: Random,
+) {
+  const rooms = [rectangle];
+  while (rooms.length < count) {
+    const candidates = rooms
+      .map((room, index) => ({ room, index, split: splitRectangle(room, random) }))
+      .filter(({ split }) => split)
+      .sort((first, second) =>
+        second.room.width * second.room.height -
+        first.room.width * first.room.height
+      );
+    const selected = candidates[0];
+    if (!selected?.split) break;
+    paintRectangle(grid, selected.split.wall, Terrain.Wall);
+    placeDoor(grid, selected.split.door);
+    rooms.splice(selected.index, 1, ...selected.split.rooms);
+  }
+  return rooms;
+}
+
+function variedPartitionRange(
+  start: number,
+  end: number,
+  count: number,
+  random: Random,
+) {
+  if (count <= 1) return [{ start, end }];
+  const usable = end - start + 1 - (count - 1);
+  const minimumSize = Math.max(1, Math.min(3, Math.floor(usable / count) - 1));
+  const sizes = Array.from({ length: count }, () => minimumSize);
+  let remaining = usable - minimumSize * count;
+  while (remaining > 0) {
+    const smallest = Math.min(...sizes);
+    const candidates = sizes
+      .map((size, index) => ({ size, index }))
+      .filter(({ size }) => size === smallest);
+    sizes[candidates[Math.floor(random() * candidates.length)].index] += 1;
+    remaining -= 1;
+  }
+  const segments: Array<{ start: number; end: number }> = [];
+  let cursor = start;
+  for (const size of sizes) {
+    segments.push({ start: cursor, end: cursor + size - 1 });
+    cursor += size + 1;
+  }
+  return segments;
+}
+
+function mirrorInterior(grid: Grid, random: Random) {
+  if (random() < .5) {
+    for (const row of grid) row.reverse();
+  }
+  if (random() < .5) grid.reverse();
+}
+
+function shapeVesselHull(
+  grid: Grid,
+  bounds: Bounds,
+  mode: "ship" | "spaceship",
+  random: Random,
+) {
+  // Very compact, high-room-count maps cannot afford to lose another strip
+  // of usable cells without collapsing a compartment entirely.
+  if (bounds.right - bounds.left < 26 || bounds.bottom - bounds.top < 14) return;
+  const centerY = (bounds.top + bounds.bottom) / 2;
+  const halfHeight = Math.max(1, (bounds.bottom - bounds.top) / 2);
+  const sternInset = mode === "ship"
+    ? randomInteger(random, 1, 2)
+    : randomInteger(random, 2, 3);
+  const bowInset = mode === "ship"
+    ? randomInteger(random, 4, 6)
+    : randomInteger(random, 2, 4);
+
+  for (let y = bounds.top; y <= bounds.bottom; y += 1) {
+    const edge = Math.abs(y - centerY) / halfHeight;
+    const taper = Math.max(0, (edge - .42) / .58) ** 1.35;
+    const leftInset = Math.round(sternInset * taper);
+    const rightInset = Math.round(bowInset * taper);
+    for (let x = bounds.left; x <= bounds.right; x += 1) {
+      if (x < bounds.left + leftInset || x > bounds.right - rightInset) {
+        grid[y][x] = tile(Terrain.Void);
       }
     }
   }
-  const isFloor = (x: number, y: number) =>
-    grid[y]?.[x]?.terrain === Terrain.Ground;
+
+  const exposedFloor: Array<{ x: number; y: number }> = [];
+  for (let y = bounds.top; y <= bounds.bottom; y += 1) {
+    for (let x = bounds.left; x <= bounds.right; x += 1) {
+      if (grid[y][x].terrain !== Terrain.Ground) continue;
+      const touchesOutside = [
+        grid[y - 1]?.[x],
+        grid[y + 1]?.[x],
+        grid[y]?.[x - 1],
+        grid[y]?.[x + 1],
+      ].some((neighbor) => !neighbor || neighbor.terrain === Terrain.Void);
+      if (touchesOutside) exposedFloor.push({ x, y });
+    }
+  }
+  for (const { x, y } of exposedFloor) grid[y][x] = tile(Terrain.Wall);
+}
+
+function chamferVesselRooms(grid: Grid, random: Random) {
+  const rooms = new Map<number, Array<{ x: number; y: number }>>();
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      const current = grid[y][x];
+      if (current.terrain !== Terrain.Ground || current.roomId === undefined || current.roomId === 0) {
+        continue;
+      }
+      const cells = rooms.get(current.roomId) ?? [];
+      cells.push({ x, y });
+      rooms.set(current.roomId, cells);
+    }
+  }
+  const touchesDoor = (x: number, y: number) => [
+    grid[y - 1]?.[x], grid[y + 1]?.[x], grid[y]?.[x - 1], grid[y]?.[x + 1],
+  ].some((neighbor) => neighbor?.terrain === Terrain.Door);
+
+  for (const cells of rooms.values()) {
+    const left = Math.min(...cells.map(({ x }) => x));
+    const right = Math.max(...cells.map(({ x }) => x));
+    const top = Math.min(...cells.map(({ y }) => y));
+    const bottom = Math.max(...cells.map(({ y }) => y));
+    if (right - left < 3 || bottom - top < 3 || random() > .78) continue;
+    const candidates = [
+      { x: left, y: top, inwardX: 1, inwardY: 1 },
+      { x: right, y: top, inwardX: -1, inwardY: 1 },
+      { x: left, y: bottom, inwardX: 1, inwardY: -1 },
+      { x: right, y: bottom, inwardX: -1, inwardY: -1 },
+    ].filter(({ x, y, inwardX, inwardY }) => {
+      const roomId = grid[y]?.[x]?.roomId;
+      return grid[y]?.[x]?.terrain === Terrain.Ground &&
+        grid[y]?.[x + inwardX]?.roomId === roomId &&
+        grid[y + inwardY]?.[x]?.roomId === roomId &&
+        !touchesDoor(x, y);
+    });
+    if (!candidates.length) continue;
+    const corner = candidates[Math.floor(random() * candidates.length)];
+    grid[corner.y][corner.x] = tile(Terrain.Wall);
+  }
+}
+
+function repairBlockedInternalDoors(grid: Grid) {
+  const doors: Door[] = [];
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      const current = grid[y][x];
+      if (current.terrain === Terrain.Door && current.doorOrientation) {
+        doors.push({ x, y, orientation: current.doorOrientation });
+      }
+    }
+  }
+  const isFloor = (x: number, y: number) => grid[y]?.[x]?.terrain === Terrain.Ground;
   const isWallLine = (x: number, y: number) => {
     const terrain = grid[y]?.[x]?.terrain;
     return terrain === Terrain.Wall || terrain === Terrain.Door;
   };
-
   for (const door of doors) {
-    const opensCorrectly = door.orientation === "horizontal"
+    const valid = door.orientation === "horizontal"
       ? isFloor(door.x, door.y - 1) && isFloor(door.x, door.y + 1)
       : isFloor(door.x - 1, door.y) && isFloor(door.x + 1, door.y);
-    if (opensCorrectly) continue;
-
-    const candidates: Array<{ x: number; y: number }> = [];
+    const exterior = [
+      grid[door.y - 1]?.[door.x]?.terrain,
+      grid[door.y + 1]?.[door.x]?.terrain,
+      grid[door.y]?.[door.x - 1]?.terrain,
+      grid[door.y]?.[door.x + 1]?.terrain,
+    ].includes(Terrain.Void);
+    if (valid || exterior) continue;
     const maximumDistance = door.orientation === "horizontal"
       ? grid[door.y].length
       : grid.length;
-    for (let distance = 1; distance < maximumDistance; distance += 1) {
+    let replacement: { x: number; y: number } | undefined;
+    for (let distance = 1; distance < maximumDistance && !replacement; distance += 1) {
       for (const direction of [-1, 1]) {
         const x = door.orientation === "horizontal"
           ? door.x + distance * direction
@@ -167,92 +377,533 @@ function repairBlockedInternalDoors(grid: Grid) {
           ? door.y + distance * direction
           : door.y;
         if (!isWallLine(x, y)) continue;
-        const valid = door.orientation === "horizontal"
+        const opens = door.orientation === "horizontal"
           ? isFloor(x, y - 1) && isFloor(x, y + 1)
           : isFloor(x - 1, y) && isFloor(x + 1, y);
-        if (valid) candidates.push({ x, y });
+        if (opens) {
+          replacement = { x, y };
+          break;
+        }
       }
-      if (candidates.length) break;
     }
-    const replacement = candidates[0];
     if (!replacement) continue;
-    grid[door.y][door.x] = architectureTile(Terrain.Wall);
-    grid[replacement.y][replacement.x] = {
-      ...architectureTile(Terrain.Door),
-      doorOrientation: door.orientation,
-    };
+    grid[door.y][door.x] = tile(Terrain.Wall);
+    placeDoor(grid, { ...replacement, orientation: door.orientation });
   }
 }
 
-export function generateHouseInterior(
+function houseInterior(
+  grid: Grid,
+  bounds: Bounds,
+  roomCount: number,
+  random: Random,
+) {
+  const left = bounds.left + 1;
+  const right = bounds.right - 1;
+  const top = bounds.top + 1;
+  const bottom = bounds.bottom - 1;
+  const height = bottom - top + 1;
+  const hallTop = top + Math.max(4, Math.min(height - 6,
+    Math.round(height * (.48 + random() * .13))));
+  const hallBottom = hallTop + randomInteger(random, 1, 2);
+  const livingWall = left + Math.max(4, Math.min(right - left - 4,
+    Math.round((right - left) * (.56 + random() * .14))));
+
+  horizontalWall(grid, hallTop - 1, left, right);
+  horizontalWall(grid, hallBottom + 1, left, right);
+  verticalWall(grid, livingWall, top, hallTop - 2);
+
+  assignRoom(grid, {
+    x: left, y: top, width: livingWall - left, height: hallTop - top - 1,
+  }, 0, "Living room");
+  assignRoom(grid, {
+    x: livingWall + 1,
+    y: top,
+    width: right - livingWall,
+    height: hallTop - top - 1,
+  }, 1, "Kitchen");
+  assignRoom(grid, {
+    x: left,
+    y: hallTop,
+    width: right - left + 1,
+    height: hallBottom - hallTop + 1,
+  }, 2, "Hallway");
+
+  placeDoor(grid, {
+    x: randomInteger(random, left + 1, livingWall - 1),
+    y: hallTop - 1,
+    orientation: "horizontal",
+  });
+  placeDoor(grid, {
+    x: randomInteger(random, livingWall + 1, right - 1),
+    y: hallTop - 1,
+    orientation: "horizontal",
+  });
+
+  const bedroomCount = roomCount - 3;
+  const bedroomSegments = variedPartitionRange(left, right, bedroomCount, random);
+  bedroomSegments.slice(0, -1).forEach(({ end }) =>
+    verticalWall(grid, end + 1, hallBottom + 2, bottom)
+  );
+  bedroomSegments.forEach((segment, index) => {
+    assignRoom(grid, {
+      x: segment.start,
+      y: hallBottom + 2,
+      width: segment.end - segment.start + 1,
+      height: bottom - hallBottom - 1,
+    }, index + 3, `Bedroom ${index + 1}`);
+    placeDoor(grid, {
+      x: Math.floor((segment.start + segment.end) / 2),
+      y: hallBottom + 1,
+      orientation: "horizontal",
+    });
+  });
+  placeDoor(grid, {
+    x: bounds.left,
+    y: randomInteger(random, hallTop, hallBottom),
+    orientation: "vertical",
+  });
+}
+
+function tavernInterior(
+  grid: Grid,
+  bounds: Bounds,
+  roomCount: number,
+  random: Random,
+) {
+  const left = bounds.left + 1;
+  const right = bounds.right - 1;
+  const top = bounds.top + 1;
+  const bottom = bounds.bottom - 1;
+  const corridorWidth = randomInteger(random, 2, 3);
+  const hallWall = left + Math.max(6, Math.min(
+    right - left - corridorWidth - 4,
+    Math.round((right - left) * (.52 + random() * .08)),
+  ));
+  const hallRight = hallWall + corridorWidth + 1;
+  const kitchenWall = top + Math.max(3, Math.min(bottom - top - 5,
+    Math.round((bottom - top) * (.19 + random() * .09))));
+  verticalWall(grid, hallWall, top, bottom);
+  verticalWall(grid, hallRight, kitchenWall + 1, bottom);
+  horizontalWall(grid, kitchenWall, hallWall + 1, right);
+
+  assignRoom(grid, {
+    x: left, y: top, width: hallWall - left, height: bottom - top + 1,
+  }, 0, "Common room");
+  assignRoom(grid, {
+    x: hallWall + 1, y: top, width: right - hallWall, height: kitchenWall - top,
+  }, 1, "Kitchen");
+  assignRoom(grid, {
+    x: hallWall + 1,
+    y: kitchenWall + 1,
+    width: corridorWidth,
+    height: bottom - kitchenWall,
+  }, 2, "Hallway");
+
+  placeDoor(grid, {
+    x: hallWall,
+    y: randomInteger(random, top + 1, kitchenWall - 1),
+    orientation: "vertical",
+  });
+  placeDoor(grid, {
+    x: hallWall,
+    y: randomInteger(random, kitchenWall + 2, bottom - 1),
+    orientation: "vertical",
+  });
+
+  const guestSegments = variedPartitionRange(kitchenWall + 1, bottom, roomCount - 3, random);
+  guestSegments.slice(0, -1).forEach(({ end }) =>
+    horizontalWall(grid, end + 1, hallRight + 1, right)
+  );
+  guestSegments.forEach((segment, index) => {
+    assignRoom(grid, {
+      x: hallRight + 1,
+      y: segment.start,
+      width: right - hallRight,
+      height: segment.end - segment.start + 1,
+    }, index + 3, `Guest room ${index + 1}`);
+    placeDoor(grid, {
+      x: hallRight,
+      y: Math.floor((segment.start + segment.end) / 2),
+      orientation: "vertical",
+    });
+  });
+  placeDoor(grid, {
+    x: randomInteger(random, left + 1, hallWall - 1),
+    y: bounds.bottom,
+    orientation: "horizontal",
+  });
+}
+
+function axialInterior(
+  grid: Grid,
+  bounds: Bounds,
+  roomCount: number,
+  mode: "spaceship" | "ship",
+  random: Random,
+) {
+  const left = bounds.left + 1;
+  const right = bounds.right - 1;
+  const top = bounds.top + 1;
+  const bottom = bounds.bottom - 1;
+  const corridorCenter = Math.max(top + 4, Math.min(bottom - 4,
+    Math.floor((top + bottom) / 2) + randomInteger(random, -2, 2)));
+  const corridorTop = corridorCenter - randomInteger(random, 1, 2);
+  const corridorBottom = corridorCenter + 1;
+  horizontalWall(grid, corridorTop - 1, left, right);
+  horizontalWall(grid, corridorBottom + 1, left, right);
+  assignRoom(grid, {
+    x: left,
+    y: corridorTop,
+    width: right - left + 1,
+    height: corridorBottom - corridorTop + 1,
+  }, 0, mode === "spaceship" ? "Central spine" : "Main gangway");
+
+  const moduleCount = roomCount - 1;
+  const upperCount = Math.max(1, Math.min(moduleCount - 1,
+    Math.ceil(moduleCount / 2) + randomInteger(random, -1, 1)));
+  const lowerCount = moduleCount - upperCount;
+  const upper = variedPartitionRange(left, right, upperCount, random);
+  const lower = lowerCount ? variedPartitionRange(left, right, lowerCount, random) : [];
+  const roles = mode === "spaceship"
+    ? ["Cockpit", "Engineering", "Crew quarters", "Medbay", "Cargo bay", "Laboratory", "Life support", "Armory", "Observation room", "Airlock", "Utility bay"]
+    : ["Captain's cabin", "Galley", "Crew berths", "Cargo hold", "Chart room", "Sick bay", "Bosun's store", "Guest cabin", "Magazine", "Workshop", "Provision hold"];
+  let nextRoomId = 1;
+  const addModules = (
+    segments: Array<{ start: number; end: number }>,
+    y: number,
+    height: number,
+    wallY: number,
+  ) => {
+    segments.slice(0, -1).forEach(({ end }) =>
+      verticalWall(grid, end + 1, y, y + height - 1)
+    );
+    segments.forEach((segment) => {
+      assignRoom(grid, {
+        x: segment.start,
+        y,
+        width: segment.end - segment.start + 1,
+        height,
+      }, nextRoomId, roles[nextRoomId - 1] ?? `Compartment ${nextRoomId}`);
+      placeDoor(grid, {
+        x: Math.floor((segment.start + segment.end) / 2),
+        y: wallY,
+        orientation: "horizontal",
+      });
+      nextRoomId += 1;
+    });
+  };
+  addModules(upper, top, corridorTop - top - 1, corridorTop - 1);
+  if (lower.length) {
+    addModules(
+      lower,
+      corridorBottom + 2,
+      bottom - corridorBottom - 1,
+      corridorBottom + 1,
+    );
+  }
+  const entranceOnLeft = random() < .5;
+  placeDoor(grid, {
+    x: entranceOnLeft ? bounds.left : bounds.right,
+    y: Math.floor((corridorTop + corridorBottom) / 2),
+    orientation: "vertical",
+  });
+}
+
+function spaceshipInterior(
+  grid: Grid,
+  bounds: Bounds,
+  roomCount: number,
+  random: Random,
+) {
+  const left = bounds.left + 1;
+  const right = bounds.right - 1;
+  const top = bounds.top + 1;
+  const bottom = bounds.bottom - 1;
+  const height = bottom - top + 1;
+  const cockpitWidth = Math.max(4, Math.min(6,
+    Math.round((right - left + 1) * (.14 + random() * .05))));
+  const cockpitWall = right - cockpitWidth;
+  const corridorCenter = Math.max(top + 4, Math.min(bottom - 4,
+    Math.floor((top + bottom) / 2) + randomInteger(random, -1, 1)));
+  const corridorTop = corridorCenter - 1;
+  const corridorBottom = corridorCenter + 1;
+
+  verticalWall(grid, cockpitWall, top, bottom);
+  horizontalWall(grid, corridorTop - 1, left, cockpitWall - 1);
+  horizontalWall(grid, corridorBottom + 1, left, cockpitWall - 1);
+
+  assignRoom(grid, {
+    x: left,
+    y: corridorTop,
+    width: cockpitWall - left,
+    height: corridorBottom - corridorTop + 1,
+  }, 0, "Central spine");
+  assignRoom(grid, {
+    x: cockpitWall + 1,
+    y: top,
+    width: right - cockpitWall,
+    height,
+  }, 1, "Cockpit");
+  placeDoor(grid, {
+    x: cockpitWall,
+    y: corridorCenter,
+    orientation: "vertical",
+  });
+
+  const moduleCount = roomCount - 2;
+  const upperCount = Math.max(1, Math.min(moduleCount - 1,
+    Math.ceil(moduleCount / 2) + randomInteger(random, -1, 1)));
+  const lowerCount = moduleCount - upperCount;
+  const moduleRight = cockpitWall - 1;
+  const upper = variedPartitionRange(left, moduleRight, upperCount, random);
+  const lower = variedPartitionRange(left, moduleRight, lowerCount, random);
+  const roles = [
+    "Engineering",
+    "Crew quarters",
+    "Medbay",
+    "Cargo bay",
+    "Laboratory",
+    "Life support",
+    "Armory",
+    "Observation room",
+    "Utility bay",
+    "Escape pods",
+  ];
+  let nextRoomId = 2;
+  const addModules = (
+    segments: Array<{ start: number; end: number }>,
+    y: number,
+    moduleHeight: number,
+    wallY: number,
+  ) => {
+    segments.slice(0, -1).forEach(({ end }) =>
+      verticalWall(grid, end + 1, y, y + moduleHeight - 1)
+    );
+    for (const segment of segments) {
+      assignRoom(grid, {
+        x: segment.start,
+        y,
+        width: segment.end - segment.start + 1,
+        height: moduleHeight,
+      }, nextRoomId, roles[nextRoomId - 2] ?? `Compartment ${nextRoomId - 1}`);
+      placeDoor(grid, {
+        x: Math.floor((segment.start + segment.end) / 2),
+        y: wallY,
+        orientation: "horizontal",
+      });
+      nextRoomId += 1;
+    }
+  };
+
+  addModules(upper, top, corridorTop - top - 1, corridorTop - 1);
+  addModules(
+    lower,
+    corridorBottom + 2,
+    bottom - corridorBottom - 1,
+    corridorBottom + 1,
+  );
+  placeDoor(grid, {
+    x: bounds.left,
+    y: corridorCenter,
+    orientation: "vertical",
+  });
+}
+
+function crossInterior(
+  grid: Grid,
+  bounds: Bounds,
+  roomCount: number,
+  mode: "castle" | "cathedral",
+  random: Random,
+) {
+  const left = bounds.left + 1;
+  const right = bounds.right - 1;
+  const top = bounds.top + 1;
+  const bottom = bounds.bottom - 1;
+  const centerX = Math.floor((left + right) / 2) + randomInteger(random, -1, 1);
+  const centerY = Math.floor((top + bottom) / 2) + randomInteger(random, -1, 1);
+  const naveHalfWidth = mode === "cathedral"
+    ? Math.max(2, Math.floor((right - left + 1) * (.15 + random() * .07)))
+    : Math.max(2, Math.floor((right - left + 1) * (.1 + random() * .07)));
+  const transeptHalfHeight = mode === "cathedral"
+    ? Math.max(2, Math.floor((bottom - top + 1) * (.08 + random() * .06)))
+    : Math.max(2, Math.floor((bottom - top + 1) * (.1 + random() * .06)));
+  const naveLeft = centerX - naveHalfWidth;
+  const naveRight = centerX + naveHalfWidth;
+  const transeptTop = centerY - transeptHalfHeight;
+  const transeptBottom = centerY + transeptHalfHeight;
+
+  verticalWall(grid, naveLeft - 1, top, transeptTop - 1);
+  verticalWall(grid, naveRight + 1, top, transeptTop - 1);
+  verticalWall(grid, naveLeft - 1, transeptBottom + 1, bottom);
+  verticalWall(grid, naveRight + 1, transeptBottom + 1, bottom);
+  horizontalWall(grid, transeptTop - 1, left, naveLeft - 1);
+  horizontalWall(grid, transeptTop - 1, naveRight + 1, right);
+  horizontalWall(grid, transeptBottom + 1, left, naveLeft - 1);
+  horizontalWall(grid, transeptBottom + 1, naveRight + 1, right);
+
+  const zones: Array<{ rectangle: Rectangle; access: Door }> = [
+    {
+      rectangle: { x: left, y: top, width: naveLeft - left - 1, height: transeptTop - top - 1 },
+      access: { x: naveLeft - 1, y: Math.floor((top + transeptTop - 2) / 2), orientation: "vertical" },
+    },
+    {
+      rectangle: { x: naveRight + 2, y: top, width: right - naveRight - 1, height: transeptTop - top - 1 },
+      access: { x: naveRight + 1, y: Math.floor((top + transeptTop - 2) / 2), orientation: "vertical" },
+    },
+    {
+      rectangle: { x: left, y: transeptBottom + 2, width: naveLeft - left - 1, height: bottom - transeptBottom - 1 },
+      access: { x: naveLeft - 1, y: Math.floor((transeptBottom + 2 + bottom) / 2), orientation: "vertical" },
+    },
+    {
+      rectangle: { x: naveRight + 2, y: transeptBottom + 2, width: right - naveRight - 1, height: bottom - transeptBottom - 1 },
+      access: { x: naveRight + 1, y: Math.floor((transeptBottom + 2 + bottom) / 2), orientation: "vertical" },
+    },
+  ];
+  const sideRoomCount = roomCount - 1;
+  const allocations = zones.map(() => 1);
+  for (let remaining = sideRoomCount - zones.length; remaining > 0; remaining -= 1) {
+    const candidates = zones
+      .map((zone, index) => ({
+        index,
+        capacity: zone.rectangle.width * zone.rectangle.height / allocations[index],
+      }))
+      .filter(({ capacity }) => capacity >= 10);
+    const pool = candidates.length ? candidates : zones.map((_, index) => ({ index, capacity: 1 }));
+    allocations[pool[Math.floor(random() * pool.length)].index] += 1;
+  }
+  const roles = mode === "cathedral"
+    ? ["Sacristy", "Reliquary", "Side chapel", "Vestry", "Chapter room", "Clergy chamber", "Treasury", "Choir room"]
+    : ["Guardroom", "Armory", "Kitchen", "Royal chamber", "Store room", "Barracks", "Council room", "Treasury", "Servants' hall", "Dungeon access", "Archive"];
+  let nextRoomId = 1;
+  zones.forEach((zone, zoneIndex) => {
+    const leaves = subdivide(grid, zone.rectangle, allocations[zoneIndex], random);
+    placeDoor(grid, zone.access);
+    leaves.forEach((rectangle) => {
+      assignRoom(
+        grid,
+        rectangle,
+        nextRoomId,
+        roles[nextRoomId - 1] ?? `Side chamber ${nextRoomId}`,
+      );
+      nextRoomId += 1;
+    });
+  });
+  assignRemainingGround(
+    grid,
+    0,
+    mode === "cathedral" ? "Nave and transept" : "Great hall and galleries",
+  );
+  placeDoor(grid, { x: centerX, y: bounds.bottom, orientation: "horizontal" });
+}
+
+function cryptInterior(
+  grid: Grid,
+  bounds: Bounds,
+  roomCount: number,
+  random: Random,
+) {
+  const left = bounds.left + 1;
+  const right = bounds.right - 1;
+  const top = bounds.top + 1;
+  const bottom = bounds.bottom - 1;
+  const corridorCenter = Math.max(left + 5, Math.min(right - 5,
+    Math.floor((left + right) / 2) + randomInteger(random, -2, 2)));
+  const corridorLeft = corridorCenter - randomInteger(random, 1, 2);
+  const corridorRight = corridorCenter + 1;
+  verticalWall(grid, corridorLeft - 1, top, bottom);
+  verticalWall(grid, corridorRight + 1, top, bottom);
+  assignRoom(grid, {
+    x: corridorLeft,
+    y: top,
+    width: corridorRight - corridorLeft + 1,
+    height: bottom - top + 1,
+  }, 0, "Processional passage");
+  const vaultCount = roomCount - 1;
+  const leftCount = Math.max(1, Math.min(vaultCount - 1,
+    Math.ceil(vaultCount / 2) + randomInteger(random, -1, 1)));
+  const rightCount = vaultCount - leftCount;
+  const leftSegments = variedPartitionRange(top, bottom, leftCount, random);
+  const rightSegments = rightCount ? variedPartitionRange(top, bottom, rightCount, random) : [];
+  const addVaults = (
+    segments: Array<{ start: number; end: number }>,
+    x: number,
+    width: number,
+    wallX: number,
+    startId: number,
+  ) => {
+    segments.slice(0, -1).forEach(({ end }) =>
+      horizontalWall(grid, end + 1, x, x + width - 1)
+    );
+    segments.forEach((segment, index) => {
+      const roomId = startId + index;
+      assignRoom(grid, {
+        x,
+        y: segment.start,
+        width,
+        height: segment.end - segment.start + 1,
+      }, roomId, roomId === 1 ? "Inner sanctum" : `Burial vault ${roomId}`);
+      placeDoor(grid, {
+        x: wallX,
+        y: Math.floor((segment.start + segment.end) / 2),
+        orientation: "vertical",
+      });
+    });
+  };
+  addVaults(
+    leftSegments,
+    left,
+    corridorLeft - left - 1,
+    corridorLeft - 1,
+    1,
+  );
+  addVaults(
+    rightSegments,
+    corridorRight + 2,
+    right - corridorRight - 1,
+    corridorRight + 1,
+    1 + leftSegments.length,
+  );
+  placeDoor(grid, {
+    x: Math.floor((corridorLeft + corridorRight) / 2),
+    y: random() < .5 ? bounds.bottom : bounds.top,
+    orientation: "horizontal",
+  });
+}
+
+export function generateInterior(
   grid: Grid,
   requestedRoomCount: number,
   random: Random,
+  mode: InteriorMode,
 ) {
-  const height = grid.length;
-  const width = grid[0].length;
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      grid[y][x] = {
-        terrain: Terrain.Void,
-        obstacle: Obstacle.None,
-        height: .08,
-      };
-    }
-  }
+  initialize(grid);
+  const bounds = buildingBounds(grid, random);
+  buildShell(grid, bounds);
+  const limits = INTERIOR_ROOM_LIMITS[mode];
+  const roomCount = Math.max(
+    limits.minimum,
+    Math.min(limits.maximum, Math.round(requestedRoomCount)),
+  );
 
-  const marginX = width >= 24 ? 2 : 1;
-  const marginY = height >= 18 ? 2 : 1;
-  const bounds = {
-    left: marginX,
-    top: marginY,
-    right: width - marginX - 1,
-    bottom: height - marginY - 1,
-  };
-  const interior: Room = {
-    x: bounds.left + 1,
-    y: bounds.top + 1,
-    width: bounds.right - bounds.left - 1,
-    height: bounds.bottom - bounds.top - 1,
-  };
-  paintRectangle(grid, interior, floorTile);
-
-  for (let x = bounds.left; x <= bounds.right; x += 1) {
-    grid[bounds.top][x] = architectureTile(Terrain.Wall);
-    grid[bounds.bottom][x] = architectureTile(Terrain.Wall);
+  if (mode === "house") {
+    houseInterior(grid, bounds, roomCount, random);
+  } else if (mode === "tavern") {
+    tavernInterior(grid, bounds, roomCount, random);
+  } else if (mode === "spaceship") {
+    spaceshipInterior(grid, bounds, roomCount, random);
+  } else if (mode === "ship") {
+    axialInterior(grid, bounds, roomCount, mode, random);
+  } else if (mode === "castle" || mode === "cathedral") {
+    crossInterior(grid, bounds, roomCount, mode, random);
+  } else {
+    cryptInterior(grid, bounds, roomCount, random);
   }
-  for (let y = bounds.top; y <= bounds.bottom; y += 1) {
-    grid[y][bounds.left] = architectureTile(Terrain.Wall);
-    grid[y][bounds.right] = architectureTile(Terrain.Wall);
+  if (mode === "ship" || mode === "spaceship") {
+    shapeVesselHull(grid, bounds, mode, random);
+    chamferVesselRooms(grid, random);
   }
-
-  const targetRoomCount = Math.max(2, Math.min(12, Math.round(requestedRoomCount)));
-  const rooms = [interior];
-  while (rooms.length < targetRoomCount) {
-    const candidates = rooms
-      .map((room, index) => ({ room, index, split: splitRoom(room, random) }))
-      .filter((candidate) => candidate.split)
-      .sort((a, b) =>
-        b.room.width * b.room.height - a.room.width * a.room.height
-      );
-    const candidate = candidates[0];
-    if (!candidate?.split) break;
-    const { rooms: childRooms, wall, door } = candidate.split;
-    paintRectangle(grid, wall, () => architectureTile(Terrain.Wall));
-    grid[door.y][door.x] = {
-      ...architectureTile(Terrain.Door),
-      doorOrientation: door.orientation,
-    };
-    rooms.splice(candidate.index, 1, ...childRooms);
-  }
-
-  rooms.forEach((room, roomId) => {
-    for (let y = room.y; y < room.y + room.height; y += 1) {
-      for (let x = room.x; x < room.x + room.width; x += 1) {
-        if (grid[y][x].terrain === Terrain.Ground) grid[y][x].roomId = roomId;
-      }
-    }
-  });
   repairBlockedInternalDoors(grid);
-  addExteriorEntrance(grid, bounds, random);
+  mirrorInterior(grid, random);
 }

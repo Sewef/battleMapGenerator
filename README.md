@@ -6,7 +6,9 @@ terrain parameters.
 
 ## Features
 
-- 18 biome presets with reproducible terrain generation;
+- 25 biome presets with reproducible terrain generation;
+- connected indoor layouts for houses, taverns, castles, cathedrals, crypts,
+  sailing ships and spaceships;
 - procedural and pixel-art tileset renderers;
 - optional grid and stylized lighting;
 - WebP exports with or without tree and rock props;

@@ -35,12 +35,18 @@ export const BIOME_PARAMETER_PROFILES: Record<
   sewer: { water: "Channel width", rocks: "Debris density" },
   "ancient-ruins": { difficult: "Overgrowth", rocks: "Rubble density", trees: "Vegetation density", buildings: "Ruined structures" },
   house: { buildings: "Rooms" },
+  spaceship: { buildings: "Compartments" },
+  ship: { buildings: "Cabins / holds" },
+  castle: { buildings: "Chambers" },
+  cathedral: { buildings: "Halls / chapels" },
+  tavern: { buildings: "Rooms" },
+  crypt: { buildings: "Vaults" },
 };
 
 const PRESET_GROUPS = [
   {
     label: "Interiors",
-    ids: ["house"],
+    ids: ["house", "tavern", "castle", "cathedral", "crypt", "ship", "spaceship"],
   },
   {
     label: "Nature",

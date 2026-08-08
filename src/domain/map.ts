@@ -43,7 +43,58 @@ export type LandscapeMode =
   | "mountain-pass"
   | "sewer"
   | "ancient-ruins"
-  | "house";
+  | "house"
+  | "spaceship"
+  | "ship"
+  | "castle"
+  | "cathedral"
+  | "tavern"
+  | "crypt";
+
+export type InteriorMode = Extract<
+  LandscapeMode,
+  "house" | "spaceship" | "ship" | "castle" | "cathedral" | "tavern" | "crypt"
+>;
+
+const interiorModes = new Set<LandscapeMode>([
+  "house",
+  "spaceship",
+  "ship",
+  "castle",
+  "cathedral",
+  "tavern",
+  "crypt",
+]);
+
+export function isInteriorMode(mode: LandscapeMode): mode is InteriorMode {
+  return interiorModes.has(mode);
+}
+
+export const INTERIOR_ROOM_LIMITS: Record<
+  InteriorMode,
+  { minimum: number; maximum: number }
+> = {
+  house: { minimum: 4, maximum: 7 },
+  tavern: { minimum: 4, maximum: 7 },
+  spaceship: { minimum: 4, maximum: 12 },
+  ship: { minimum: 4, maximum: 12 },
+  castle: { minimum: 5, maximum: 12 },
+  cathedral: { minimum: 5, maximum: 9 },
+  crypt: { minimum: 3, maximum: 12 },
+};
+
+export const INTERIOR_MINIMUM_DIMENSIONS: Record<
+  InteriorMode,
+  { width: number; height: number }
+> = {
+  house: { width: 24, height: 16 },
+  tavern: { width: 24, height: 16 },
+  spaceship: { width: 24, height: 16 },
+  ship: { width: 24, height: 16 },
+  castle: { width: 32, height: 24 },
+  cathedral: { width: 28, height: 30 },
+  crypt: { width: 24, height: 16 },
+};
 
 export interface Tile {
   terrain: TerrainKind;
@@ -56,6 +107,7 @@ export interface Tile {
   transitionNormalX?: number;
   transitionNormalY?: number;
   roomId?: number;
+  roomRole?: string;
   doorOrientation?: "horizontal" | "vertical";
 }
 
