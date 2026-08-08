@@ -83,7 +83,7 @@ export const INTERIOR_ROOM_LIMITS: Record<
   "ship-deck": { minimum: 4, maximum: 8 },
   castle: { minimum: 5, maximum: 12 },
   cathedral: { minimum: 5, maximum: 9 },
-  crypt: { minimum: 3, maximum: 12 },
+  crypt: { minimum: 3, maximum: 9 },
 };
 
 export const INTERIOR_MINIMUM_DIMENSIONS: Record<
@@ -91,13 +91,13 @@ export const INTERIOR_MINIMUM_DIMENSIONS: Record<
   { width: number; height: number }
 > = {
   house: { width: 24, height: 16 },
-  tavern: { width: 24, height: 16 },
+  tavern: { width: 30, height: 22 },
   spaceship: { width: 24, height: 16 },
   ship: { width: 24, height: 16 },
   "ship-deck": { width: 30, height: 16 },
   castle: { width: 32, height: 24 },
   cathedral: { width: 28, height: 30 },
-  crypt: { width: 24, height: 16 },
+  crypt: { width: 24, height: 24 },
 };
 
 export interface Tile {
@@ -114,6 +114,11 @@ export interface Tile {
   roomRole?: string;
   doorOrientation?: "horizontal" | "vertical";
   deckFeature?: "mast" | "hatch" | "wheel" | "capstan";
+  interiorProp?: "table" | "chair" | "bar" | "cabinet" | "bed" |
+    "bench" | "altar" | "crate" | "console" | "tomb";
+  interiorPropId?: number;
+  propOrientation?: "horizontal" | "vertical";
+  propFacing?: "north" | "east" | "south" | "west";
 }
 
 export function tileSurface(tile: Tile): SurfaceKind | undefined {
@@ -178,4 +183,20 @@ export const OBSTACLE_RULES: Record<
   [Obstacle.Tree]: { label: "Tree", movement: "blocked", blocksSight: true },
   [Obstacle.Rock]: { label: "Rock", movement: "blocked", blocksSight: false },
   [Obstacle.Building]: { label: "Building", movement: "blocked", blocksSight: true },
+};
+
+export const INTERIOR_PROP_RULES: Record<
+  NonNullable<Tile["interiorProp"]>,
+  { label: string; movement: "blocked"; blocksSight: false }
+> = {
+  table: { label: "Table", movement: "blocked", blocksSight: false },
+  chair: { label: "Chair", movement: "blocked", blocksSight: false },
+  bar: { label: "Bar", movement: "blocked", blocksSight: false },
+  cabinet: { label: "Furniture", movement: "blocked", blocksSight: false },
+  bed: { label: "Bed", movement: "blocked", blocksSight: false },
+  bench: { label: "Bench", movement: "blocked", blocksSight: false },
+  altar: { label: "Altar", movement: "blocked", blocksSight: false },
+  crate: { label: "Crate", movement: "blocked", blocksSight: false },
+  console: { label: "Console", movement: "blocked", blocksSight: false },
+  tomb: { label: "Tomb", movement: "blocked", blocksSight: false },
 };

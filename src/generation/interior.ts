@@ -7,6 +7,7 @@ import {
   type Tile,
 } from "../domain/map";
 import type { Random } from "./types";
+import { decorateInterior } from "./interior-props";
 
 type Rectangle = { x: number; y: number; width: number; height: number };
 type Bounds = { left: number; top: number; right: number; bottom: number };
@@ -949,38 +950,69 @@ function cryptInterior(
     Math.floor((left + right) / 2) + randomInteger(random, -2, 2)));
   const corridorLeft = corridorCenter - randomInteger(random, 1, 2);
   const corridorRight = corridorCenter + 1;
-  verticalWall(grid, corridorLeft - 1, top, bottom);
-  verticalWall(grid, corridorRight + 1, top, bottom);
+  const entranceAtBottom = random() < .5;
+  const burialVaultCount = roomCount - 2;
+  const availableHeight = bottom - top + 1;
+  const maximumRoomsPerSide = Math.max(1, Math.floor((availableHeight - 2) / 2));
+  const preferredLeftCount = Math.floor(burialVaultCount / 2) +
+    (burialVaultCount % 2 !== 0 && random() < .5 ? 1 : 0);
+  const leftCount = Math.max(
+    Math.max(1, burialVaultCount - maximumRoomsPerSide),
+    Math.min(maximumRoomsPerSide, preferredLeftCount),
+  );
+  const rightCount = burialVaultCount - leftCount;
+  const largestSideCount = Math.max(leftCount, rightCount);
+  const maximumSanctumHeight = availableHeight - largestSideCount * 2;
+  const sanctumHeight = Math.max(2, Math.min(5, maximumSanctumHeight));
+  const sanctumTop = entranceAtBottom ? top : bottom - sanctumHeight + 1;
+  const sanctumBottom = entranceAtBottom ? top + sanctumHeight - 1 : bottom;
+  const sanctumWallY = entranceAtBottom ? sanctumBottom + 1 : sanctumTop - 1;
+  const passageTop = entranceAtBottom ? sanctumWallY + 1 : top;
+  const passageBottom = entranceAtBottom ? bottom : sanctumWallY - 1;
+
+  horizontalWall(grid, sanctumWallY, left, right);
+  verticalWall(grid, corridorLeft - 1, passageTop, passageBottom);
+  verticalWall(grid, corridorRight + 1, passageTop, passageBottom);
+  assignRoom(grid, {
+    x: left,
+    y: sanctumTop,
+    width: right - left + 1,
+    height: sanctumBottom - sanctumTop + 1,
+  }, 1, "Inner sanctum");
   assignRoom(grid, {
     x: corridorLeft,
-    y: top,
+    y: passageTop,
     width: corridorRight - corridorLeft + 1,
-    height: bottom - top + 1,
+    height: passageBottom - passageTop + 1,
   }, 0, "Processional passage");
-  const vaultCount = roomCount - 1;
-  const leftCount = Math.max(1, Math.min(vaultCount - 1,
-    Math.ceil(vaultCount / 2) + randomInteger(random, -1, 1)));
-  const rightCount = vaultCount - leftCount;
-  const leftSegments = variedPartitionRange(top, bottom, leftCount, random);
-  const rightSegments = rightCount ? variedPartitionRange(top, bottom, rightCount, random) : [];
+  placeDoor(grid, {
+    x: Math.floor((corridorLeft + corridorRight) / 2),
+    y: sanctumWallY,
+    orientation: "horizontal",
+  });
+
+  const leftSegments = variedPartitionRange(passageTop, passageBottom, leftCount, random);
+  const rightSegments = rightCount
+    ? variedPartitionRange(passageTop, passageBottom, rightCount, random)
+    : [];
+  let nextVaultId = 2;
   const addVaults = (
     segments: Array<{ start: number; end: number }>,
     x: number,
     width: number,
     wallX: number,
-    startId: number,
   ) => {
     segments.slice(0, -1).forEach(({ end }) =>
       horizontalWall(grid, end + 1, x, x + width - 1)
     );
-    segments.forEach((segment, index) => {
-      const roomId = startId + index;
+    segments.forEach((segment) => {
+      const roomId = nextVaultId++;
       assignRoom(grid, {
         x,
         y: segment.start,
         width,
         height: segment.end - segment.start + 1,
-      }, roomId, roomId === 1 ? "Inner sanctum" : `Burial vault ${roomId}`);
+      }, roomId, `Burial vault ${roomId}`);
       placeDoor(grid, {
         x: wallX,
         y: Math.floor((segment.start + segment.end) / 2),
@@ -993,18 +1025,16 @@ function cryptInterior(
     left,
     corridorLeft - left - 1,
     corridorLeft - 1,
-    1,
   );
   addVaults(
     rightSegments,
     corridorRight + 2,
     right - corridorRight - 1,
     corridorRight + 1,
-    1 + leftSegments.length,
   );
   placeDoor(grid, {
     x: Math.floor((corridorLeft + corridorRight) / 2),
-    y: random() < .5 ? bounds.bottom : bounds.top,
+    y: entranceAtBottom ? bounds.bottom : bounds.top,
     orientation: "horizontal",
   });
 }
@@ -1046,6 +1076,7 @@ export function generateInterior(
   }
   repairBlockedInternalDoors(grid);
   mirrorInterior(grid, random);
+  decorateInterior(grid, mode, random);
   if (mode === "ship" || mode === "ship-deck") {
     // Both sailing-ship views are presented afloat. The hull walls remain the
     // boundary while water replaces the opaque backdrop used by buildings.

@@ -1497,6 +1497,199 @@ function drawSailingShipDeckFeatures(
   context.restore();
 }
 
+function drawInteriorProps(
+  grid: Grid,
+  cellSize: number,
+  context: CanvasRenderingContext2D,
+) {
+  context.save();
+  context.lineJoin = "round";
+  const renderedProps = new Set<number>();
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      const { interiorProp: prop, interiorPropId, propOrientation, propFacing } = grid[y][x];
+      if (!prop) continue;
+      if (interiorPropId !== undefined && renderedProps.has(interiorPropId)) continue;
+      if (interiorPropId !== undefined) renderedProps.add(interiorPropId);
+      const propCells = interiorPropId === undefined
+        ? [{ x, y }]
+        : grid.flatMap((row, cellY) => row.map((tile, cellX) =>
+          tile.interiorPropId === interiorPropId ? { x: cellX, y: cellY } : undefined))
+          .filter((point): point is { x: number; y: number } => Boolean(point));
+      const propLeft = Math.min(...propCells.map((point) => point.x)) * cellSize;
+      const propRight = (Math.max(...propCells.map((point) => point.x)) + 1) * cellSize;
+      const propTop = Math.min(...propCells.map((point) => point.y)) * cellSize;
+      const propBottom = (Math.max(...propCells.map((point) => point.y)) + 1) * cellSize;
+      const centerX = (propLeft + propRight) / 2;
+      const centerY = (propTop + propBottom) / 2;
+      const spanWidth = propRight - propLeft;
+      const spanHeight = propBottom - propTop;
+      const vertical = propOrientation === "vertical";
+      context.fillStyle = prop === "bar" ? "#69432c" : "#795137";
+      context.strokeStyle = "#39281f";
+      context.lineWidth = Math.max(1, cellSize * .045);
+      if (prop === "table") {
+        const square = propCells.length === 1;
+        const width = square ? cellSize * .68 : spanWidth * (vertical ? .58 : .9);
+        const height = square ? cellSize * .68 : spanHeight * (vertical ? .9 : .58);
+        context.beginPath();
+        context.roundRect(centerX - width / 2, centerY - height / 2,
+          width, height, cellSize * .08);
+        context.fill();
+        context.stroke();
+        context.strokeStyle = "rgba(236,190,126,.34)";
+        context.beginPath();
+        context.moveTo(centerX - width * .32, centerY);
+        context.lineTo(centerX + width * .32, centerY);
+        context.stroke();
+      } else if (prop === "chair") {
+        const size = cellSize * .43;
+        context.fillRect(centerX - size / 2, centerY - size / 2, size, size);
+        context.strokeRect(centerX - size / 2, centerY - size / 2, size, size);
+        context.lineWidth = Math.max(1.2, cellSize * .065);
+        context.beginPath();
+        if (propFacing === "north") {
+          context.moveTo(centerX - size / 2, centerY - size * .62);
+          context.lineTo(centerX + size / 2, centerY - size * .62);
+        } else if (propFacing === "south") {
+          context.moveTo(centerX - size / 2, centerY + size * .62);
+          context.lineTo(centerX + size / 2, centerY + size * .62);
+        } else if (propFacing === "east") {
+          context.moveTo(centerX - size * .62, centerY - size / 2);
+          context.lineTo(centerX - size * .62, centerY + size / 2);
+        } else {
+          context.moveTo(centerX + size * .62, centerY - size / 2);
+          context.lineTo(centerX + size * .62, centerY + size / 2);
+        }
+        context.stroke();
+      } else if (prop === "bed") {
+        const width = spanWidth * (vertical ? .72 : .94);
+        const height = spanHeight * (vertical ? .94 : .72);
+        context.fillStyle = "#8d795f";
+        context.fillRect(centerX - width / 2, centerY - height / 2, width, height);
+        context.strokeRect(centerX - width / 2, centerY - height / 2, width, height);
+        context.fillStyle = "#d2c5a8";
+        if (vertical) {
+          const pillowY = propFacing === "south" ? centerY + height * .14 : centerY - height * .38;
+          context.fillRect(centerX - width * .38, pillowY, width * .76, height * .24);
+        } else {
+          const pillowX = propFacing === "east" ? centerX + width * .14 : centerX - width * .38;
+          context.fillRect(pillowX, centerY - height * .38, width * .24, height * .76);
+        }
+      } else if (prop === "bench") {
+        const width = spanWidth * (vertical ? .38 : .94);
+        const height = spanHeight * (vertical ? .94 : .38);
+        context.fillStyle = "#735037";
+        context.fillRect(centerX - width / 2, centerY - height / 2, width, height);
+        context.strokeRect(centerX - width / 2, centerY - height / 2, width, height);
+        context.strokeStyle = "#a7794e";
+        context.beginPath();
+        if (vertical) {
+          context.moveTo(centerX, centerY - height * .42);
+          context.lineTo(centerX, centerY + height * .42);
+        } else {
+          context.moveTo(centerX - width * .42, centerY);
+          context.lineTo(centerX + width * .42, centerY);
+        }
+        context.stroke();
+        context.strokeStyle = "#38271f";
+        context.lineWidth = Math.max(1.2, cellSize * .055);
+        context.beginPath();
+        if (propFacing === "north") {
+          context.moveTo(centerX - width * .44, centerY + height * .62);
+          context.lineTo(centerX + width * .44, centerY + height * .62);
+        } else if (propFacing === "south") {
+          context.moveTo(centerX - width * .44, centerY - height * .62);
+          context.lineTo(centerX + width * .44, centerY - height * .62);
+        } else if (propFacing === "east") {
+          context.moveTo(centerX - width * .62, centerY - height * .44);
+          context.lineTo(centerX - width * .62, centerY + height * .44);
+        } else {
+          context.moveTo(centerX + width * .62, centerY - height * .44);
+          context.lineTo(centerX + width * .62, centerY + height * .44);
+        }
+        context.stroke();
+      } else if (prop === "altar" || prop === "tomb") {
+        const width = spanWidth * (vertical ? .68 : .92);
+        const height = spanHeight * (vertical ? .92 : .68);
+        context.fillStyle = prop === "altar" ? "#a59a81" : "#696d68";
+        context.beginPath();
+        context.roundRect(centerX - width / 2, centerY - height / 2,
+          width, height, prop === "tomb" ? cellSize * .2 : cellSize * .04);
+        context.fill();
+        context.stroke();
+        context.strokeStyle = prop === "altar" ? "#d4c7a1" : "#92978f";
+        context.beginPath();
+        context.moveTo(centerX - width * .22, centerY);
+        context.lineTo(centerX + width * .22, centerY);
+        if (prop === "tomb") {
+          context.moveTo(centerX, centerY - height * .22);
+          context.lineTo(centerX, centerY + height * .22);
+        }
+        context.stroke();
+      } else if (prop === "crate") {
+        for (const cell of propCells) {
+          const crateX = (cell.x + .5) * cellSize;
+          const crateY = (cell.y + .5) * cellSize;
+          const size = cellSize * .7;
+          context.fillStyle = "#806040";
+          context.fillRect(crateX - size / 2, crateY - size / 2, size, size);
+          context.strokeRect(crateX - size / 2, crateY - size / 2, size, size);
+          context.beginPath();
+          context.moveTo(crateX - size * .4, crateY - size * .4);
+          context.lineTo(crateX + size * .4, crateY + size * .4);
+          context.moveTo(crateX + size * .4, crateY - size * .4);
+          context.lineTo(crateX - size * .4, crateY + size * .4);
+          context.stroke();
+        }
+      } else if (prop === "console") {
+        const width = spanWidth * (vertical ? .5 : .92);
+        const height = spanHeight * (vertical ? .92 : .5);
+        context.fillStyle = "#3f5358";
+        context.fillRect(centerX - width / 2, centerY - height / 2, width, height);
+        context.strokeRect(centerX - width / 2, centerY - height / 2, width, height);
+        context.fillStyle = "#76b7bd";
+        context.beginPath();
+        context.arc(centerX, centerY, Math.max(1.3, cellSize * .09), 0, Math.PI * 2);
+        context.fill();
+      } else if (prop === "bar") {
+        const width = spanWidth * (vertical ? .56 : .94);
+        const height = spanHeight * (vertical ? .94 : .56);
+        context.fillStyle = "#68432d";
+        context.fillRect(centerX - width / 2, centerY - height / 2, width, height);
+        context.strokeRect(centerX - width / 2, centerY - height / 2, width, height);
+        context.strokeStyle = "#bf8752";
+        context.lineWidth = Math.max(1, cellSize * .04);
+        context.beginPath();
+        if (vertical) {
+          context.moveTo(centerX, centerY - height * .44);
+          context.lineTo(centerX, centerY + height * .44);
+        } else {
+          context.moveTo(centerX - width * .44, centerY);
+          context.lineTo(centerX + width * .44, centerY);
+        }
+        context.stroke();
+      } else {
+        const width = spanWidth * (vertical ? .5 : .92);
+        const height = spanHeight * (vertical ? .92 : .5);
+        context.fillRect(centerX - width / 2, centerY - height / 2, width, height);
+        context.strokeRect(centerX - width / 2, centerY - height / 2, width, height);
+        context.strokeStyle = "rgba(236,190,126,.3)";
+        context.beginPath();
+        if (vertical) {
+          context.moveTo(centerX, centerY - height * .35);
+          context.lineTo(centerX, centerY + height * .35);
+        } else {
+          context.moveTo(centerX - width * .35, centerY);
+          context.lineTo(centerX + width * .35, centerY);
+        }
+        context.stroke();
+      }
+    }
+  }
+  context.restore();
+}
+
 function drawGlobalTexture(
   width: number,
   height: number,
@@ -2865,6 +3058,7 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   drawGlobalTexture(width, height, context);
   if (isInteriorMode(mode)) {
     drawInteriorArchitecture(grid, cellSize, mode, context);
+    drawInteriorProps(grid, cellSize, context);
     if (mode === "ship-deck") {
       drawSailingShipDeckFeatures(grid, cellSize, context);
     }
