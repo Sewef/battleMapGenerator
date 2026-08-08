@@ -112,6 +112,9 @@ h1 em { font-family: "Newsreader", serif; font-weight: 500; color: #617553; }
 .preset-icon.ship { background: #6f91a0; }
 .preset-icon.ship::before { width: 30px; height: 13px; left: 5px; bottom: 7px; border-radius: 2px 2px 14px 14px; background: #79533a; }
 .preset-icon.ship::after { width: 4px; height: 25px; left: 18px; top: 4px; background: #3f342c; box-shadow: 6px 3px 0 2px #d7c18e; }
+.preset-icon.ship-deck { background: #6f9fa7; }
+.preset-icon.ship-deck::before { width: 31px; height: 15px; left: 4px; top: 13px; border: 2px solid #4a3428; border-radius: 45% 45% 50% 50%; background: repeating-linear-gradient(90deg, #b6814f 0 3px, #96643e 3px 5px); transform: rotate(-4deg); }
+.preset-icon.ship-deck::after { width: 3px; height: 23px; left: 18px; top: 5px; background: #42352b; box-shadow: -8px 7px 0 -1px #42352b, 8px 5px 0 -1px #42352b; }
 .preset-icon.castle { border-radius: 8px; background: #999a94; box-shadow: inset 0 0 0 5px #4d504f; }
 .preset-icon.castle::before { width: 8px; height: 27px; left: 6px; bottom: 4px; background: #656866; box-shadow: 20px 0 #656866, 10px 7px #747674; }
 .preset-icon.castle::after { width: 6px; height: 10px; left: 17px; bottom: 4px; border-radius: 4px 4px 0 0; background: #313837; }

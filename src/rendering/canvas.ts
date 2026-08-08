@@ -1433,6 +1433,70 @@ function drawInteriorArchitecture(
   context.restore();
 }
 
+function drawSailingShipDeckFeatures(
+  grid: Grid,
+  cellSize: number,
+  context: CanvasRenderingContext2D,
+) {
+  context.save();
+  context.lineCap = "round";
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      const feature = grid[y][x].deckFeature;
+      if (!feature) continue;
+      const centerX = (x + .5) * cellSize;
+      const centerY = (y + .5) * cellSize;
+      context.strokeStyle = "#3b2a21";
+      context.fillStyle = "#6f492f";
+      context.lineWidth = Math.max(1.2, cellSize * .055);
+      if (feature === "mast") {
+        context.strokeStyle = "rgba(55,38,28,.55)";
+        context.lineWidth = Math.max(1, cellSize * .035);
+        context.beginPath();
+        context.moveTo(centerX, centerY - cellSize * 3.6);
+        context.lineTo(centerX, centerY + cellSize * 3.6);
+        context.stroke();
+        context.fillStyle = "#65442d";
+        context.strokeStyle = "#30231c";
+        context.lineWidth = Math.max(1.5, cellSize * .07);
+        context.beginPath();
+        context.arc(centerX, centerY, cellSize * .31, 0, Math.PI * 2);
+        context.fill();
+        context.stroke();
+      } else if (feature === "hatch") {
+        const width = cellSize * 1.45;
+        const height = cellSize * .72;
+        context.fillStyle = "#4d3528";
+        context.fillRect(centerX - width / 2, centerY - height / 2, width, height);
+        context.strokeRect(centerX - width / 2, centerY - height / 2, width, height);
+        context.strokeStyle = "#a57848";
+        for (const offset of [-.24, 0, .24]) {
+          context.beginPath();
+          context.moveTo(centerX + width * offset, centerY - height * .42);
+          context.lineTo(centerX + width * offset, centerY + height * .42);
+          context.stroke();
+        }
+      } else {
+        const radius = cellSize * (feature === "wheel" ? .38 : .3);
+        context.beginPath();
+        context.arc(centerX, centerY, radius, 0, Math.PI * 2);
+        context.fill();
+        context.stroke();
+        context.strokeStyle = "#c49a61";
+        for (let spoke = 0; spoke < (feature === "wheel" ? 8 : 4); spoke += 1) {
+          const angle = spoke * Math.PI / (feature === "wheel" ? 4 : 2);
+          context.beginPath();
+          context.moveTo(centerX, centerY);
+          context.lineTo(centerX + Math.cos(angle) * radius * 1.25,
+            centerY + Math.sin(angle) * radius * 1.25);
+          context.stroke();
+        }
+      }
+    }
+  }
+  context.restore();
+}
+
 function drawGlobalTexture(
   width: number,
   height: number,
@@ -2801,6 +2865,9 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   drawGlobalTexture(width, height, context);
   if (isInteriorMode(mode)) {
     drawInteriorArchitecture(grid, cellSize, mode, context);
+    if (mode === "ship-deck") {
+      drawSailingShipDeckFeatures(grid, cellSize, context);
+    }
   }
   drawReliefBevels(
     grid,

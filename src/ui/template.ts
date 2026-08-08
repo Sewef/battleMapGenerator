@@ -37,6 +37,7 @@ export const BIOME_PARAMETER_PROFILES: Record<
   house: { buildings: "Rooms" },
   spaceship: { buildings: "Compartments" },
   ship: { buildings: "Cabins / holds" },
+  "ship-deck": { buildings: "Deck areas" },
   castle: { buildings: "Chambers" },
   cathedral: { buildings: "Halls / chapels" },
   tavern: { buildings: "Rooms" },
@@ -46,7 +47,7 @@ export const BIOME_PARAMETER_PROFILES: Record<
 const PRESET_GROUPS = [
   {
     label: "Interiors",
-    ids: ["house", "tavern", "castle", "cathedral", "crypt", "ship", "spaceship"],
+    ids: ["house", "tavern", "castle", "cathedral", "crypt", "ship", "ship-deck", "spaceship"],
   },
   {
     label: "Nature",

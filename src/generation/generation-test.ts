@@ -83,7 +83,7 @@ function assertGrid(grid: Grid, label: string) {
   }
 }
 
-function assertInterior(grid: Grid, expectedRooms: number, label: string) {
+function assertInterior(grid: Grid, expectedRooms: number, label: string, expectedDoors = expectedRooms) {
   const roomIds = new Set<number>();
   const walkable = new Set<string>();
   let doorCount = 0;
@@ -103,7 +103,7 @@ function assertInterior(grid: Grid, expectedRooms: number, label: string) {
     }
   }
   assert(roomIds.size === expectedRooms, `${label}: expected ${expectedRooms} rooms, got ${roomIds.size}`);
-  assert(doorCount === expectedRooms, `${label}: expected one entrance plus ${expectedRooms - 1} internal doors`);
+  assert(doorCount === expectedDoors, `${label}: expected ${expectedDoors} doors, got ${doorCount}`);
 
   const start = walkable.values().next().value as string | undefined;
   assert(start, `${label}: interior has no walkable floor`);
@@ -169,6 +169,7 @@ const requiredInteriorRoles: Record<InteriorMode, string[]> = {
   tavern: ["Common room", "Kitchen", "Hallway", "Guest room 1"],
   spaceship: ["Central spine", "Cockpit", "Engineering"],
   ship: ["Main gangway", "Captain's cabin", "Galley"],
+  "ship-deck": ["Quarterdeck", "Main deck", "Forecastle"],
   castle: ["Great hall and galleries", "Guardroom", "Armory"],
   cathedral: ["Nave and transept", "Sacristy", "Reliquary"],
   crypt: ["Processional passage", "Inner sanctum", "Burial vault 2"],
@@ -181,7 +182,8 @@ for (const preset of PRESETS) {
     const grid = generateTerrain(options);
     assertGrid(grid, `${preset.id}:${index}`);
     if (isInteriorMode(preset.mode)) {
-      assertInterior(grid, preset.buildingCount, `${preset.id}:${index}`);
+      assertInterior(grid, preset.buildingCount, `${preset.id}:${index}`,
+        preset.mode === "ship-deck" ? 0 : preset.buildingCount);
     }
     if (index === 0) {
       const duplicate = generateTerrain(options);
@@ -217,14 +219,10 @@ for (const preset of PRESETS.filter(({ mode }) => isInteriorMode(mode))) {
       connections.has(["Living room", "Hallway"].sort().join(" | ")),
       "house: living room must open onto the central hallway",
     );
-    assert(
-      connections.has(["Kitchen", "Hallway"].sort().join(" | ")),
-      "house: kitchen must open onto the central hallway",
-    );
-    assert(
-      !connections.has(["Living room", "Kitchen"].sort().join(" | ")),
-      "house: must not reuse the tavern's common-room/kitchen topology",
-    );
+    const kitchenViaHall = connections.has(["Kitchen", "Hallway"].sort().join(" | "));
+    const kitchenViaLiving = connections.has(["Kitchen", "Living room"].sort().join(" | "));
+    assert(kitchenViaHall || kitchenViaLiving,
+      "house: kitchen must connect to either the hall or the living-room hub");
   }
   if (preset.mode === "spaceship") {
     assert(
@@ -236,7 +234,7 @@ for (const preset of PRESETS.filter(({ mode }) => isInteriorMode(mode))) {
       "spaceship: engineering must open onto the central spine",
     );
   }
-  if (preset.mode === "spaceship" || preset.mode === "ship") {
+  if (preset.mode === "spaceship" || preset.mode === "ship" || preset.mode === "ship-deck") {
     assert(
       hasNonRectangularRoom(grid),
       `${preset.id}: vessel must contain at least one shaped compartment`,
@@ -288,6 +286,23 @@ for (
   assertInterior(grid, roomCount, `house:${roomCount}-rooms`);
 }
 
+const houseTopologies = new Set<string>();
+for (let index = 0; index < 24; index += 1) {
+  const grid = generateTerrain({ ...housePreset, seed: `house-topology-${index}` });
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      if (grid[y][x].terrain !== Terrain.Door) continue;
+      const neighbors = [grid[y - 1]?.[x], grid[y + 1]?.[x], grid[y]?.[x - 1], grid[y]?.[x + 1]];
+      if (!neighbors.some((neighbor) => neighbor?.terrain === Terrain.Void)) continue;
+      const entranceRole = neighbors.find((neighbor) => neighbor?.terrain === Terrain.Ground)?.roomRole;
+      if (entranceRole === "Hallway") houseTopologies.add("corridor");
+      if (entranceRole === "Living room") houseTopologies.add("living-room-entry");
+    }
+  }
+}
+assert(houseTopologies.has("corridor") && houseTopologies.has("living-room-entry"),
+  "house: seeds must expose both hallway and direct living-room entrances");
+
 for (const preset of PRESETS.filter(({ mode }) => isInteriorMode(mode))) {
   if (!isInteriorMode(preset.mode)) continue;
   const maximumRooms = INTERIOR_ROOM_LIMITS[preset.mode].maximum;
@@ -299,7 +314,8 @@ for (const preset of PRESETS.filter(({ mode }) => isInteriorMode(mode))) {
     buildingCount: maximumRooms,
     seed: `${preset.id}-compact-interior`,
   });
-  assertInterior(compactGrid, maximumRooms, `${preset.id}:compact-interior`);
+  assertInterior(compactGrid, maximumRooms, `${preset.id}:compact-interior`,
+    preset.mode === "ship-deck" ? 0 : maximumRooms);
 }
 
 const fogExportGrid = generateTerrain({

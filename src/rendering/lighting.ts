@@ -20,6 +20,7 @@ const warmModes = new Set<LandscapeMode>([
   "ruined-battlefield",
   "volcanic",
   "ship",
+  "ship-deck",
   "tavern",
   "cathedral",
 ]);

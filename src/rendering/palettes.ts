@@ -134,6 +134,10 @@ const biomePalettes: Record<
     ground: { color: "#b18152", alt: "#96683f" },
     difficult: { color: "#815b3f", alt: "#674634" },
   },
+  "ship-deck": {
+    ground: { color: "#bd8b55", alt: "#9d6d41" },
+    difficult: { color: "#80583a", alt: "#68452f" },
+  },
   castle: {
     ground: { color: "#99988f", alt: "#85857e" },
     difficult: { color: "#74746e", alt: "#62635f" },
@@ -167,6 +171,11 @@ const interiorVisualStyles: Partial<Record<LandscapeMode, InteriorVisualStyle>> 
     floorPattern: "wood", roomTints: ["rgba(255,211,145,.05)", "rgba(83,48,28,.05)", "rgba(202,146,81,.05)"],
     wall: "#513a2c", wallAlt: "#34261f", wallHighlight: "rgba(236,184,116,.13)", wallEdge: "rgba(38,24,18,.5)", wallDetail: "rgba(205,141,77,.17)",
     door: "#875232", doorEdge: "#35231b", doorHighlight: "rgba(236,177,102,.35)", hardware: "#c9a258",
+  },
+  "ship-deck": {
+    floorPattern: "wood", roomTints: ["rgba(255,226,170,.04)", "rgba(83,48,28,.035)", "rgba(220,164,96,.045)"],
+    wall: "#5b402e", wallAlt: "#38271f", wallHighlight: "rgba(245,198,132,.16)", wallEdge: "rgba(38,24,18,.52)", wallDetail: "rgba(220,153,82,.18)",
+    door: "#93603a", doorEdge: "#35231b", doorHighlight: "rgba(246,190,112,.38)", hardware: "#d3af62",
   },
   castle: {
     floorPattern: "stone", roomTints: ["rgba(233,230,214,.045)", "rgba(59,64,63,.045)", "rgba(174,174,161,.05)"],
@@ -263,7 +272,7 @@ const visualProfileByMode: Record<LandscapeMode, VisualProfileName> = {
   "frozen-lake": "cold", highlands: "cold", "mountain-pass": "cold",
   underground: "dark", sewer: "dark", "ancient-ruins": "dark",
   house: "temperate",
-  spaceship: "cold", ship: "temperate", castle: "cold",
+  spaceship: "cold", ship: "temperate", "ship-deck": "temperate", castle: "cold",
   cathedral: "temperate", tavern: "temperate", crypt: "dark",
 };
 

@@ -131,6 +131,14 @@ function balancedSplit(random: Random, minimum: number, maximum: number) {
   );
 }
 
+// Keep openings away from wall junctions whenever the room has enough space.
+// Corner doors were the main source of layouts that were technically connected
+// but read as accidental or structurally implausible.
+function doorwayPosition(random: Random, minimum: number, maximum: number) {
+  const inset = maximum - minimum >= 3 ? 1 : 0;
+  return randomInteger(random, minimum + inset, maximum - inset);
+}
+
 function splitRectangle(
   rectangle: Rectangle,
   random: Random,
@@ -163,7 +171,7 @@ function splitRectangle(
       wall: { x: wallX, y: rectangle.y, width: 1, height: rectangle.height },
       door: {
         x: wallX,
-        y: randomInteger(random, rectangle.y, rectangle.y + rectangle.height - 1),
+        y: doorwayPosition(random, rectangle.y, rectangle.y + rectangle.height - 1),
         orientation: "vertical",
       },
     };
@@ -185,7 +193,7 @@ function splitRectangle(
     ],
     wall: { x: rectangle.x, y: wallY, width: rectangle.width, height: 1 },
     door: {
-      x: randomInteger(random, rectangle.x, rectangle.x + rectangle.width - 1),
+      x: doorwayPosition(random, rectangle.x, rectangle.x + rectangle.width - 1),
       y: wallY,
       orientation: "horizontal",
     },
@@ -254,18 +262,20 @@ function mirrorInterior(grid: Grid, random: Random) {
 function shapeVesselHull(
   grid: Grid,
   bounds: Bounds,
-  mode: "ship" | "spaceship",
+  mode: "ship" | "ship-deck" | "spaceship",
   random: Random,
 ) {
-  // Very compact, high-room-count maps cannot afford to lose another strip
-  // of usable cells without collapsing a compartment entirely.
-  if (bounds.right - bounds.left < 26 || bounds.bottom - bounds.top < 14) return;
+  // Preserve a recognizable hull even on the shortest supported ship maps.
+  // The old 26x14 cutoff made some valid 42x18 presets stay rectangular after
+  // their randomized margins were applied.
+  if (bounds.right - bounds.left < 26 || bounds.bottom - bounds.top < 10) return;
   const centerY = (bounds.top + bounds.bottom) / 2;
   const halfHeight = Math.max(1, (bounds.bottom - bounds.top) / 2);
-  const sternInset = mode === "ship"
+  const woodenVessel = mode === "ship" || mode === "ship-deck";
+  const sternInset = woodenVessel
     ? randomInteger(random, 1, 2)
     : randomInteger(random, 2, 3);
-  const bowInset = mode === "ship"
+  const bowInset = woodenVessel
     ? randomInteger(random, 4, 6)
     : randomInteger(random, 2, 4);
 
@@ -539,7 +549,7 @@ function axialInterior(
   grid: Grid,
   bounds: Bounds,
   roomCount: number,
-  mode: "spaceship" | "ship",
+  mode: "spaceship" | "ship" | "ship-deck",
   random: Random,
 ) {
   const left = bounds.left + 1;
@@ -557,7 +567,9 @@ function axialInterior(
     y: corridorTop,
     width: right - left + 1,
     height: corridorBottom - corridorTop + 1,
-  }, 0, mode === "spaceship" ? "Central spine" : "Main gangway");
+  }, 0, mode === "spaceship"
+    ? "Central spine"
+    : mode === "ship-deck" ? "Weather deck" : "Main gangway");
 
   const moduleCount = roomCount - 1;
   const upperCount = Math.max(1, Math.min(moduleCount - 1,
@@ -567,7 +579,9 @@ function axialInterior(
   const lower = lowerCount ? variedPartitionRange(left, right, lowerCount, random) : [];
   const roles = mode === "spaceship"
     ? ["Cockpit", "Engineering", "Crew quarters", "Medbay", "Cargo bay", "Laboratory", "Life support", "Armory", "Observation room", "Airlock", "Utility bay"]
-    : ["Captain's cabin", "Galley", "Crew berths", "Cargo hold", "Chart room", "Sick bay", "Bosun's store", "Guest cabin", "Magazine", "Workshop", "Provision hold"];
+    : mode === "ship-deck"
+      ? ["Quarterdeck", "Forecastle", "Port waist", "Starboard waist", "Boat deck", "Capstan deck", "Helm platform"]
+      : ["Captain's cabin", "Galley", "Crew berths", "Cargo hold", "Chart room", "Sick bay", "Bosun's store", "Guest cabin", "Magazine", "Workshop", "Provision hold"];
   let nextRoomId = 1;
   const addModules = (
     segments: Array<{ start: number; end: number }>,
@@ -708,6 +722,129 @@ function spaceshipInterior(
     y: corridorCenter,
     orientation: "vertical",
   });
+}
+
+function sailingShipDeck(
+  grid: Grid,
+  bounds: Bounds,
+  areaCount: number,
+  random: Random,
+) {
+  const left = bounds.left + 1;
+  const right = bounds.right - 1;
+  const top = bounds.top + 1;
+  const bottom = bounds.bottom - 1;
+  const centerY = Math.floor((top + bottom) / 2);
+  const deckWidth = right - left + 1;
+  const sizes = Array.from({ length: areaCount }, () => Math.floor(deckWidth / areaCount));
+  let remainder = deckWidth - sizes.reduce((sum, size) => sum + size, 0);
+  while (remainder > 0) {
+    sizes[Math.floor(random() * sizes.length)] += 1;
+    remainder -= 1;
+  }
+  let cursor = left;
+  const sections = sizes.map((size) => {
+    const section = { start: cursor, end: cursor + size - 1 };
+    cursor += size;
+    return section;
+  });
+  const roles = ["Quarterdeck", "Aft waist", "Main deck", "Boat deck",
+    "Fore waist", "Forecastle", "Head platform", "Bowsprit deck"];
+  sections.forEach((section, roomId) => assignRoom(grid, {
+    x: section.start, y: top,
+    width: section.end - section.start + 1,
+    height: bottom - top + 1,
+  }, roomId, roles[roomId] ?? `Deck area ${roomId + 1}`));
+
+  const featureAt = (ratio: number, feature: NonNullable<Tile["deckFeature"]>) => {
+    const x = Math.max(left + 1, Math.min(right - 1,
+      Math.round(left + (right - left) * ratio)));
+    const current = grid[centerY]?.[x];
+    if (current?.terrain === Terrain.Ground) current.deckFeature = feature;
+  };
+  featureAt(.08, "wheel");
+  featureAt(.25, "hatch");
+  featureAt(.38, "mast");
+  featureAt(.54, "hatch");
+  featureAt(.66, "mast");
+  featureAt(.82, "capstan");
+}
+
+function hubHouseInterior(
+  grid: Grid,
+  bounds: Bounds,
+  roomCount: number,
+  random: Random,
+) {
+  const left = bounds.left + 1;
+  const right = bounds.right - 1;
+  const top = bounds.top + 1;
+  const bottom = bounds.bottom - 1;
+  const centerX = Math.floor((left + right) / 2) + randomInteger(random, -1, 1);
+  const hallHalfWidth = randomInteger(random, 1, 2);
+  const hallLeft = centerX - hallHalfWidth;
+  const hallRight = centerX + hallHalfWidth;
+  const livingHeight = Math.max(4, Math.min(6,
+    Math.round((bottom - top + 1) * (.3 + random() * .08))));
+  const livingTop = bottom - livingHeight + 1;
+
+  horizontalWall(grid, livingTop - 1, left, right);
+  verticalWall(grid, hallLeft - 1, top, livingTop - 2);
+  verticalWall(grid, hallRight + 1, top, livingTop - 2);
+  assignRoom(grid, {
+    x: left,
+    y: livingTop,
+    width: right - left + 1,
+    height: bottom - livingTop + 1,
+  }, 0, "Living room");
+  assignRoom(grid, {
+    x: hallLeft,
+    y: top,
+    width: hallRight - hallLeft + 1,
+    height: livingTop - top - 1,
+  }, 1, "Hallway");
+  placeDoor(grid, {
+    x: centerX,
+    y: livingTop - 1,
+    orientation: "horizontal",
+  });
+  placeDoor(grid, { x: centerX, y: bounds.bottom, orientation: "horizontal" });
+
+  const sideRoomCount = roomCount - 2;
+  const leftCount = Math.max(1, Math.min(sideRoomCount - 1,
+    Math.ceil(sideRoomCount / 2) + randomInteger(random, -1, 1)));
+  const rightCount = sideRoomCount - leftCount;
+  const leftRooms = variedPartitionRange(top, livingTop - 2, leftCount, random);
+  const rightRooms = variedPartitionRange(top, livingTop - 2, rightCount, random);
+  let nextRoomId = 2;
+  let bedroomNumber = 1;
+  const addSideRooms = (
+    segments: Array<{ start: number; end: number }>,
+    x: number,
+    width: number,
+    accessWallX: number,
+  ) => {
+    segments.slice(0, -1).forEach(({ end }) =>
+      horizontalWall(grid, end + 1, x, x + width - 1)
+    );
+    segments.forEach((segment) => {
+      const kitchen = nextRoomId === 2;
+      assignRoom(grid, {
+        x,
+        y: segment.start,
+        width,
+        height: segment.end - segment.start + 1,
+      }, nextRoomId, kitchen ? "Kitchen" : `Bedroom ${bedroomNumber++}`);
+      placeDoor(grid, {
+        x: accessWallX,
+        y: Math.floor((segment.start + segment.end) / 2),
+        orientation: "vertical",
+      });
+      nextRoomId += 1;
+    });
+  };
+  addSideRooms(leftRooms, left, hallLeft - left - 1, hallLeft - 1);
+  addSideRooms(rightRooms, hallRight + 2, right - hallRight - 1, hallRight + 1);
 }
 
 function crossInterior(
@@ -888,22 +1025,37 @@ export function generateInterior(
   );
 
   if (mode === "house") {
-    houseInterior(grid, bounds, roomCount, random);
+    if (random() < .5) houseInterior(grid, bounds, roomCount, random);
+    else hubHouseInterior(grid, bounds, roomCount, random);
   } else if (mode === "tavern") {
     tavernInterior(grid, bounds, roomCount, random);
   } else if (mode === "spaceship") {
     spaceshipInterior(grid, bounds, roomCount, random);
   } else if (mode === "ship") {
     axialInterior(grid, bounds, roomCount, mode, random);
+  } else if (mode === "ship-deck") {
+    sailingShipDeck(grid, bounds, roomCount, random);
   } else if (mode === "castle" || mode === "cathedral") {
     crossInterior(grid, bounds, roomCount, mode, random);
   } else {
     cryptInterior(grid, bounds, roomCount, random);
   }
-  if (mode === "ship" || mode === "spaceship") {
+  if (mode === "ship" || mode === "ship-deck" || mode === "spaceship") {
     shapeVesselHull(grid, bounds, mode, random);
-    chamferVesselRooms(grid, random);
+    if (mode !== "ship-deck") chamferVesselRooms(grid, random);
   }
   repairBlockedInternalDoors(grid);
   mirrorInterior(grid, random);
+  if (mode === "ship" || mode === "ship-deck") {
+    // Both sailing-ship views are presented afloat. The hull walls remain the
+    // boundary while water replaces the opaque backdrop used by buildings.
+    for (const row of grid) {
+      for (const current of row) {
+        if (current.terrain === Terrain.Void) {
+          current.terrain = Terrain.Water;
+          current.height = .16;
+        }
+      }
+    }
+  }
 }

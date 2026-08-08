@@ -41,6 +41,7 @@ export const BIOME_RECIPES: Record<
   house: { ruggedness: 0, smoothing: 0, roadSlopeCost: 1 },
   spaceship: { ruggedness: 0, smoothing: 0, roadSlopeCost: 1 },
   ship: { ruggedness: 0, smoothing: 0, roadSlopeCost: 1 },
+  "ship-deck": { ruggedness: 0, smoothing: 0, roadSlopeCost: 1 },
   castle: { ruggedness: 0, smoothing: 0, roadSlopeCost: 1 },
   cathedral: { ruggedness: 0, smoothing: 0, roadSlopeCost: 1 },
   tavern: { ruggedness: 0, smoothing: 0, roadSlopeCost: 1 },

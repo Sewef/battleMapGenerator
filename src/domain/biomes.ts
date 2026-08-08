@@ -157,6 +157,13 @@ export const PRESETS: Preset[] = [
     rockRatio: 0, treeRatio: 0, buildingCount: 7,
   },
   {
+    id: "ship-deck", name: "Sailing ship — exterior",
+    description: "An open weather deck with quarterdeck, forecastle, masts, and a tapered wooden hull.",
+    width: 44, height: 20, seed: "", scale: 6, mode: "ship-deck",
+    waterWeight: 0, difficultWeight: 0, reliefWeight: 0,
+    rockRatio: 0, treeRatio: 0, buildingCount: 6,
+  },
+  {
     id: "castle", name: "Castle floor",
     description: "A great hall and defensive galleries connecting guardrooms, armory, kitchens, and private wings.",
     width: 36, height: 28, seed: "", scale: 6, mode: "castle",

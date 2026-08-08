@@ -46,6 +46,7 @@ export type LandscapeMode =
   | "house"
   | "spaceship"
   | "ship"
+  | "ship-deck"
   | "castle"
   | "cathedral"
   | "tavern"
@@ -53,13 +54,14 @@ export type LandscapeMode =
 
 export type InteriorMode = Extract<
   LandscapeMode,
-  "house" | "spaceship" | "ship" | "castle" | "cathedral" | "tavern" | "crypt"
+  "house" | "spaceship" | "ship" | "ship-deck" | "castle" | "cathedral" | "tavern" | "crypt"
 >;
 
 const interiorModes = new Set<LandscapeMode>([
   "house",
   "spaceship",
   "ship",
+  "ship-deck",
   "castle",
   "cathedral",
   "tavern",
@@ -78,6 +80,7 @@ export const INTERIOR_ROOM_LIMITS: Record<
   tavern: { minimum: 4, maximum: 7 },
   spaceship: { minimum: 4, maximum: 12 },
   ship: { minimum: 4, maximum: 12 },
+  "ship-deck": { minimum: 4, maximum: 8 },
   castle: { minimum: 5, maximum: 12 },
   cathedral: { minimum: 5, maximum: 9 },
   crypt: { minimum: 3, maximum: 12 },
@@ -91,6 +94,7 @@ export const INTERIOR_MINIMUM_DIMENSIONS: Record<
   tavern: { width: 24, height: 16 },
   spaceship: { width: 24, height: 16 },
   ship: { width: 24, height: 16 },
+  "ship-deck": { width: 30, height: 16 },
   castle: { width: 32, height: 24 },
   cathedral: { width: 28, height: 30 },
   crypt: { width: 24, height: 16 },
@@ -109,6 +113,7 @@ export interface Tile {
   roomId?: number;
   roomRole?: string;
   doorOrientation?: "horizontal" | "vertical";
+  deckFeature?: "mast" | "hatch" | "wheel" | "capstan";
 }
 
 export function tileSurface(tile: Tile): SurfaceKind | undefined {
