@@ -2171,50 +2171,188 @@ function drawInteriorProps(
           context.fillRect(pillowX, centerY - height * .38, width * .24, height * .76);
         }
       } else if (prop === "bench") {
-        const width = spanWidth * (vertical ? .38 : .94);
-        const height = spanHeight * (vertical ? .94 : .38);
         const upholstered = /Living room|Bedroom|Guest room|cabin|Royal chamber/i
           .test(propRoomRole);
-        context.fillStyle = upholstered ? "#66766b" : "#735037";
-        context.fillRect(centerX - width / 2, centerY - height / 2, width, height);
-        context.strokeRect(centerX - width / 2, centerY - height / 2, width, height);
-        context.strokeStyle = upholstered ? "#a9b2a4" : "#a7794e";
+        const furnitureDepth = upholstered ? .7 : .38;
+        const width = spanWidth * (vertical ? furnitureDepth : .94);
+        const height = spanHeight * (vertical ? .94 : furnitureDepth);
+        const left = centerX - width / 2;
+        const top = centerY - height / 2;
+        const wood = upholstered ? "#7b5032" : "#735037";
+        const woodLight = upholstered ? "#b37a4c" : "#a7794e";
+        const woodEdge = "#38251b";
+        const textile = "#a96049";
+        const textileLight = "#e3a27a";
+        const textileEdge = "#673b31";
+        const cornerRadius = Math.min(cellSize * .1, width * .18, height * .18);
+
+        context.fillStyle = wood;
+        context.strokeStyle = woodEdge;
+        context.lineWidth = Math.max(1, cellSize * .045);
         context.beginPath();
-        if (vertical) {
-          context.moveTo(centerX, centerY - height * .42);
-          context.lineTo(centerX, centerY + height * .42);
-        } else {
-          context.moveTo(centerX - width * .42, centerY);
-          context.lineTo(centerX + width * .42, centerY);
-        }
+        context.roundRect(left, top, width, height, cornerRadius);
+        context.fill();
         context.stroke();
+
+        const seatInset = Math.max(1.2, cellSize * .075);
+        const seatLeft = left + seatInset;
+        const seatTop = top + seatInset;
+        const seatWidth = Math.max(1, width - seatInset * 2);
+        const seatHeight = Math.max(1, height - seatInset * 2);
+        context.fillStyle = upholstered ? textile : woodLight;
+        context.strokeStyle = upholstered ? textileEdge : woodEdge;
+        context.lineWidth = Math.max(.7, cellSize * .024);
+        context.beginPath();
+        context.roundRect(
+          seatLeft,
+          seatTop,
+          seatWidth,
+          seatHeight,
+          Math.min(cellSize * .07, cornerRadius),
+        );
+        context.fill();
+        context.stroke();
+
         if (upholstered) {
-          context.fillStyle = "rgba(224,218,193,.2)";
-          for (const cell of propCells) {
-            const cushionX = (cell.x + .5) * cellSize;
-            const cushionY = (cell.y + .5) * cellSize;
-            context.beginPath();
-            context.arc(cushionX, cushionY, cellSize * .08, 0, Math.PI * 2);
-            context.fill();
+          context.strokeStyle = "rgba(112, 72, 43, .34)";
+          context.lineWidth = Math.max(.65, cellSize * .018);
+          context.beginPath();
+          const orderedCells = [...propCells].sort((first, second) =>
+            vertical ? first.y - second.y : first.x - second.x
+          );
+          for (let index = 0; index < orderedCells.length - 1; index += 1) {
+            if (vertical) {
+              const seamY = (orderedCells[index].y + 1) * cellSize;
+              context.moveTo(seatLeft + seatWidth * .12, seamY);
+              context.lineTo(seatLeft + seatWidth * .88, seamY);
+            } else {
+              const seamX = (orderedCells[index].x + 1) * cellSize;
+              context.moveTo(seamX, seatTop + seatHeight * .12);
+              context.lineTo(seamX, seatTop + seatHeight * .88);
+            }
           }
+          context.stroke();
+
+          context.strokeStyle = "rgba(255, 218, 183, .5)";
+          context.beginPath();
+          if (vertical) {
+            context.moveTo(seatLeft + seatWidth * .22, seatTop + seatHeight * .08);
+            context.lineTo(seatLeft + seatWidth * .22, seatTop + seatHeight * .92);
+          } else {
+            context.moveTo(seatLeft + seatWidth * .08, seatTop + seatHeight * .22);
+            context.lineTo(seatLeft + seatWidth * .92, seatTop + seatHeight * .22);
+          }
+          context.stroke();
         }
-        context.strokeStyle = "#38271f";
-        context.lineWidth = Math.max(1.2, cellSize * .055);
+
+        const backThickness = Math.max(
+          cellSize * .1,
+          Math.min(vertical ? width : height, cellSize * .18) * .58,
+        );
+        const back = propFacing === "north"
+          ? {
+            x: left + cellSize * .025,
+            y: top + height - backThickness,
+            width: width - cellSize * .05,
+            height: backThickness,
+          }
+          : propFacing === "south"
+            ? {
+              x: left + cellSize * .025,
+              y: top,
+              width: width - cellSize * .05,
+              height: backThickness,
+            }
+            : propFacing === "east"
+              ? {
+                x: left,
+                y: top + cellSize * .025,
+                width: backThickness,
+                height: height - cellSize * .05,
+              }
+              : {
+                x: left + width - backThickness,
+                y: top + cellSize * .025,
+                width: backThickness,
+                height: height - cellSize * .05,
+              };
+        context.fillStyle = wood;
+        context.strokeStyle = woodEdge;
+        context.lineWidth = Math.max(1, cellSize * .04);
         context.beginPath();
-        if (propFacing === "north") {
-          context.moveTo(centerX - width * .44, centerY + height * .62);
-          context.lineTo(centerX + width * .44, centerY + height * .62);
-        } else if (propFacing === "south") {
-          context.moveTo(centerX - width * .44, centerY - height * .62);
-          context.lineTo(centerX + width * .44, centerY - height * .62);
-        } else if (propFacing === "east") {
-          context.moveTo(centerX - width * .62, centerY - height * .44);
-          context.lineTo(centerX - width * .62, centerY + height * .44);
-        } else {
-          context.moveTo(centerX + width * .62, centerY - height * .44);
-          context.lineTo(centerX + width * .62, centerY + height * .44);
-        }
+        context.roundRect(
+          back.x,
+          back.y,
+          back.width,
+          back.height,
+          Math.min(cellSize * .055, backThickness * .35),
+        );
+        context.fill();
         context.stroke();
+
+        if (upholstered) {
+          const backInset = Math.max(.8, cellSize * .035);
+          context.fillStyle = "#914d3d";
+          context.strokeStyle = textileLight;
+          context.lineWidth = Math.max(.55, cellSize * .016);
+          context.beginPath();
+          context.roundRect(
+            back.x + backInset,
+            back.y + backInset,
+            Math.max(1, back.width - backInset * 2),
+            Math.max(1, back.height - backInset * 2),
+            Math.min(cellSize * .035, backThickness * .22),
+          );
+          context.fill();
+          context.stroke();
+        }
+
+        context.fillStyle = wood;
+        context.strokeStyle = woodEdge;
+        context.lineWidth = Math.max(.7, cellSize * .023);
+        const armThickness = Math.max(1.5, cellSize * .105);
+        const armInset = Math.max(.8, cellSize * .035);
+        const arms = vertical
+          ? [
+            {
+              x: left + armInset,
+              y: top + armInset,
+              width: width - armInset * 2,
+              height: armThickness,
+            },
+            {
+              x: left + armInset,
+              y: top + height - armThickness - armInset,
+              width: width - armInset * 2,
+              height: armThickness,
+            },
+          ]
+          : [
+            {
+              x: left + armInset,
+              y: top + armInset,
+              width: armThickness,
+              height: height - armInset * 2,
+            },
+            {
+              x: left + width - armThickness - armInset,
+              y: top + armInset,
+              width: armThickness,
+              height: height - armInset * 2,
+            },
+          ];
+        for (const arm of arms) {
+          context.beginPath();
+          context.roundRect(
+            arm.x,
+            arm.y,
+            arm.width,
+            arm.height,
+            Math.min(cellSize * .035, armThickness * .28),
+          );
+          context.fill();
+          context.stroke();
+        }
       } else if (prop === "hearth") {
         const width = spanWidth * (vertical ? .68 : .94);
         const height = spanHeight * (vertical ? .94 : .68);
