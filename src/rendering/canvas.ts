@@ -59,10 +59,12 @@ export interface TilesetPropImages {
   cabinet3x1: CanvasImageSource;
   cabinet2x1South: CanvasImageSource;
   cabinet3x1South: CanvasImageSource;
-  table1x2: CanvasImageSource;
-  table2x1: CanvasImageSource;
-  table1x3: CanvasImageSource;
-  table3x1: CanvasImageSource;
+  tableHorizontalLeft: CanvasImageSource;
+  tableHorizontalMiddle: CanvasImageSource;
+  tableHorizontalRight: CanvasImageSource;
+  tableVerticalTop: CanvasImageSource;
+  tableVerticalMiddle: CanvasImageSource;
+  tableVerticalDown: CanvasImageSource;
   altar1x2: CanvasImageSource;
   altar2x1: CanvasImageSource;
   altar1x3: CanvasImageSource;
@@ -2369,21 +2371,61 @@ function drawInteriorProps(
       const syntheticSeat = spaceshipFurniture &&
         (prop === "table" || prop === "chair");
       const variantIndex = Math.abs(interiorPropId ?? x * 31 + y * 17);
+      const modularHorizontalTable = prop === "table" && propCells.length > 1 &&
+        spanHeight === cellSize;
+      const modularVerticalTable = prop === "table" && propCells.length > 1 &&
+        spanWidth === cellSize;
+      const modularTableImages = tilesetProps
+        ? [
+          tilesetProps.tableHorizontalLeft,
+          tilesetProps.tableHorizontalMiddle,
+          tilesetProps.tableHorizontalRight,
+        ] as const
+        : undefined;
+      if (modularHorizontalTable && modularTableImages) {
+        const orderedCells = [...propCells].sort((first, second) => first.x - second.x);
+        context.save();
+        context.imageSmoothingEnabled = false;
+        for (let index = 0; index < orderedCells.length; index += 1) {
+          const image = index === 0 ? modularTableImages[0]
+            : index === orderedCells.length - 1 ? modularTableImages[2]
+            : modularTableImages[1];
+          const cell = orderedCells[index];
+          context.drawImage(image, cell.x * cellSize, (cell.y - 1) * cellSize,
+            cellSize, cellSize * 2);
+        }
+        context.restore();
+        continue;
+      }
+      const modularVerticalTableImages = tilesetProps
+        ? [
+          tilesetProps.tableVerticalTop,
+          tilesetProps.tableVerticalMiddle,
+          tilesetProps.tableVerticalDown,
+        ] as const
+        : undefined;
+      if (modularVerticalTable && modularVerticalTableImages) {
+        const orderedCells = [...propCells].sort((first, second) => first.y - second.y);
+        context.save();
+        context.imageSmoothingEnabled = false;
+        for (let index = 0; index < orderedCells.length; index += 1) {
+          const image = index === 0 ? modularVerticalTableImages[0]
+            : index === orderedCells.length - 1 ? modularVerticalTableImages[2]
+            : modularVerticalTableImages[1];
+          const cell = orderedCells[index];
+          context.drawImage(image, cell.x * cellSize, cell.y * cellSize,
+            cellSize, cellSize);
+        }
+        context.restore();
+        continue;
+      }
       const tableAssetName = prop === "table"
         ? propCells.length === 1 ? "table_1x1.png"
-          : propCells.length === 2
-            ? vertical ? "table_1x2.png" : "table_2x1.png"
-          : propCells.length === 3
-            ? vertical ? "table_1x3.png" : "table_3x1.png"
           : propCells.length === 4 && spanWidth === cellSize * 2 && spanHeight === cellSize * 2
             ? "table_2x2.png" : undefined
         : undefined;
       const tableImage = prop === "table"
         ? propCells.length === 1 ? tilesetProps?.table1x1
-          : propCells.length === 2
-            ? vertical ? tilesetProps?.table1x2 : tilesetProps?.table2x1
-          : propCells.length === 3
-            ? vertical ? tilesetProps?.table1x3 : tilesetProps?.table3x1
           : propCells.length === 4 && spanWidth === cellSize * 2 && spanHeight === cellSize * 2
             ? tilesetProps?.table2x2 : undefined
         : undefined;
@@ -2426,15 +2468,21 @@ function drawInteriorProps(
         }
       }
       const upholsteredBench = /Living room|Common room|Bedroom|Guest room|cabin/i.test(propRoomRole);
-      if (prop === "bench" && !upholsteredBench && !vertical) {
+      const modularBenchImages = tilesetProps
+        ? [
+          tilesetProps.benchHorizontalLeft,
+          tilesetProps.benchHorizontalMiddle,
+          tilesetProps.benchHorizontalRight,
+        ] as const
+        : undefined;
+      if (prop === "bench" && !upholsteredBench && !vertical && modularBenchImages) {
         const orderedCells = [...propCells].sort((first, second) => first.x - second.x);
         context.save();
         context.imageSmoothingEnabled = false;
         for (let index = 0; index < orderedCells.length; index += 1) {
-          const image = index === 0 ? tilesetProps?.benchHorizontalLeft
-            : index === orderedCells.length - 1 ? tilesetProps?.benchHorizontalRight
-            : tilesetProps?.benchHorizontalMiddle;
-          if (!image) continue;
+          const image = index === 0 ? modularBenchImages[0]
+            : index === orderedCells.length - 1 ? modularBenchImages[2]
+            : modularBenchImages[1];
           const cell = orderedCells[index];
           const cellCenterX = (cell.x + .5) * cellSize;
           const cellCenterY = (cell.y + .5) * cellSize;

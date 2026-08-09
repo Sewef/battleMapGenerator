@@ -584,6 +584,11 @@ function interiorPropSpriteItems(
     /Living room|Common room|Bedroom|Guest room|cabin/i.test(prop.roomRole ?? "");
   const woodenHorizontalBench = prop.kind === "bench" && !upholsteredBench &&
     rectangle.width > rectangle.height;
+  const modularHorizontalTable = prop.kind === "table" && prop.points.length > 1 &&
+    rectangle.height === 1;
+  const modularVerticalTable = prop.kind === "table" && prop.points.length > 1 &&
+    rectangle.width === 1;
+  const modularTable = modularHorizontalTable || modularVerticalTable;
   const assetName = prop.kind === "bed"
     ? prop.points.length === 4 && rectangle.width === 2 && rectangle.height === 2
       ? horizontalBed ? "bed_2x2_horizontal.png"
@@ -617,28 +622,28 @@ function interiorPropSpriteItems(
               : prop.kind === "shelf" ? `shelf_${variant % 2 + 1}_1x1.png`
                 : prop.kind === "statue" ? "statue_1x1.png"
                   : prop.kind === "flower_pot" ? `flower_pot_${variant % 3 + 1}_1x1.png`
+                    : modularHorizontalTable ? "table_horizontal_middle.png"
+                    : modularVerticalTable ? "table_vertical_middle.png"
                     : prop.kind === "table" && prop.points.length === 1 ? "table_1x1.png"
-                      : prop.kind === "table" && prop.points.length === 2
-                        ? rectangle.width > rectangle.height ? "table_2x1.png" : "table_1x2.png"
-                      : prop.kind === "table" && prop.points.length === 3
-                        ? rectangle.width > rectangle.height ? "table_3x1.png" : "table_1x3.png"
                       : prop.kind === "table" && prop.points.length === 4 &&
                         rectangle.width === 2 && rectangle.height === 2 ? "table_2x2.png"
                         : undefined;
   if (!assetName) return [];
   const spriteLayout = interiorAssetSpriteLayout(assetName);
-  const assetFolder = woodenHorizontalBench ? "lpc/"
+  const lpcAsset = woodenHorizontalBench || modularTable;
+  const assetFolder = lpcAsset ? "lpc/"
     : BAILEY_INTERIOR_ASSETS.has(assetName) ? "bailey/" : "ai/";
-  const perCell = prop.kind === "crate" || woodenHorizontalBench;
+  const perCell = prop.kind === "crate" || woodenHorizontalBench || modularTable;
   const fittedLength = prop.kind === "hearth" || prop.kind === "cabinet" ||
     prop.kind === "tomb" || prop.kind === "altar" ||
-    prop.kind === "table" && (prop.points.length === 2 || prop.points.length === 3)
+    prop.kind === "table" && !modularTable &&
+      (prop.points.length === 2 || prop.points.length === 3)
     ? prop.points.length : 0;
   const cabinetOverhang = prop.kind === "cabinet" &&
     (rectangle.height > rectangle.width || prop.facing === "south") ? 1 : 0;
   const benchAsset = prop.kind === "bench";
   const verticalBench = benchAsset && (prop.facing === "east" || prop.facing === "west");
-  const assetWidth = woodenHorizontalBench ? 32
+  const assetWidth = woodenHorizontalBench || modularTable ? 32
     : benchAsset ? upholsteredBench ? 64 : 160 : fittedLength
     ? rectangle.width * 32
     : assetName.includes("2x2") || assetName.includes("2x1") ? 64 : 32;
@@ -654,19 +659,26 @@ function interiorPropSpriteItems(
     ? spriteLayout.renderHeightCells * 32 : assetHeight;
   const rotation = verticalBench ? 90 : 0;
   const flipHorizontal = prop.kind === "bed" && horizontalBed && prop.facing === "east";
-  const orderedBenchPoints = woodenHorizontalBench
-    ? [...prop.points].sort((first, second) => first.x - second.x)
+  const orderedBenchPoints = woodenHorizontalBench || modularTable
+    ? [...prop.points].sort((first, second) => modularVerticalTable
+      ? first.y - second.y : first.x - second.x)
     : prop.points;
   const placements = perCell
     ? orderedBenchPoints.map((point, index) => ({
       centerX: point.x + .5,
-      centerY: point.y + .5,
-      widthCells: 1,
-      heightCells: 1,
+      centerY: spriteLayout.anchor === "bottom"
+        ? point.y + 1 - spriteLayout.renderHeightCells / 2
+        : point.y + .5,
+      widthCells: spriteLayout.renderWidthCells,
+      heightCells: spriteLayout.renderHeightCells,
       footprint: [point],
-      assetName: woodenHorizontalBench
-        ? `bench_horizontal_${index === 0 ? "left"
-          : index === orderedBenchPoints.length - 1 ? "right" : "middle"}_1x1.png`
+      assetName: woodenHorizontalBench || modularTable
+        ? `${woodenHorizontalBench ? "bench_horizontal"
+          : modularVerticalTable ? "table_vertical" : "table_horizontal"}_${
+          index === 0 ? modularVerticalTable ? "top" : "left"
+            : index === orderedBenchPoints.length - 1
+              ? modularVerticalTable ? "down" : "right" : "middle"
+        }${woodenHorizontalBench ? "_1x1" : ""}.png`
         : assetName,
     }))
     : [{

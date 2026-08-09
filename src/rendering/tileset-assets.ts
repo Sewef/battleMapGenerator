@@ -23,6 +23,9 @@ export const INTERIOR_ASSET_SPRITE_LAYOUTS: Readonly<
   "shelf_2_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
   "statue_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
   "table_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
+  "table_horizontal_left.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
+  "table_horizontal_middle.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
+  "table_horizontal_right.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
 };
 
 export function interiorAssetSpriteLayout(assetName: string) {
@@ -71,6 +74,12 @@ export function createTilesetAssets() {
     // Hand-drawn LPC furniture.
     stool1x1: image(lpc("stool_1x1.png")),
     table1x1: image(lpc("table_1x1.png")),
+    tableHorizontalLeft: image(lpc("table_horizontal_left.png")),
+    tableHorizontalMiddle: image(lpc("table_horizontal_middle.png")),
+    tableHorizontalRight: image(lpc("table_horizontal_right.png")),
+    tableVerticalTop: image(lpc("table_vertical_top.png")),
+    tableVerticalMiddle: image(lpc("table_vertical_middle.png")),
+    tableVerticalDown: image(lpc("table_vertical_down.png")),
     benchHorizontalLeft: image(lpc("bench_horizontal_left_1x1.png")),
     benchHorizontalMiddle: image(lpc("bench_horizontal_middle_1x1.png")),
     benchHorizontalRight: image(lpc("bench_horizontal_right_1x1.png")),
@@ -90,10 +99,6 @@ export function createTilesetAssets() {
     cabinet3x1: image(generated("cabinet_3x1.png")),
     cabinet2x1South: image(generated("cabinet_2x1_south.png")),
     cabinet3x1South: image(generated("cabinet_3x1_south.png")),
-    table1x2: image(generated("table_1x2.png")),
-    table2x1: image(generated("table_2x1.png")),
-    table1x3: image(generated("table_1x3.png")),
-    table3x1: image(generated("table_3x1.png")),
     altar1x2: image(generated("altar_1x2.png")),
     altar2x1: image(generated("altar_2x1.png")),
     altar1x3: image(generated("altar_1x3.png")),
