@@ -46,6 +46,7 @@ export interface TilesetPropImages {
   bed2x2: CanvasImageSource;
   table1x1: CanvasImageSource;
   table2x2: CanvasImageSource;
+  indoorTerrain: CanvasImageSource;
   drawers1x1: readonly CanvasImageSource[];
   shelves1x1: readonly CanvasImageSource[];
   statue1x1: CanvasImageSource;
@@ -1463,12 +1464,25 @@ function drawInteriorArchitecture(
   cellSize: number,
   mode: LandscapeMode,
   context: CanvasRenderingContext2D,
+  tilesetProps?: TilesetPropImages,
 ) {
   const style = getInteriorVisualStyle(mode);
   if (!style) return;
   const isArchitecture = (x: number, y: number) => {
     const terrain = grid[y]?.[x]?.terrain;
     return terrain === Terrain.Wall || terrain === Terrain.Door;
+  };
+  const floorTileIndex = mode === "house" || mode === "tavern" || mode === "ship"
+    ? 0 : mode === "crypt" ? 1 : mode === "castle" || mode === "cathedral" ? 2 : 3;
+  const drawFloorTile = (left: number, top: number) => {
+    if (!tilesetProps?.indoorTerrain || mode === "ship-deck") return false;
+    context.save();
+    context.imageSmoothingEnabled = Math.abs(cellSize / 32 - Math.round(cellSize / 32)) > .001;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(tilesetProps.indoorTerrain, floorTileIndex * 32, 0, 32, 32,
+      left, top, cellSize, cellSize);
+    context.restore();
+    return true;
   };
 
   context.save();
@@ -1481,10 +1495,13 @@ function drawInteriorArchitecture(
         const roomTintIndex = mode === "ship-deck"
           ? 0
           : (tile.roomId ?? 0) % style.roomTints.length;
-        context.fillStyle = style.roomTints[roomTintIndex];
-        context.fillRect(left, top, cellSize, cellSize);
+        const tiledFloor = drawFloorTile(left, top);
+        if (!tiledFloor) {
+          context.fillStyle = style.roomTints[roomTintIndex];
+          context.fillRect(left, top, cellSize, cellSize);
+        }
         context.lineWidth = Math.max(.65, cellSize * .018);
-        if (style.floorPattern === "wood") {
+        if (!tiledFloor && style.floorPattern === "wood") {
           context.strokeStyle = "rgba(63, 39, 25, .14)";
           context.beginPath();
           context.moveTo(left, top + cellSize * .5);
@@ -1498,7 +1515,7 @@ function drawInteriorArchitecture(
           context.moveTo(left + cellSize - seamOffset, top + cellSize * .58);
           context.lineTo(left + cellSize - seamOffset, top + cellSize * .92);
           context.stroke();
-        } else if (style.floorPattern === "metal") {
+        } else if (!tiledFloor && style.floorPattern === "metal") {
           context.strokeStyle = "rgba(28, 49, 56, .2)";
           context.strokeRect(
             left + cellSize * .08,
@@ -1518,7 +1535,7 @@ function drawInteriorArchitecture(
             );
             context.fill();
           }
-        } else {
+        } else if (!tiledFloor) {
           context.strokeStyle = "rgba(48, 51, 48, .16)";
           context.strokeRect(left, top, cellSize, cellSize);
           if (terrainVariation(x, y, 1901) > .64) {
@@ -1684,8 +1701,10 @@ function drawInteriorArchitecture(
       const left = x * cellSize;
       const top = y * cellSize;
       const horizontal = tile.doorOrientation === "horizontal";
-      context.fillStyle = getTerrainStyle(Terrain.Ground, mode).color;
-      context.fillRect(left, top, cellSize, cellSize);
+      if (!drawFloorTile(left, top)) {
+        context.fillStyle = getTerrainStyle(Terrain.Ground, mode).color;
+        context.fillRect(left, top, cellSize, cellSize);
+      }
       context.lineWidth = Math.max(.65, cellSize * .018);
       if (style.floorPattern === "wood") {
         context.strokeStyle = "rgba(63, 39, 25, .14)";
@@ -5181,7 +5200,13 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   if (mode === "sewer") drawSewerMasonry(grid, cellSize, context);
   drawGlobalTexture(width, height, context);
   if (isInteriorMode(mode)) {
-    drawInteriorArchitecture(grid, cellSize, mode, context);
+    drawInteriorArchitecture(
+      grid,
+      cellSize,
+      mode,
+      context,
+      options.useTileset ? options.tilesetProps : undefined,
+    );
     if (mode === "ship-deck") {
       drawSailingShipDeckElevation(grid, cellSize, context);
     }
