@@ -288,6 +288,7 @@ function webpRenderOptions(includeProps: boolean) {
     tilesetProps: tilesetPropsReady() ? tilesetProps : undefined,
     customProps: useTileset ? activeCustomProps() : undefined,
     stylizedLighting: stylizedLightingInput.checked,
+    hideInteriorProps: !includeProps,
     cellSize: 64,
   };
 }

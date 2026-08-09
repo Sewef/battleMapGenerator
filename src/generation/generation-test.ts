@@ -15,6 +15,7 @@ import {
 } from "../domain/map";
 import { generateTerrain } from "./generate";
 import { createOwlbearSceneJson } from "../export/owlbear";
+import { collectMapLightSources } from "../rendering/lighting";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -1778,6 +1779,10 @@ const fogScene = JSON.parse(fogExport.json) as {
     type: string;
     layer: string;
     locked: boolean;
+    width?: number;
+    height?: number;
+    shapeType?: string;
+    position?: { x: number; y: number };
     attachedTo?: string;
     disableAttachmentBehavior?: string[];
     metadata?: Record<string, unknown>;
@@ -1814,6 +1819,157 @@ assert(
   doorFogItems.length === housePreset.buildingCount,
   `house fog export: expected ${housePreset.buildingCount} doors`,
 );
+const lightMetadataKey = "rodeo.owlbear.dynamic-fog/light";
+const interiorPropMetadataKey = "com.terra-map-generator/interior-prop";
+const expectedInteriorPropIds = new Set(fogExportGrid.flatMap((row) =>
+  row.flatMap((tile) => tile.interiorPropId === undefined ? [] : [tile.interiorPropId])));
+const exportedInteriorProps = fogItems.filter(({ metadata }) =>
+  metadata?.[interiorPropMetadataKey] !== undefined
+);
+assert(
+  exportedInteriorProps.length === expectedInteriorPropIds.size,
+  `house fog export: expected ${expectedInteriorPropIds.size} interior prop drawings`,
+);
+for (const item of exportedInteriorProps) {
+  assert(
+    item.type === "SHAPE" && item.layer === "PROP" && !item.locked,
+    `house fog export: ${item.name} must be a movable prop drawing`,
+  );
+  assert(
+    typeof item.width === "number" && item.width > 0 &&
+      typeof item.height === "number" && item.height > 0,
+    `house fog export: ${item.name} has an invalid drawing footprint`,
+  );
+  assert(
+    item.shapeType === "RECTANGLE" || item.shapeType === "CIRCLE",
+    `house fog export: ${item.name} has an invalid drawing shape`,
+  );
+  const propMetadata = item.metadata?.[interiorPropMetadataKey] as {
+    footprint?: Array<{ x: number; y: number }>;
+  };
+  assert(propMetadata.footprint?.length,
+    `house fog export: ${item.name} has no source footprint`);
+  assert(item.position && item.width && item.height,
+    `house fog export: ${item.name} has no drawing bounds`);
+  const minimumX = Math.min(...propMetadata.footprint.map(({ x }) => x));
+  const maximumX = Math.max(...propMetadata.footprint.map(({ x }) => x));
+  const minimumY = Math.min(...propMetadata.footprint.map(({ y }) => y));
+  const maximumY = Math.max(...propMetadata.footprint.map(({ y }) => y));
+  const expectedCenterX = (minimumX + (maximumX - minimumX + 1) / 2) * 150;
+  const expectedCenterY = (minimumY + (maximumY - minimumY + 1) / 2) * 150;
+  const circle = item.shapeType === "CIRCLE";
+  const actualCenterX = item.position.x + (circle ? 0 : item.width / 2);
+  const actualCenterY = item.position.y + (circle ? 0 : item.height / 2);
+  assert(
+    Math.abs(actualCenterX - expectedCenterX) < .001 &&
+      Math.abs(actualCenterY - expectedCenterY) < .001,
+    `house fog export: ${item.name} is not centered on its grid footprint`,
+  );
+  const drawingLeft = item.position.x - (circle ? item.width / 2 : 0);
+  const drawingTop = item.position.y - (circle ? item.height / 2 : 0);
+  assert(
+    drawingLeft >= minimumX * 150 &&
+      drawingTop >= minimumY * 150 &&
+      drawingLeft + item.width <= (maximumX + 1) * 150 &&
+      drawingTop + item.height <= (maximumY + 1) * 150,
+    `house fog export: ${item.name} extends outside its grid footprint`,
+  );
+}
+const exportedLightItems = fogItems.filter(({ metadata }) =>
+  metadata?.[lightMetadataKey] !== undefined
+);
+const expectedLightSources = collectMapLightSources(fogExportGrid);
+assert(
+  exportedLightItems.length === expectedLightSources.length,
+  `house fog export: expected ${expectedLightSources.length} light sources`,
+);
+assert(exportedLightItems.length > 0, "house fog export: expected at least one light source");
+for (const item of exportedLightItems) {
+  assert(item.layer === "PROP",
+    `house fog export: ${item.name} light must stay on the prop layer`);
+  if (item.metadata?.[interiorPropMetadataKey] !== undefined) {
+    assert(item.type === "SHAPE",
+      `house fog export: ${item.name} must carry light on its prop drawing`);
+  } else {
+    assert(item.type === "IMAGE",
+      `house fog export: ${item.name} terrain light must use an image marker`);
+  }
+  const light = item.metadata?.[lightMetadataKey] as {
+    attenuationRadius?: number;
+    sourceRadius?: number;
+    falloff?: number;
+    lightType?: string;
+  };
+  assert(
+    typeof light.attenuationRadius === "number" &&
+      typeof light.sourceRadius === "number" &&
+      light.attenuationRadius > light.sourceRadius,
+    `house fog export: ${item.name} has invalid light radii`,
+  );
+  assert(
+    typeof light.falloff === "number" && light.falloff >= 0 && light.falloff <= 1,
+    `house fog export: ${item.name} has invalid falloff`,
+  );
+  assert(light.lightType === "SECONDARY",
+    `house fog export: ${item.name} must be a secondary light`);
+}
+
+const noFogExport = await createOwlbearSceneJson(
+  fogExportGrid,
+  "house-without-fog-export",
+  new Set(),
+  {
+    dynamicFog: false,
+    mapImage: {
+      url: "https://example.com/house.webp",
+      mime: "image/webp",
+      width: fogExportGrid[0].length * 48,
+      height: fogExportGrid.length * 48,
+    },
+  },
+);
+const noFogItems = Object.values((JSON.parse(noFogExport.json) as {
+  items: { shared: Record<string, {
+    type: string;
+    layer: string;
+    metadata?: Record<string, unknown>;
+  }> };
+}).items.shared);
+assert(
+  noFogItems.every((item) => item.metadata?.[lightMetadataKey] === undefined),
+  "house export: lights must only be included with dynamic fog",
+);
+assert(
+  noFogItems.filter((item) => item.metadata?.[interiorPropMetadataKey] !== undefined)
+    .length === expectedInteriorPropIds.size,
+  "house export: interior prop drawings must exist without dynamic fog",
+);
+
+const lightSourceGrid: Grid = [[
+  {
+    terrain: Terrain.Ground,
+    obstacle: Obstacle.None,
+    interiorProp: "hearth",
+    interiorPropId: 1,
+  },
+  {
+    terrain: Terrain.Ground,
+    obstacle: Obstacle.None,
+    interiorProp: "console",
+    interiorPropId: 2,
+  },
+  {
+    terrain: Terrain.Ground,
+    obstacle: Obstacle.None,
+    interiorProp: "altar",
+    interiorPropId: 3,
+  },
+  { terrain: Terrain.Lava, obstacle: Obstacle.None },
+]];
+const lightKinds = new Set(collectMapLightSources(lightSourceGrid).map(({ kind }) => kind));
+for (const kind of ["hearth", "console", "altar", "lava"] as const) {
+  assert(lightKinds.has(kind), `light source extraction: missing ${kind}`);
+}
 
 const propGrid: Grid = [[
   {

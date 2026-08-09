@@ -1,11 +1,17 @@
 import {
+  INTERIOR_PROP_RULES,
   Obstacle,
   Terrain,
   type Grid,
   type ObstacleKind,
   type TerrainKind,
+  type Tile,
 } from "../domain/map";
 import type { UploadedMapImage } from "./map-image";
+import {
+  collectMapLightSources,
+  type MapLightSource,
+} from "../rendering/lighting";
 
 const OWLBEAR_SCENE_DPI = 150;
 const MAP_IMAGE_DPI = 48;
@@ -123,6 +129,28 @@ function collectObstacles(grid: Grid): ExportedObstacle[] {
     }
   }
   return [...obstacles.values()];
+}
+
+function collectInteriorProps(grid: Grid): ExportedInteriorProp[] {
+  const props = new Map<string, ExportedInteriorProp>();
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      const tile = grid[y][x];
+      if (!tile.interiorProp || tile.interiorPropId === undefined) continue;
+      const key = `${tile.interiorProp}:${tile.interiorPropId}`;
+      const prop = props.get(key) ?? {
+        kind: tile.interiorProp,
+        id: tile.interiorPropId,
+        points: [],
+        orientation: tile.propOrientation,
+        facing: tile.propFacing,
+        roomRole: tile.roomRole,
+      };
+      prop.points.push({ x, y });
+      props.set(key, prop);
+    }
+  }
+  return [...props.values()].sort((first, second) => first.id - second.id);
 }
 
 function propPlacements(points: Array<{ x: number; y: number }>): PropPlacement[] {
@@ -403,6 +431,159 @@ function fogDoorItem(
   };
 }
 
+const LIGHT_SOURCE_NAMES: Record<MapLightSource["kind"], string> = {
+  hearth: "Hearth",
+  console: "Console",
+  altar: "Altar candles",
+  lava: "Lava",
+};
+
+type InteriorPropKind = NonNullable<Tile["interiorProp"]>;
+type ExportedInteriorProp = {
+  kind: InteriorPropKind;
+  id: number;
+  points: Array<{ x: number; y: number }>;
+  orientation?: Tile["propOrientation"];
+  facing?: Tile["propFacing"];
+  roomRole?: string;
+};
+
+const INTERIOR_PROP_DRAWING_STYLES: Record<
+  InteriorPropKind,
+  { fillColor: string; strokeColor: string; shapeType: "RECTANGLE" | "CIRCLE" }
+> = {
+  table: { fillColor: "#8b5d3b", strokeColor: "#422b20", shapeType: "RECTANGLE" },
+  chair: { fillColor: "#9b6a47", strokeColor: "#422b20", shapeType: "CIRCLE" },
+  bar: { fillColor: "#70442c", strokeColor: "#35251d", shapeType: "RECTANGLE" },
+  cabinet: { fillColor: "#684b3a", strokeColor: "#30251f", shapeType: "RECTANGLE" },
+  bed: { fillColor: "#cbbd9d", strokeColor: "#58483a", shapeType: "RECTANGLE" },
+  bench: { fillColor: "#956347", strokeColor: "#432b20", shapeType: "RECTANGLE" },
+  altar: { fillColor: "#d3c5a4", strokeColor: "#665b4c", shapeType: "RECTANGLE" },
+  crate: { fillColor: "#7b5836", strokeColor: "#3b2a20", shapeType: "RECTANGLE" },
+  console: { fillColor: "#54727a", strokeColor: "#213b43", shapeType: "RECTANGLE" },
+  tomb: { fillColor: "#858681", strokeColor: "#41433f", shapeType: "RECTANGLE" },
+  hearth: { fillColor: "#a95332", strokeColor: "#472b24", shapeType: "RECTANGLE" },
+};
+
+function dynamicFogLightMetadata(source: MapLightSource) {
+  return {
+    attenuationRadius: Math.round(source.attenuationRadius * OWLBEAR_SCENE_DPI),
+    sourceRadius: Math.max(1, Math.round(source.sourceRadius * OWLBEAR_SCENE_DPI)),
+    falloff: source.falloff,
+    lightType: source.lightType,
+  };
+}
+
+function interiorPropItem(
+  id: string,
+  prop: ExportedInteriorProp,
+  zIndex: number,
+  lightSource?: MapLightSource,
+) {
+  const minimumX = Math.min(...prop.points.map(({ x }) => x));
+  const maximumX = Math.max(...prop.points.map(({ x }) => x));
+  const minimumY = Math.min(...prop.points.map(({ y }) => y));
+  const maximumY = Math.max(...prop.points.map(({ y }) => y));
+  const style = INTERIOR_PROP_DRAWING_STYLES[prop.kind];
+  const widthInCells = maximumX - minimumX + 1;
+  const heightInCells = maximumY - minimumY + 1;
+  const inset = prop.kind === "chair" ? .58 : .8;
+  const width = Math.max(24, widthInCells * OWLBEAR_SCENE_DPI * inset);
+  const height = Math.max(24, heightInCells * OWLBEAR_SCENE_DPI * inset);
+  const footprintWidth = widthInCells * OWLBEAR_SCENE_DPI;
+  const footprintHeight = heightInCells * OWLBEAR_SCENE_DPI;
+  const footprintCenter = {
+    x: (minimumX + widthInCells / 2) * OWLBEAR_SCENE_DPI,
+    y: (minimumY + heightInCells / 2) * OWLBEAR_SCENE_DPI,
+  };
+  const position = style.shapeType === "CIRCLE"
+    ? footprintCenter
+    : {
+      // Rectangle shapes use their top-left corner as `position`.
+      x: minimumX * OWLBEAR_SCENE_DPI + (footprintWidth - width) / 2,
+      y: minimumY * OWLBEAR_SCENE_DPI + (footprintHeight - height) / 2,
+    };
+  const roomSuffix = prop.roomRole ? ` · ${prop.roomRole}` : "";
+  return {
+    id,
+    name: `${INTERIOR_PROP_RULES[prop.kind].label} ${prop.id}${roomSuffix}`,
+    zIndex,
+    locked: false,
+    metadata: {
+      "com.terra-map-generator/export": true,
+      "com.terra-map-generator/interior-prop": {
+        kind: prop.kind,
+        id: prop.id,
+        orientation: prop.orientation,
+        facing: prop.facing,
+        roomRole: prop.roomRole,
+        footprint: prop.points,
+      },
+      ...(lightSource
+        ? { "rodeo.owlbear.dynamic-fog/light": dynamicFogLightMetadata(lightSource) }
+        : {}),
+    },
+    // Owlbear circles are center-positioned, unlike rectangular Drawings.
+    position,
+    rotation: 0,
+    scale: { x: 1, y: 1 },
+    type: "SHAPE",
+    visible: true,
+    layer: "PROP",
+    width,
+    height,
+    shapeType: style.shapeType,
+    style: {
+      fillColor: style.fillColor,
+      fillOpacity: .42,
+      strokeColor: style.strokeColor,
+      strokeOpacity: .9,
+      strokeWidth: 5,
+      strokeDash: [],
+    },
+  };
+}
+
+const LIGHT_MARKER_ASSET = {
+  url: `${PUBLIC_TILESET_ASSET_BASE}rock_1x1.png`,
+  mime: "image/png",
+  width: 32,
+  height: 32,
+} as const;
+
+function lightItem(
+  id: string,
+  source: MapLightSource,
+  sourceIndex: number,
+  zIndex: number,
+) {
+  const marker = imageItem(
+    id,
+    `${LIGHT_SOURCE_NAMES[source.kind]} Light ${sourceIndex + 1}`,
+    "PROP",
+    LIGHT_MARKER_ASSET.url,
+    LIGHT_MARKER_ASSET.mime,
+    LIGHT_MARKER_ASSET.width,
+    LIGHT_MARKER_ASSET.height,
+    {
+      x: source.x * OWLBEAR_SCENE_DPI,
+      y: source.y * OWLBEAR_SCENE_DPI,
+    },
+    PROP_IMAGE_DPI,
+    { x: LIGHT_MARKER_ASSET.width / 2, y: LIGHT_MARKER_ASSET.height / 2 },
+    zIndex,
+    false,
+    { x: .01, y: .01 },
+  );
+  return {
+    ...marker,
+    metadata: {
+      ...marker.metadata,
+      "rodeo.owlbear.dynamic-fog/light": dynamicFogLightMetadata(source),
+    },
+  };
+}
+
 function imageDimensions(url: string): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
     const image = new Image();
@@ -528,9 +709,11 @@ export async function createOwlbearSceneJson(
     owlBearPropAssets(options.rockUrl, "rock", options.useTileset ?? false),
   ]);
   type ExportedSceneItem = (
-    ReturnType<typeof imageItem> |
+      ReturnType<typeof imageItem> |
+      ReturnType<typeof interiorPropItem> |
       ReturnType<typeof fogItem> |
-      ReturnType<typeof fogDoorItem>
+      ReturnType<typeof fogDoorItem> |
+      ReturnType<typeof lightItem>
   ) & {
     attachedTo?: string;
     disableAttachmentBehavior?: Array<
@@ -602,6 +785,22 @@ export async function createOwlbearSceneJson(
       );
       nextPropZIndex += 1;
     });
+  });
+
+  const mapLightSources = collectMapLightSources(grid);
+  const lightSourceByInteriorPropId = new Map(
+    mapLightSources.flatMap((source) => source.interiorPropId === undefined
+      ? [] : [[source.interiorPropId, source] as const]),
+  );
+  collectInteriorProps(grid).forEach((prop) => {
+    const id = crypto.randomUUID();
+    shared[id] = interiorPropItem(
+      id,
+      prop,
+      nextPropZIndex,
+      options.dynamicFog ? lightSourceByInteriorPropId.get(prop.id) : undefined,
+    );
+    nextPropZIndex += 1;
   });
 
   if (options.dynamicFog) {
@@ -693,6 +892,15 @@ export async function createOwlbearSceneJson(
         false,
       );
     }
+
+    mapLightSources
+      .filter((source) => source.interiorPropId === undefined)
+      .filter((source) => source.kind !== "lava" || !hiddenItems.has(Terrain.Lava))
+      .forEach((source, sourceIndex) => {
+        const id = crypto.randomUUID();
+        shared[id] = lightItem(id, source, sourceIndex, nextPropZIndex);
+        nextPropZIndex += 1;
+      });
   }
 
   const width = grid[0].length * OWLBEAR_SCENE_DPI;

@@ -30,6 +30,7 @@ export interface RenderOptions {
   tilesetProps?: TilesetPropImages;
   customProps?: CustomPropImages;
   stylizedLighting?: boolean;
+  hideInteriorProps?: boolean;
 }
 
 export interface TilesetPropImages {
@@ -5071,7 +5072,9 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     if (mode === "ship-deck") {
       drawSailingShipDeckElevation(grid, cellSize, context);
     }
-    drawInteriorProps(grid, cellSize, mode, context);
+    if (!options.hideInteriorProps) {
+      drawInteriorProps(grid, cellSize, mode, context);
+    }
   }
   drawReliefBevels(
     grid,
@@ -5139,18 +5142,6 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     options.useTileset ? options.tilesetImage : undefined,
     context,
   );
-  if (options.stylizedLighting) {
-    drawStylizedLighting(
-      grid,
-      mode,
-      cellSize,
-      width,
-      height,
-      hiddenItems,
-      hiddenOpacity,
-      context,
-    );
-  }
   drawLavaRockEdges(
     grid,
     cellSize,
@@ -5178,26 +5169,6 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   if (mode === "ship-deck") {
     drawSailingShipDeckFeatures(grid, cellSize, context);
   }
-
-  if (showGrid) {
-    context.save();
-    for (let y = 0; y < rows; y += 1) {
-      for (let x = 0; x < columns; x += 1) {
-        const tile = grid[y][x];
-        context.globalAlpha = hiddenItems.has(tile.terrain) ? hiddenOpacity : 1;
-        context.strokeStyle = "rgba(239, 235, 218, 0.14)";
-        context.lineWidth = 1;
-        context.strokeRect(
-          x * cellSize + .5,
-          y * cellSize + .5,
-          cellSize - 1,
-          cellSize - 1,
-        );
-      }
-    }
-    context.restore();
-  }
-  context.globalAlpha = 1;
 
   const treeGroups = new Map<number, Array<{ x: number; y: number }>>();
   const buildingGroups = new Map<number, Array<{ x: number; y: number }>>();
@@ -5356,6 +5327,40 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     } else {
       drawTree(points, cellSize, mode, context);
     }
+  }
+  context.globalAlpha = 1;
+
+  if (options.stylizedLighting) {
+    drawStylizedLighting(
+      grid,
+      mode,
+      cellSize,
+      width,
+      height,
+      hiddenItems,
+      hiddenOpacity,
+      context,
+      !options.hideInteriorProps,
+    );
+  }
+
+  if (showGrid) {
+    context.save();
+    for (let y = 0; y < rows; y += 1) {
+      for (let x = 0; x < columns; x += 1) {
+        const tile = grid[y][x];
+        context.globalAlpha = hiddenItems.has(tile.terrain) ? hiddenOpacity : 1;
+        context.strokeStyle = "rgba(239, 235, 218, 0.14)";
+        context.lineWidth = 1;
+        context.strokeRect(
+          x * cellSize + .5,
+          y * cellSize + .5,
+          cellSize - 1,
+          cellSize - 1,
+        );
+      }
+    }
+    context.restore();
   }
   context.globalAlpha = 1;
 

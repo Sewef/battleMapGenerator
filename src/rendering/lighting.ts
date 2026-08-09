@@ -1,4 +1,5 @@
 import {
+  Obstacle,
   Terrain,
   tileSurface,
   type Grid,
@@ -13,6 +14,163 @@ type LightingProfile = {
   lava: string;
   water: string;
 };
+
+export type MapLightKind = "hearth" | "console" | "altar" | "lava";
+
+export type MapLightSource = {
+  kind: MapLightKind;
+  x: number;
+  y: number;
+  interiorPropId?: number;
+  attenuationRadius: number;
+  sourceRadius: number;
+  falloff: number;
+  lightType: "SECONDARY";
+  color: [number, number, number];
+  intensity: number;
+};
+
+const lightSourceStyles: Record<
+  MapLightKind,
+  Omit<MapLightSource, "kind" | "x" | "y">
+> = {
+  hearth: {
+    attenuationRadius: 4.25,
+    sourceRadius: .22,
+    falloff: .28,
+    lightType: "SECONDARY",
+    color: [255, 161, 78],
+    intensity: .48,
+  },
+  console: {
+    attenuationRadius: 2.4,
+    sourceRadius: .12,
+    falloff: .42,
+    lightType: "SECONDARY",
+    color: [100, 212, 232],
+    intensity: .24,
+  },
+  altar: {
+    attenuationRadius: 2.8,
+    sourceRadius: .14,
+    falloff: .36,
+    lightType: "SECONDARY",
+    color: [255, 204, 128],
+    intensity: .25,
+  },
+  lava: {
+    attenuationRadius: 4.6,
+    sourceRadius: .45,
+    falloff: .24,
+    lightType: "SECONDARY",
+    color: [255, 105, 38],
+    intensity: .34,
+  },
+};
+
+function mapLightSource(
+  kind: MapLightKind,
+  x: number,
+  y: number,
+  interiorPropId?: number,
+): MapLightSource {
+  return { kind, x, y, interiorPropId, ...lightSourceStyles[kind] };
+}
+
+function spreadLavaSources(points: Array<{ x: number; y: number }>) {
+  const sourceCount = Math.min(6, Math.max(1, Math.ceil(points.length / 18)));
+  const centerX = points.reduce((sum, point) => sum + point.x, 0) / points.length;
+  const centerY = points.reduce((sum, point) => sum + point.y, 0) / points.length;
+  const selected = [[...points].sort((first, second) => {
+    const firstDistance = (first.x - centerX) ** 2 + (first.y - centerY) ** 2;
+    const secondDistance = (second.x - centerX) ** 2 + (second.y - centerY) ** 2;
+    return firstDistance - secondDistance || first.y - second.y || first.x - second.x;
+  })[0]];
+  while (selected.length < sourceCount) {
+    const next = [...points].sort((first, second) => {
+      const nearestDistance = (point: { x: number; y: number }) =>
+        Math.min(...selected.map((source) =>
+          (point.x - source.x) ** 2 + (point.y - source.y) ** 2));
+      return nearestDistance(second) - nearestDistance(first) ||
+        first.y - second.y || first.x - second.x;
+    })[0];
+    if (selected.some((point) => point.x === next.x && point.y === next.y)) break;
+    selected.push(next);
+  }
+  return selected;
+}
+
+export function collectMapLightSources(grid: Grid): MapLightSource[] {
+  if (!grid.length || !grid[0].length) return [];
+  const propKinds = new Set<MapLightKind>(["hearth", "console", "altar"]);
+  const propGroups = new Map<
+    string,
+    {
+      kind: MapLightKind;
+      points: Array<{ x: number; y: number }>;
+      facing?: Tile["propFacing"];
+      interiorPropId?: number;
+    }
+  >();
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      const tile = grid[y][x];
+      if (!tile.interiorProp || !propKinds.has(tile.interiorProp as MapLightKind)) continue;
+      const kind = tile.interiorProp as MapLightKind;
+      const key = `${kind}:${tile.interiorPropId ?? `${x},${y}`}`;
+      const group = propGroups.get(key) ?? {
+        kind,
+        points: [],
+        facing: tile.propFacing,
+        interiorPropId: tile.interiorPropId,
+      };
+      group.points.push({ x, y });
+      propGroups.set(key, group);
+    }
+  }
+
+  const sources = [...propGroups.values()].map(({
+    kind, points, facing, interiorPropId,
+  }) => {
+    let x = points.reduce((sum, point) => sum + point.x + .5, 0) / points.length;
+    let y = points.reduce((sum, point) => sum + point.y + .5, 0) / points.length;
+    if (kind === "hearth") {
+      const offset = .28;
+      if (facing === "north") y -= offset;
+      else if (facing === "east") x += offset;
+      else if (facing === "south") y += offset;
+      else if (facing === "west") x -= offset;
+    }
+    return mapLightSource(kind, x, y, interiorPropId);
+  });
+
+  const visited = new Set<string>();
+  const directions = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      const startKey = `${x},${y}`;
+      if (grid[y][x].terrain !== Terrain.Lava || visited.has(startKey)) continue;
+      const component: Array<{ x: number; y: number }> = [];
+      const queue = [{ x, y }];
+      visited.add(startKey);
+      for (let index = 0; index < queue.length; index += 1) {
+        const point = queue[index];
+        component.push(point);
+        for (const [offsetX, offsetY] of directions) {
+          const next = { x: point.x + offsetX, y: point.y + offsetY };
+          const key = `${next.x},${next.y}`;
+          if (visited.has(key) || grid[next.y]?.[next.x]?.terrain !== Terrain.Lava) continue;
+          visited.add(key);
+          queue.push(next);
+        }
+      }
+      for (const point of spreadLavaSources(component)) {
+        sources.push(mapLightSource("lava", point.x + .5, point.y + .5));
+      }
+    }
+  }
+  return sources;
+}
 
 const warmModes = new Set<LandscapeMode>([
   "desert-canyon",
@@ -101,6 +259,13 @@ function tileHeight(tile: Tile) {
     height += .5;
   } else if (tile.terrain === Terrain.Door) {
     height += .2;
+  }
+  if (tile.obstacle === Obstacle.Tree) {
+    height += .52;
+  } else if (tile.obstacle === Obstacle.Rock) {
+    height += .34;
+  } else if (tile.obstacle === Obstacle.Building) {
+    height += .62;
   }
   return height;
 }
@@ -242,6 +407,87 @@ function createLiquidSpecularMap(
   return canvas;
 }
 
+function blocksLocalLight(tile: Tile) {
+  return tile.terrain === Terrain.Wall ||
+    tile.terrain === Terrain.Cliff ||
+    tile.terrain === Terrain.Void ||
+    tile.obstacle === Obstacle.Building;
+}
+
+function reachableLightCells(grid: Grid, source: MapLightSource) {
+  const start = {
+    x: Math.max(0, Math.min(grid[0].length - 1, Math.floor(source.x))),
+    y: Math.max(0, Math.min(grid.length - 1, Math.floor(source.y))),
+  };
+  const queue = [start];
+  const visited = new Set([`${start.x},${start.y}`]);
+  const reached = [start];
+  const directions = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
+  for (let index = 0; index < queue.length; index += 1) {
+    const point = queue[index];
+    for (const [offsetX, offsetY] of directions) {
+      const next = { x: point.x + offsetX, y: point.y + offsetY };
+      const key = `${next.x},${next.y}`;
+      const tile = grid[next.y]?.[next.x];
+      if (!tile || visited.has(key)) continue;
+      const distance = Math.hypot(next.x + .5 - source.x, next.y + .5 - source.y);
+      if (distance > source.attenuationRadius + .75) continue;
+      visited.add(key);
+      reached.push(next);
+      // The near face of an opaque tile receives light, but propagation stops
+      // there so hearths and consoles do not bleed through walls or buildings.
+      if (!blocksLocalLight(tile)) queue.push(next);
+    }
+  }
+  return reached;
+}
+
+function drawLocalLightSources(
+  grid: Grid,
+  cellSize: number,
+  hiddenItems: ReadonlySet<string>,
+  hiddenOpacity: number,
+  context: CanvasRenderingContext2D,
+  includeInteriorPropLights: boolean,
+) {
+  for (const source of collectMapLightSources(grid)) {
+    if (!includeInteriorPropLights && source.interiorPropId !== undefined) continue;
+    const sourceTile = grid[Math.floor(source.y)]?.[Math.floor(source.x)];
+    if (!sourceTile || tileVisibility(sourceTile, hiddenItems, hiddenOpacity) <= 0) continue;
+    const [red, green, blue] = source.color;
+    const centerX = source.x * cellSize;
+    const centerY = source.y * cellSize;
+    const radius = source.attenuationRadius * cellSize;
+    const coreRadius = Math.max(1, source.sourceRadius * cellSize);
+    const gradient = context.createRadialGradient(
+      centerX,
+      centerY,
+      coreRadius,
+      centerX,
+      centerY,
+      radius,
+    );
+    gradient.addColorStop(0, `rgba(${red}, ${green}, ${blue}, ${source.intensity})`);
+    gradient.addColorStop(
+      Math.min(.72, Math.max(.18, source.falloff)),
+      `rgba(${red}, ${green}, ${blue}, ${source.intensity * .58})`,
+    );
+    gradient.addColorStop(1, `rgba(${red}, ${green}, ${blue}, 0)`);
+
+    context.save();
+    context.beginPath();
+    for (const point of reachableLightCells(grid, source)) {
+      if (tileVisibility(grid[point.y][point.x], hiddenItems, hiddenOpacity) <= 0) continue;
+      context.rect(point.x * cellSize, point.y * cellSize, cellSize, cellSize);
+    }
+    context.clip();
+    context.globalCompositeOperation = "screen";
+    context.fillStyle = gradient;
+    context.fillRect(centerX - radius, centerY - radius, radius * 2, radius * 2);
+    context.restore();
+  }
+}
+
 export function drawStylizedLighting(
   grid: Grid,
   mode: LandscapeMode,
@@ -251,6 +497,7 @@ export function drawStylizedLighting(
   hiddenItems: ReadonlySet<string>,
   hiddenOpacity: number,
   context: CanvasRenderingContext2D,
+  includeInteriorPropLights = true,
 ) {
   const profile = lightingProfile(mode);
   const lightMap = createLightMap(
@@ -302,6 +549,15 @@ export function drawStylizedLighting(
   context.drawImage(liquidSpecular, 0, 0, width, height);
   context.filter = "none";
   context.restore();
+
+  drawLocalLightSources(
+    grid,
+    cellSize,
+    hiddenItems,
+    hiddenOpacity,
+    context,
+    includeInteriorPropLights,
+  );
 
   const vignette = context.createRadialGradient(
     width * .5,
