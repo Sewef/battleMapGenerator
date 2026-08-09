@@ -40,6 +40,44 @@ const lpc = (name: string) => `${TILESET_ROOT}/lpc/${name}`;
 
 export type FurnitureFacing = "north" | "east" | "south" | "west";
 
+export interface BedAssetDefinition {
+  folder: "bed_children" | "bed_double" | "bed_single";
+  name: string;
+  width: number;
+  height: number;
+}
+
+const BED_COLORS = ["blue", "brown", "green", "purple", "red", "white", "yellow"] as const;
+const CHILD_BED_COLORS = [...BED_COLORS, "grey"] as const;
+
+export function bedAssetDefinitions(
+  doubleBed: boolean,
+  facing: FurnitureFacing,
+): BedAssetDefinition[] {
+  const horizontal = facing === "east" || facing === "west";
+  if (doubleBed) {
+    return BED_COLORS.flatMap((color) => ["plain", "patterned"].map((style) => ({
+      folder: "bed_double" as const,
+      name: `${color}_${style}_${facing}.png`,
+      width: horizontal ? 96 : 64,
+      height: horizontal ? 64 : 96,
+    })));
+  }
+  const singleBeds = BED_COLORS.map((color) => ({
+    folder: "bed_single" as const,
+    name: `${color}_${facing}.png`,
+    width: horizontal ? 96 : 64,
+    height: horizontal ? 64 : 96,
+  }));
+  const childBeds = CHILD_BED_COLORS.map((color) => ({
+    folder: "bed_children" as const,
+    name: `${color}_${facing}.png`,
+    width: horizontal ? 64 : 32,
+    height: horizontal ? 64 : 96,
+  }));
+  return [...singleBeds, ...childBeds];
+}
+
 const CASUAL_SOFA_COLORS = [
   "black", "blue", "brown", "green", "grey", "red", "white", "yellow",
 ] as const;
@@ -64,6 +102,10 @@ const numberedImages = (
 const casualSofaImages = (facing: FurnitureFacing) =>
   casualSofaAssetNames(facing).map((name) => image(lpc(`casual_sofa/${name}`)));
 
+const bedImages = (doubleBed: boolean, facing: FurnitureFacing) =>
+  bedAssetDefinitions(doubleBed, facing)
+    .map((asset) => image(lpc(`${asset.folder}/${asset.name}`)));
+
 export function collectTilesetImages(value: unknown): HTMLImageElement[] {
   if (value instanceof HTMLImageElement) return [value];
   if (Array.isArray(value)) return value.flatMap(collectTilesetImages);
@@ -86,8 +128,18 @@ export function createTilesetAssets() {
     crate1x1: image(bailey("crate_1x1.png")),
     barrel1x1: image(bailey("barrel_1x1.png")),
     bucket1x1: image(bailey("bucket_1x1.png")),
-    bed1x2: image(bailey("bed_1x2.png")),
-    bed2x2: image(bailey("bed_2x2.png")),
+    bedSingles: {
+      north: bedImages(false, "north"),
+      east: bedImages(false, "east"),
+      south: bedImages(false, "south"),
+      west: bedImages(false, "west"),
+    },
+    bedDoubles: {
+      north: bedImages(true, "north"),
+      east: bedImages(true, "east"),
+      south: bedImages(true, "south"),
+      west: bedImages(true, "west"),
+    },
     table2x2: image(bailey("table_2x2.png")),
     indoorTerrain: image(bailey("terrain_indoor.png")),
     drawers1x1: numberedImages((index) => bailey(`drawer_${index}_1x1.png`), 3),
@@ -120,10 +172,6 @@ export function createTilesetAssets() {
     },
 
     // Generated multi-cell and directional variants.
-    bed1x2South: image(generated("bed_1x2_south.png")),
-    bed2x1: image(generated("bed_2x1.png")),
-    bed2x2South: image(generated("bed_2x2_south.png")),
-    bed2x2Horizontal: image(generated("bed_2x2_horizontal.png")),
     hearth1x2: image(generated("hearth_1x2.png")),
     hearth2x1: image(generated("hearth_2x1.png")),
     hearth1x3: image(generated("hearth_1x3.png")),

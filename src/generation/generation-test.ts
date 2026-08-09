@@ -2037,17 +2037,16 @@ const spriteItems = Object.values((JSON.parse(spriteExport.json) as {
 }).items.shared).filter((item) => item.metadata?.[interiorPropMetadataKey] !== undefined);
 assert(spriteItems.length === 8 && spriteItems.every(({ type }) => type === "IMAGE"),
   "interior tileset export: beds, crates and stools must be movable image props");
-assert(spriteItems.some(({ image }) => image?.url?.endsWith("bed_1x2.png")) &&
-  spriteItems.some(({ image }) => image?.url?.endsWith("bed_2x2.png")) &&
-  spriteItems.some(({ image }) => image?.url?.endsWith("bed_1x2_south.png")) &&
-  spriteItems.some(({ image }) => image?.url?.endsWith("bed_2x2_south.png")) &&
-  spriteItems.some(({ image }) => image?.url?.endsWith("bed_2x1.png")) &&
+assert(spriteItems.filter(({ image }) => image?.url?.includes("/lpc/bed_")).length === 5 &&
+  spriteItems.filter(({ image }) => image?.url?.endsWith("_north.png")).length === 2 &&
+  spriteItems.filter(({ image }) => image?.url?.endsWith("_south.png")).length === 2 &&
+  spriteItems.some(({ image }) => image?.url?.endsWith("_east.png")) &&
   spriteItems.filter(({ image }) => image?.url?.endsWith("crate_1x1.png")).length === 2 &&
   spriteItems.some(({ image }) => image?.url?.endsWith("stool_1x1.png")),
 "interior tileset export: expected sprite assets are missing");
-const eastFacingBed = spriteItems.find(({ image }) => image?.url?.endsWith("bed_2x1.png"));
-assert(eastFacingBed?.rotation === 0 && (eastFacingBed.scale?.x ?? 0) < 0,
-  "interior tileset export: east-facing horizontal bed must use an X mirror");
+const eastFacingBed = spriteItems.find(({ image }) => image?.url?.endsWith("_east.png"));
+assert(eastFacingBed?.rotation === 0 && (eastFacingBed.scale?.x ?? 0) > 0,
+  "interior tileset export: east-facing bed must use its dedicated unmirrored sprite");
 const southFacingBeds = spriteItems.filter(({ image }) => image?.url?.includes("_south.png"));
 assert(southFacingBeds.length === 2 && southFacingBeds.every(({ rotation, scale }) =>
   rotation === 0 && (scale?.x ?? 0) > 0),

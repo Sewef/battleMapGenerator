@@ -43,12 +43,8 @@ export interface TilesetPropImages {
   barrel1x1: CanvasImageSource;
   bucket1x1: CanvasImageSource;
   stool1x1: CanvasImageSource;
-  bed1x2: CanvasImageSource;
-  bed1x2South: CanvasImageSource;
-  bed2x1: CanvasImageSource;
-  bed2x2: CanvasImageSource;
-  bed2x2South: CanvasImageSource;
-  bed2x2Horizontal: CanvasImageSource;
+  bedSingles: Record<"north" | "east" | "south" | "west", readonly CanvasImageSource[]>;
+  bedDoubles: Record<"north" | "east" | "south" | "west", readonly CanvasImageSource[]>;
   hearth1x2: CanvasImageSource;
   hearth2x1: CanvasImageSource;
   hearth1x3: CanvasImageSource;
@@ -2546,7 +2542,6 @@ function drawInteriorProps(
         context.restore();
         continue;
       }
-      const horizontalBed = propFacing === "east" || propFacing === "west";
       const wallPropImage = prop === "cabinet" && (propCells.length === 2 || propCells.length === 3)
         ? propCells.length === 3
           ? vertical ? tilesetProps?.cabinet1x3
@@ -2590,25 +2585,19 @@ function drawInteriorProps(
           continue;
         }
       }
-      const bedImage = prop === "bed" && !spaceshipFurniture
-        ? propCells.length === 4
-          ? horizontalBed ? tilesetProps?.bed2x2Horizontal
-            : propFacing === "south" ? tilesetProps?.bed2x2South : tilesetProps?.bed2x2
-          : horizontalBed ? tilesetProps?.bed2x1
-            : propFacing === "south" ? tilesetProps?.bed1x2South : tilesetProps?.bed1x2
+      const bedImages = prop === "bed" && !spaceshipFurniture
+        ? (propCells.length === 4 ? tilesetProps?.bedDoubles : tilesetProps?.bedSingles)
+          ?.[propFacing ?? "north"]
         : undefined;
+      const bedImage = bedImages?.length ? bedImages[variantIndex % bedImages.length] : undefined;
       if (bedImage) {
-        const source = imageSourceSize(bedImage) ?? {
-          width: propCells.length === 4 ? 64 : 32,
-          height: 64,
-        };
+        const source = imageSourceSize(bedImage) ?? { width: spanWidth, height: spanHeight };
         const scale = cellSize / 32;
         context.save();
-        context.translate(centerX, centerY);
-        if (horizontalBed && propFacing === "east") context.scale(-1, 1);
         context.imageSmoothingEnabled = Math.abs(scale - Math.round(scale)) > .001;
         context.imageSmoothingQuality = "high";
-        context.drawImage(bedImage, -source.width * scale / 2, -source.height * scale / 2,
+        context.drawImage(bedImage, centerX - source.width * scale / 2,
+          propBottom - source.height * scale,
           source.width * scale, source.height * scale);
         context.restore();
         continue;

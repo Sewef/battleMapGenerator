@@ -13,6 +13,7 @@ import {
   type MapLightSource,
 } from "../rendering/lighting";
 import {
+  bedAssetDefinitions,
   casualSofaAssetNames,
   interiorAssetSpriteLayout,
   type FurnitureFacing,
@@ -583,7 +584,6 @@ function interiorPropSpriteItems(
       height: maximumY - minimumY + 1,
     };
   })();
-  const horizontalBed = prop.facing === "east" || prop.facing === "west";
   const upholsteredBench = prop.kind === "bench" &&
     /Living room|Common room|Bedroom|Guest room|cabin/i.test(prop.roomRole ?? "");
   const woodenHorizontalBench = prop.kind === "bench" && !upholsteredBench &&
@@ -599,14 +599,13 @@ function interiorPropSpriteItems(
   const casualSofaNames = upholsteredBench
     ? casualSofaAssetNames((prop.facing ?? "north") as FurnitureFacing)
     : [];
+  const bedAssets = prop.kind === "bed"
+    ? bedAssetDefinitions(prop.points.length === 4,
+      (prop.facing ?? "north") as FurnitureFacing)
+    : [];
+  const bedAsset = bedAssets.length ? bedAssets[variant % bedAssets.length] : undefined;
   const assetName = prop.kind === "bed"
-    ? prop.points.length === 4 && rectangle.width === 2 && rectangle.height === 2
-      ? horizontalBed ? "bed_2x2_horizontal.png"
-        : prop.facing === "south" ? "bed_2x2_south.png" : "bed_2x2.png"
-      : prop.points.length === 2
-        ? horizontalBed ? "bed_2x1.png"
-          : prop.facing === "south" ? "bed_1x2_south.png" : "bed_1x2.png"
-        : undefined
+    ? bedAsset?.name
     : prop.kind === "hearth" && (prop.points.length === 2 || prop.points.length === 3)
       ? rectangle.width > rectangle.height
         ? `hearth_${prop.points.length}x1.png`
@@ -642,8 +641,9 @@ function interiorPropSpriteItems(
                         : undefined;
   if (!assetName) return [];
   const spriteLayout = interiorAssetSpriteLayout(assetName);
-  const lpcAsset = modularWoodenBench || modularTable || upholsteredBench;
-  const assetFolder = upholsteredBench ? "lpc/casual_sofa/"
+  const lpcAsset = modularWoodenBench || modularTable || upholsteredBench || !!bedAsset;
+  const assetFolder = bedAsset ? `lpc/${bedAsset.folder}/`
+    : upholsteredBench ? "lpc/casual_sofa/"
     : lpcAsset ? "lpc/"
     : BAILEY_INTERIOR_ASSETS.has(assetName) ? "bailey/" : "ai/";
   const perCell = prop.kind === "crate" || modularWoodenBench || modularTable;
@@ -656,12 +656,14 @@ function interiorPropSpriteItems(
     (rectangle.height > rectangle.width || prop.facing === "south") ? 1 : 0;
   const benchAsset = prop.kind === "bench";
   const verticalBench = false;
-  const assetWidth = modularWoodenBench || modularTable ? 32
+  const assetWidth = bedAsset ? bedAsset.width
+    : modularWoodenBench || modularTable ? 32
     : upholsteredBench ? prop.facing === "east" || prop.facing === "west" ? 32 : 64
     : benchAsset ? 160 : fittedLength
     ? rectangle.width * 32
     : assetName.includes("2x2") || assetName.includes("2x1") ? 64 : 32;
-  const assetHeight = upholsteredBench
+  const assetHeight = bedAsset ? bedAsset.height
+    : upholsteredBench
     ? prop.facing === "east" || prop.facing === "west" ? 64 : 32
     : benchAsset ? 32 : fittedLength
     ? (rectangle.height + cabinetOverhang) * 32
@@ -674,7 +676,7 @@ function interiorPropSpriteItems(
       spriteLayout.renderHeightCells !== 1
     ? spriteLayout.renderHeightCells * 32 : assetHeight;
   const rotation = verticalBench ? 90 : 0;
-  const flipHorizontal = prop.kind === "bed" && horizontalBed && prop.facing === "east";
+  const flipHorizontal = false;
   const orderedBenchPoints = modularWoodenBench || modularTable
     ? [...prop.points].sort((first, second) => woodenVerticalBench || modularVerticalTable
       ? first.y - second.y : first.x - second.x)
@@ -700,14 +702,18 @@ function interiorPropSpriteItems(
     }))
     : [{
       centerX: rectangle.minimumX + rectangle.width / 2,
-      centerY: prop.kind === "cabinet"
+      centerY: bedAsset
+        ? rectangle.minimumY + rectangle.height - layoutAssetHeight / 64
+        : prop.kind === "cabinet"
         ? rectangle.minimumY + rectangle.height - layoutAssetHeight / 64
         : spriteLayout.anchor === "bottom"
           ? rectangle.minimumY + rectangle.height - layoutAssetHeight / 64
           : rectangle.minimumY + rectangle.height / 2,
-      widthCells: upholsteredBench ? rectangle.width
+      widthCells: bedAsset ? layoutAssetWidth / 32
+        : upholsteredBench ? rectangle.width
         : benchAsset ? prop.points.length : layoutAssetWidth / 32,
-      heightCells: upholsteredBench ? rectangle.height
+      heightCells: bedAsset ? layoutAssetHeight / 32
+        : upholsteredBench ? rectangle.height
         : benchAsset ? 1 : layoutAssetHeight / 32,
       footprint: prop.points,
       assetName,
