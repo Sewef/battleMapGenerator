@@ -4579,36 +4579,27 @@ function drawRockFormation(
     context.fill();
     return;
   }
-  const cells = new Set(points.map(({ x, y }) => `${x},${y}`));
+  const minimumX = Math.min(...points.map(({ x }) => x));
+  const maximumX = Math.max(...points.map(({ x }) => x));
+  const minimumY = Math.min(...points.map(({ y }) => y));
+  const maximumY = Math.max(...points.map(({ y }) => y));
+  const variation = terrainVariation(minimumX, minimumY, 4337);
+  const left = minimumX * size + size * (.07 + variation * .025);
+  const right = (maximumX + 1) * size - size * (.08 + variation * .02);
+  const top = minimumY * size + size * (.06 + variation * .025);
+  const bottom = (maximumY + 1) * size - size * (.08 + variation * .02);
+  const width = right - left;
+  const height = bottom - top;
   const formation = new Path2D();
-
-  for (const { x, y } of points) {
-    const variation = terrainVariation(x, y, 4337);
-    const otherVariation = terrainVariation(x, y, 4363);
-    const left = x * size + (
-      cells.has(`${x - 1},${y}`) ? -size * .035 : size * (.075 + variation * .025)
-    );
-    const right = (x + 1) * size - (
-      cells.has(`${x + 1},${y}`) ? -size * .035 : size * (.07 + otherVariation * .025)
-    );
-    const top = y * size + (
-      cells.has(`${x},${y - 1}`) ? -size * .035 : size * (.07 + otherVariation * .03)
-    );
-    const bottom = (y + 1) * size - (
-      cells.has(`${x},${y + 1}`) ? -size * .035 : size * (.08 + variation * .025)
-    );
-    const width = right - left;
-    const height = bottom - top;
-    formation.moveTo(left, top + height * (.31 + variation * .08));
-    formation.lineTo(left + width * (.25 + otherVariation * .08), top);
-    formation.lineTo(right - width * (.2 + variation * .08), top + height * .02);
-    formation.lineTo(right, top + height * (.28 + otherVariation * .08));
-    formation.lineTo(right - width * .02, bottom - height * (.2 + variation * .05));
-    formation.lineTo(right - width * (.25 + otherVariation * .08), bottom);
-    formation.lineTo(left + width * (.2 + variation * .06), bottom - height * .015);
-    formation.lineTo(left + width * .01, bottom - height * (.24 + otherVariation * .06));
-    formation.closePath();
-  }
+  formation.moveTo(left + width * .02, top + height * .68);
+  formation.lineTo(left + width * .13, top + height * .31);
+  formation.lineTo(left + width * .34, top + height * .07);
+  formation.lineTo(left + width * .65, top + height * .02);
+  formation.lineTo(left + width * .88, top + height * .23);
+  formation.lineTo(left + width * .98, top + height * .61);
+  formation.lineTo(left + width * .78, top + height * .9);
+  formation.lineTo(left + width * .36, top + height * .97);
+  formation.closePath();
 
   context.save();
   applyPropContactShadow(size, context);
@@ -4617,48 +4608,55 @@ function drawRockFormation(
   context.restore();
 
   context.strokeStyle = colors.stroke;
-  context.lineWidth = Math.max(1, size * .035);
+  context.lineWidth = Math.max(1, size * .055);
   context.lineCap = "round";
   context.lineJoin = "round";
-  context.beginPath();
-  for (const { x, y } of points) {
-    const left = x * size;
-    const top = y * size;
-    const right = left + size;
-    const bottom = top + size;
-    if (!cells.has(`${x},${y - 1}`)) {
-      context.moveTo(left + size * .22, top + size * .08);
-      context.lineTo(right - size * .2, top + size * .08);
-    }
-    if (!cells.has(`${x + 1},${y}`)) {
-      context.moveTo(right - size * .08, top + size * .27);
-      context.lineTo(right - size * .08, bottom - size * .22);
-    }
-    if (!cells.has(`${x},${y + 1}`)) {
-      context.moveTo(right - size * .25, bottom - size * .08);
-      context.lineTo(left + size * .2, bottom - size * .08);
-    }
-    if (!cells.has(`${x - 1},${y}`)) {
-      context.moveTo(left + size * .08, bottom - size * .24);
-      context.lineTo(left + size * .08, top + size * .3);
-    }
-  }
-  context.stroke();
+  context.stroke(formation);
 
-  for (const { x, y } of points) {
-    const left = x * size;
-    const top = y * size;
-    const variation = terrainVariation(x, y, 4397);
-    context.fillStyle = colors.highlight;
-    context.globalAlpha = .72 + variation * .18;
-    context.beginPath();
-    context.moveTo(left + size * (.18 + variation * .05), top + size * .36);
-    context.lineTo(left + size * (.56 + variation * .1), top + size * .12);
-    context.lineTo(left + size * (.47 + variation * .08), top + size * .52);
-    context.closePath();
-    context.fill();
-  }
+  context.fillStyle = colors.highlight;
+  context.globalAlpha = .82;
+  context.beginPath();
+  context.moveTo(left + width * .13, top + height * .31);
+  context.lineTo(left + width * .34, top + height * .07);
+  context.lineTo(left + width * .46, top + height * .48);
+  context.lineTo(left + width * .24, top + height * .56);
+  context.closePath();
+  context.fill();
+  context.globalAlpha = .52;
+  context.beginPath();
+  context.moveTo(left + width * .34, top + height * .07);
+  context.lineTo(left + width * .65, top + height * .02);
+  context.lineTo(left + width * .72, top + height * .32);
+  context.lineTo(left + width * .46, top + height * .48);
+  context.closePath();
+  context.fill();
   context.globalAlpha = 1;
+
+  context.strokeStyle = colors.stroke;
+  context.lineWidth = Math.max(.8, size * .025);
+  context.beginPath();
+  context.moveTo(left + width * .46, top + height * .48);
+  context.lineTo(left + width * .57, top + height * .61);
+  context.lineTo(left + width * .52, top + height * .76);
+  context.stroke();
+}
+
+function completeTwoByTwoOrigin(
+  points: Array<{ x: number; y: number }>,
+) {
+  if (points.length !== 4) return undefined;
+  const minimumX = Math.min(...points.map(({ x }) => x));
+  const minimumY = Math.min(...points.map(({ y }) => y));
+  const pointKeys = new Set(points.map(({ x, y }) => `${x},${y}`));
+  const completeBlock = [
+    `${minimumX},${minimumY}`,
+    `${minimumX + 1},${minimumY}`,
+    `${minimumX},${minimumY + 1}`,
+    `${minimumX + 1},${minimumY + 1}`,
+  ];
+  return completeBlock.every((key) => pointKeys.has(key))
+    ? { x: minimumX, y: minimumY }
+    : undefined;
 }
 
 function drawDifficultTerrainDetail(
@@ -5234,9 +5232,34 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     hiddenItems.has(Obstacle.Rock) ? hiddenOpacity : 1;
   const objectStyle = getBiomeObjectStyle(mode);
   for (const points of rockGroups.values()) {
-    // `obstacleId` still makes the generator produce coherent scree clusters,
-    // but every occupied cell is rendered as its own rock. This keeps the new
-    // spatial distribution without visually welding adjacent rocks together.
+    const largeRockOrigin = completeTwoByTwoOrigin(points);
+    if (largeRockOrigin) {
+      if (useImageProps && options.customProps?.rock) {
+        drawCustomProp(
+          options.customProps.rock,
+          largeRockOrigin.x,
+          largeRockOrigin.y,
+          2,
+          cellSize,
+          context,
+        );
+      } else if (useImageProps && options.tilesetProps) {
+        drawTilesetProp(
+          options.tilesetProps.rock2x2,
+          largeRockOrigin.x,
+          largeRockOrigin.y,
+          2,
+          cellSize,
+          context,
+          objectStyle.rock.fill,
+          .58,
+        );
+      } else {
+        drawRockFormation(points, cellSize, mode, context);
+      }
+      continue;
+    }
+    // Non-square scree groups retain the new loose, individual-rock rendering.
     for (const point of points) {
       if (useImageProps && options.customProps?.rock) {
         drawCustomProp(
@@ -5279,41 +5302,31 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   context.globalAlpha = 1;
   context.globalAlpha = hiddenItems.has(Obstacle.Tree) ? hiddenOpacity : 1;
   for (const points of treeGroups.values()) {
-    if (useImageProps && points.length === 4) {
-      const minimumX = Math.min(...points.map(({ x }) => x));
-      const minimumY = Math.min(...points.map(({ y }) => y));
-      const completeBlock = [
-        `${minimumX},${minimumY}`,
-        `${minimumX + 1},${minimumY}`,
-        `${minimumX},${minimumY + 1}`,
-        `${minimumX + 1},${minimumY + 1}`,
-      ];
-      const pointKeys = new Set(points.map(({ x, y }) => `${x},${y}`));
-      if (completeBlock.every((key) => pointKeys.has(key))) {
-        if (useImageProps && options.customProps?.tree) {
-          drawCustomProp(
-            options.customProps.tree,
-            minimumX,
-            minimumY,
-            2,
-            cellSize,
-            context,
-          );
-          continue;
-        }
-        if (options.tilesetProps) {
-          drawTilesetProp(
-            options.tilesetProps.tree2x2,
-            minimumX,
-            minimumY,
-            2,
-            cellSize,
-            context,
-            objectStyle.tree.light,
-            .48,
-          );
-          continue;
-        }
+    const largeTreeOrigin = completeTwoByTwoOrigin(points);
+    if (largeTreeOrigin) {
+      if (useImageProps && options.customProps?.tree) {
+        drawCustomProp(
+          options.customProps.tree,
+          largeTreeOrigin.x,
+          largeTreeOrigin.y,
+          2,
+          cellSize,
+          context,
+        );
+        continue;
+      }
+      if (useImageProps && options.tilesetProps) {
+        drawTilesetProp(
+          options.tilesetProps.tree2x2,
+          largeTreeOrigin.x,
+          largeTreeOrigin.y,
+          2,
+          cellSize,
+          context,
+          objectStyle.tree.light,
+          .48,
+        );
+        continue;
       }
     }
     if (useImageProps && options.customProps?.tree) {
