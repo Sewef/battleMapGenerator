@@ -160,22 +160,32 @@ function assertInterior(grid: Grid, expectedRooms: number, label: string, expect
     }
     assert(reached.size === cells.length, `${label}: prop ${propId} has a broken footprint`);
     if (kind === "bed") {
-      assert(cells.length === 2, `${label}: bed ${propId} must occupy two cells`);
+      assert(cells.length === 2 || cells.length === 4,
+        `${label}: bed ${propId} must occupy a 1x2 or 2x2 footprint`);
       const facing = cells[0].tile.propFacing;
       assert(facing, `${label}: bed ${propId} has no wall-facing direction`);
-      const head = [...cells].sort((a, b) => facing === "north" ? a.y - b.y
-        : facing === "south" ? b.y - a.y : facing === "west" ? a.x - b.x : b.x - a.x)[0];
-      const wallX = head.x + (facing === "west" ? -1 : facing === "east" ? 1 : 0);
-      const wallY = head.y + (facing === "north" ? -1 : facing === "south" ? 1 : 0);
-      assert(grid[wallY]?.[wallX]?.terrain === Terrain.Wall,
-        `${label}: bed ${propId} is not headed against a wall`);
-      const tail = [...cells].sort((a, b) => facing === "north" ? b.y - a.y
-        : facing === "south" ? a.y - b.y : facing === "west" ? b.x - a.x : a.x - b.x)[0];
-      const footX = tail.x + (facing === "west" ? 1 : facing === "east" ? -1 : 0);
-      const footY = tail.y + (facing === "north" ? 1 : facing === "south" ? -1 : 0);
-      assert(grid[footY]?.[footX]?.terrain === Terrain.Ground &&
-        grid[footY][footX].roomId === tail.tile.roomId && !grid[footY][footX].interiorProp,
-      `${label}: bed ${propId} has no usable space at its foot`);
+      const headCoordinate = facing === "north" ? Math.min(...cells.map(({ y }) => y))
+        : facing === "south" ? Math.max(...cells.map(({ y }) => y))
+          : facing === "west" ? Math.min(...cells.map(({ x }) => x))
+            : Math.max(...cells.map(({ x }) => x));
+      const tailCoordinate = facing === "north" ? Math.max(...cells.map(({ y }) => y))
+        : facing === "south" ? Math.min(...cells.map(({ y }) => y))
+          : facing === "west" ? Math.max(...cells.map(({ x }) => x))
+            : Math.min(...cells.map(({ x }) => x));
+      const heads = cells.filter(({ x, y }) =>
+        (facing === "north" || facing === "south" ? y : x) === headCoordinate);
+      const tails = cells.filter(({ x, y }) =>
+        (facing === "north" || facing === "south" ? y : x) === tailCoordinate);
+      assert(heads.every(({ x, y }) => grid[
+        y + (facing === "north" ? -1 : facing === "south" ? 1 : 0)
+      ]?.[x + (facing === "west" ? -1 : facing === "east" ? 1 : 0)]?.terrain === Terrain.Wall),
+      `${label}: bed ${propId} is not headed against a wall`);
+      assert(tails.every((tail) => {
+        const footX = tail.x + (facing === "west" ? 1 : facing === "east" ? -1 : 0);
+        const footY = tail.y + (facing === "north" ? 1 : facing === "south" ? -1 : 0);
+        return grid[footY]?.[footX]?.terrain === Terrain.Ground &&
+          grid[footY][footX].roomId === tail.tile.roomId && !grid[footY][footX].interiorProp;
+      }), `${label}: bed ${propId} has no usable space at its foot`);
     }
     if (kind === "tomb") {
       assert(cells.length === 2, `${label}: tomb ${propId} must occupy two cells`);
@@ -1614,11 +1624,15 @@ for (const mode of ["house", "tavern", "cathedral", "crypt"] as const) {
       }
       const guestBeds = interiorPropGroups(grid, "bed");
       for (const bed of guestBeds.values()) {
-        const vertical = bed.every((cell) => cell.x === bed[0].x);
-        const hugsLongWall = vertical
-          ? [-1, 1].some((offset) => bed.every(({ x, y }) => grid[y]?.[x + offset]?.terrain === Terrain.Wall))
-          : [-1, 1].some((offset) => bed.every(({ x, y }) => grid[y + offset]?.[x]?.terrain === Terrain.Wall));
-        assert(hugsLongWall, `${mode}:${index}: guest bed must hug a side wall`);
+        if (bed.length === 4) {
+          const xs = new Set(bed.map(({ x }) => x));
+          const ys = new Set(bed.map(({ y }) => y));
+          assert(xs.size === 2 && ys.size === 2,
+            `${mode}:${index}: double bed must use a 2x2 footprint`);
+          continue;
+        }
+        assert(bed.length === 2,
+          `${mode}:${index}: guest bed must use a 1x2 or 2x2 footprint`);
       }
     } else if (mode === "cathedral") {
       const altars = interiorPropGroups(grid, "altar", "Nave and transept");
@@ -1954,6 +1968,56 @@ assert(
     .length === expectedInteriorPropIds.size,
   "house export: interior prop drawings must exist without dynamic fog",
 );
+
+const spriteGrid: Grid = Array.from({ length: 3 }, () => Array.from({ length: 4 }, () => ({
+  terrain: Terrain.Ground,
+  obstacle: Obstacle.None,
+})));
+for (const [x, y] of [[0, 0], [0, 1]] as const) {
+  Object.assign(spriteGrid[y][x], {
+    interiorProp: "bed", interiorPropId: 1,
+    propOrientation: "vertical", propFacing: "north",
+  });
+}
+for (const [x, y] of [[2, 0], [3, 0], [2, 1], [3, 1]] as const) {
+  Object.assign(spriteGrid[y][x], {
+    interiorProp: "bed", interiorPropId: 2,
+    propOrientation: "vertical", propFacing: "north",
+  });
+}
+for (const [x, y] of [[0, 2], [1, 2]] as const) {
+  Object.assign(spriteGrid[y][x], {
+    interiorProp: "crate", interiorPropId: 3,
+    propOrientation: "horizontal",
+  });
+}
+Object.assign(spriteGrid[2][2], {
+  interiorProp: "chair", interiorPropId: 4,
+  propOrientation: "horizontal", propFacing: "north",
+});
+const spriteExport = await createOwlbearSceneJson(spriteGrid, "interior-sprite-export", new Set(), {
+  useTileset: true,
+  mapImage: {
+    url: "https://example.com/interior-sprites.webp",
+    mime: "image/webp",
+    width: spriteGrid[0].length * 48,
+    height: spriteGrid.length * 48,
+  },
+});
+const spriteItems = Object.values((JSON.parse(spriteExport.json) as {
+  items: { shared: Record<string, {
+    type: string;
+    image?: { url?: string };
+    metadata?: Record<string, unknown>;
+  }> };
+}).items.shared).filter((item) => item.metadata?.[interiorPropMetadataKey] !== undefined);
+assert(spriteItems.length === 5 && spriteItems.every(({ type }) => type === "IMAGE"),
+  "interior tileset export: beds, crates and stools must be movable image props");
+assert(spriteItems.some(({ image }) => image?.url?.endsWith("bed_1x2.png")) &&
+  spriteItems.some(({ image }) => image?.url?.endsWith("bed_2x2.png")) &&
+  spriteItems.filter(({ image }) => image?.url?.endsWith("crate_1x1.png")).length === 2 &&
+  spriteItems.some(({ image }) => image?.url?.endsWith("stool_1x1.png")),
+"interior tileset export: expected sprite assets are missing");
 
 const lightSourceGrid: Grid = [[
   {

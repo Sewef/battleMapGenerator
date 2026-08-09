@@ -190,19 +190,22 @@ function imageItem(
   zIndex: number,
   locked: boolean,
   scale = { x: 1, y: 1 },
+  rotation = 0,
+  metadata: Record<string, unknown> = {},
 ) {
   return {
     type: "IMAGE",
     id,
     name,
     position,
-    rotation: 0,
+    rotation,
     scale,
     visible: true,
     locked,
     zIndex,
     metadata: {
       "com.terra-map-generator/export": true,
+      ...metadata,
     },
     image: { url, mime, width, height },
     grid: { dpi: gridDpi, offset: gridOffset },
@@ -463,6 +466,12 @@ const INTERIOR_PROP_DRAWING_STYLES: Record<
   console: { fillColor: "#54727a", strokeColor: "#213b43", shapeType: "RECTANGLE" },
   tomb: { fillColor: "#858681", strokeColor: "#41433f", shapeType: "RECTANGLE" },
   hearth: { fillColor: "#a95332", strokeColor: "#472b24", shapeType: "RECTANGLE" },
+  drawers: { fillColor: "#765139", strokeColor: "#39281f", shapeType: "RECTANGLE" },
+  shelf: { fillColor: "#765139", strokeColor: "#39281f", shapeType: "RECTANGLE" },
+  statue: { fillColor: "#8e918b", strokeColor: "#484c49", shapeType: "RECTANGLE" },
+  barrel: { fillColor: "#805238", strokeColor: "#3b281f", shapeType: "CIRCLE" },
+  bucket: { fillColor: "#555d5d", strokeColor: "#252d2d", shapeType: "CIRCLE" },
+  flower_pot: { fillColor: "#9a634b", strokeColor: "#4b3028", shapeType: "CIRCLE" },
 };
 
 function dynamicFogLightMetadata(source: MapLightSource) {
@@ -542,6 +551,101 @@ function interiorPropItem(
       strokeDash: [],
     },
   };
+}
+
+function interiorPropSpriteItems(
+  prop: ExportedInteriorProp,
+  zIndex: number,
+  lightSource?: MapLightSource,
+) {
+  const variant = Math.abs(prop.id);
+  const rectangle = (() => {
+    const minimumX = Math.min(...prop.points.map(({ x }) => x));
+    const maximumX = Math.max(...prop.points.map(({ x }) => x));
+    const minimumY = Math.min(...prop.points.map(({ y }) => y));
+    const maximumY = Math.max(...prop.points.map(({ y }) => y));
+    return {
+      minimumX, minimumY,
+      width: maximumX - minimumX + 1,
+      height: maximumY - minimumY + 1,
+    };
+  })();
+  const assetName = prop.kind === "bed"
+    ? prop.points.length === 4 && rectangle.width === 2 && rectangle.height === 2
+      ? "bed_2x2.png" : prop.points.length === 2 ? "bed_1x2.png" : undefined
+    : prop.kind === "chair" ? "stool_1x1.png"
+      : prop.kind === "crate" ? "crate_1x1.png"
+        : prop.kind === "barrel" ? "barrel_1x1.png"
+          : prop.kind === "bucket" ? "bucket_1x1.png"
+            : prop.kind === "drawers" ? `drawer_${variant % 3 + 1}_1x1.png`
+              : prop.kind === "shelf" ? `shelf_${variant % 2 + 4}_1x1.png`
+                : prop.kind === "statue" ? "statue_1x1.png"
+                  : prop.kind === "flower_pot" ? `flower_pot_${variant % 3 + 1}_1x1.png`
+                    : prop.kind === "table" && prop.points.length === 1 ? "table_1x1.png"
+                      : prop.kind === "table" && prop.points.length === 4 &&
+                        rectangle.width === 2 && rectangle.height === 2 ? "table_2x2.png"
+                        : undefined;
+  if (!assetName) return [];
+  const tall = prop.kind === "drawers" || prop.kind === "shelf" || prop.kind === "statue";
+  const perCell = prop.kind === "crate";
+  const assetWidth = assetName.includes("2x2") ? 64 : 32;
+  const assetHeight = assetName.includes("1x2") || tall ? 64 : assetWidth;
+  const rotation = prop.kind === "bed"
+    ? prop.facing === "east" ? 90 : prop.facing === "south" ? 180
+      : prop.facing === "west" ? 270 : 0
+    : 0;
+  const placements = perCell
+    ? prop.points.map((point) => ({
+      centerX: point.x + .5,
+      centerY: point.y + .5,
+      widthCells: 1,
+      heightCells: 1,
+      footprint: [point],
+    }))
+    : [{
+      centerX: rectangle.minimumX + rectangle.width / 2,
+      centerY: tall ? rectangle.minimumY : rectangle.minimumY + rectangle.height / 2,
+      widthCells: assetWidth / 32,
+      heightCells: assetHeight / 32,
+      footprint: prop.points,
+    }];
+  const roomSuffix = prop.roomRole ? ` · ${prop.roomRole}` : "";
+  return placements.map((placement, index) => imageItem(
+    crypto.randomUUID(),
+    `${INTERIOR_PROP_RULES[prop.kind].label} ${prop.id}${
+      placements.length > 1 ? `.${index + 1}` : ""}${roomSuffix}`,
+    "PROP",
+    `${PUBLIC_TILESET_ASSET_BASE}${assetName}`,
+    "image/png",
+    assetWidth,
+    assetHeight,
+    {
+      x: placement.centerX * OWLBEAR_SCENE_DPI,
+      y: placement.centerY * OWLBEAR_SCENE_DPI,
+    },
+    PROP_IMAGE_DPI,
+    { x: assetWidth / 2, y: assetHeight / 2 },
+    zIndex + index,
+    false,
+    {
+      x: placement.widthCells * PROP_IMAGE_DPI / assetWidth,
+      y: placement.heightCells * PROP_IMAGE_DPI / assetHeight,
+    },
+    rotation,
+    {
+      "com.terra-map-generator/interior-prop": {
+        kind: prop.kind,
+        id: prop.id,
+        orientation: prop.orientation,
+        facing: prop.facing,
+        roomRole: prop.roomRole,
+        footprint: placement.footprint,
+      },
+      ...(lightSource && index === 0
+        ? { "rodeo.owlbear.dynamic-fog/light": dynamicFogLightMetadata(lightSource) }
+        : {}),
+    },
+  ));
 }
 
 const LIGHT_MARKER_ASSET = {
@@ -793,14 +897,18 @@ export async function createOwlbearSceneJson(
       ? [] : [[source.interiorPropId, source] as const]),
   );
   collectInteriorProps(grid).forEach((prop) => {
-    const id = crypto.randomUUID();
-    shared[id] = interiorPropItem(
-      id,
-      prop,
-      nextPropZIndex,
-      options.dynamicFog ? lightSourceByInteriorPropId.get(prop.id) : undefined,
-    );
-    nextPropZIndex += 1;
+    const lightSource = options.dynamicFog
+      ? lightSourceByInteriorPropId.get(prop.id) : undefined;
+    const sprites = options.useTileset
+      ? interiorPropSpriteItems(prop, nextPropZIndex, lightSource) : [];
+    if (sprites.length) {
+      sprites.forEach((item) => { shared[item.id] = item; });
+      nextPropZIndex += sprites.length;
+    } else {
+      const id = crypto.randomUUID();
+      shared[id] = interiorPropItem(id, prop, nextPropZIndex, lightSource);
+      nextPropZIndex += 1;
+    }
   });
 
   if (options.dynamicFog) {

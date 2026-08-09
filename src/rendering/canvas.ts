@@ -38,11 +38,35 @@ export interface TilesetPropImages {
   tree2x2: CanvasImageSource;
   rock1x1: CanvasImageSource;
   rock2x2: CanvasImageSource;
+  crate1x1: CanvasImageSource;
+  barrel1x1: CanvasImageSource;
+  bucket1x1: CanvasImageSource;
+  stool1x1: CanvasImageSource;
+  bed1x2: CanvasImageSource;
+  bed2x2: CanvasImageSource;
+  table1x1: CanvasImageSource;
+  table2x2: CanvasImageSource;
+  drawers1x1: readonly CanvasImageSource[];
+  shelves1x1: readonly CanvasImageSource[];
+  statue1x1: CanvasImageSource;
+  flowerPots1x1: readonly CanvasImageSource[];
 }
 
 export interface CustomPropImages {
   tree?: CanvasImageSource;
   rock?: CanvasImageSource;
+}
+
+function imageSourceSize(image: CanvasImageSource) {
+  const source = image as CanvasImageSource & {
+    naturalWidth?: number; naturalHeight?: number;
+    videoWidth?: number; videoHeight?: number;
+    width?: number; height?: number;
+  };
+  const width = source.naturalWidth ?? source.videoWidth ?? Number(source.width);
+  const height = source.naturalHeight ?? source.videoHeight ?? Number(source.height);
+  return Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0
+    ? { width, height } : undefined;
 }
 
 
@@ -2255,6 +2279,7 @@ function drawInteriorProps(
   cellSize: number,
   mode: LandscapeMode,
   context: CanvasRenderingContext2D,
+  tilesetProps?: TilesetPropImages,
 ) {
   context.save();
   context.lineJoin = "round";
@@ -2288,6 +2313,78 @@ function drawInteriorProps(
       const vertical = propOrientation === "vertical";
       const syntheticSeat = spaceshipFurniture &&
         (prop === "table" || prop === "chair");
+      const variantIndex = Math.abs(interiorPropId ?? x * 31 + y * 17);
+      const tableImage = prop === "table"
+        ? propCells.length === 1 ? tilesetProps?.table1x1
+          : propCells.length === 4 && spanWidth === cellSize * 2 && spanHeight === cellSize * 2
+            ? tilesetProps?.table2x2 : undefined
+        : undefined;
+      if (tableImage) {
+        const source = imageSourceSize(tableImage) ?? {
+          width: propCells.length === 4 ? 64 : 32,
+          height: propCells.length === 4 ? 64 : 32,
+        };
+        const scale = cellSize / 32;
+        context.save();
+        context.imageSmoothingEnabled = Math.abs(scale - Math.round(scale)) > .001;
+        context.imageSmoothingQuality = "high";
+        context.drawImage(tableImage, centerX - source.width * scale / 2,
+          centerY - source.height * scale / 2, source.width * scale, source.height * scale);
+        context.restore();
+        continue;
+      }
+      const bedImage = prop === "bed" && !spaceshipFurniture
+        ? propCells.length === 4 ? tilesetProps?.bed2x2 : tilesetProps?.bed1x2
+        : undefined;
+      if (bedImage) {
+        const source = imageSourceSize(bedImage) ?? {
+          width: propCells.length === 4 ? 64 : 32,
+          height: 64,
+        };
+        const scale = cellSize / 32;
+        const angle = propFacing === "east" ? Math.PI / 2
+          : propFacing === "south" ? Math.PI
+            : propFacing === "west" ? -Math.PI / 2 : 0;
+        context.save();
+        context.translate(centerX, centerY);
+        context.rotate(angle);
+        context.imageSmoothingEnabled = Math.abs(scale - Math.round(scale)) > .001;
+        context.imageSmoothingQuality = "high";
+        context.drawImage(bedImage, -source.width * scale / 2, -source.height * scale / 2,
+          source.width * scale, source.height * scale);
+        context.restore();
+        continue;
+      }
+      const tileImage = prop === "chair" ? tilesetProps?.stool1x1
+        : prop === "crate" ? tilesetProps?.crate1x1
+          : prop === "barrel" ? tilesetProps?.barrel1x1
+            : prop === "bucket" ? tilesetProps?.bucket1x1
+              : prop === "drawers" && tilesetProps?.drawers1x1.length
+                ? tilesetProps.drawers1x1[variantIndex % tilesetProps.drawers1x1.length]
+                : prop === "shelf" && tilesetProps?.shelves1x1.length
+                  ? tilesetProps.shelves1x1[variantIndex % tilesetProps.shelves1x1.length]
+                  : prop === "statue" ? tilesetProps?.statue1x1
+                    : prop === "flower_pot" && tilesetProps?.flowerPots1x1.length
+                      ? tilesetProps.flowerPots1x1[variantIndex % tilesetProps.flowerPots1x1.length]
+                      : undefined;
+      if (tileImage) {
+        const tall = prop === "drawers" || prop === "shelf" || prop === "statue";
+        const source = imageSourceSize(tileImage);
+        const scale = source
+          ? Math.min(cellSize / source.width, cellSize * (tall ? 2 : 1) / source.height)
+          : 1;
+        const drawWidth = source ? source.width * scale : cellSize;
+        const drawHeight = source ? source.height * scale : cellSize * (tall ? 2 : 1);
+        context.save();
+        context.imageSmoothingEnabled = Math.abs(scale - Math.round(scale)) > .001;
+        context.imageSmoothingQuality = "high";
+        for (const cell of propCells) {
+          context.drawImage(tileImage, (cell.x + .5) * cellSize - drawWidth / 2,
+            (cell.y + 1) * cellSize - drawHeight, drawWidth, drawHeight);
+        }
+        context.restore();
+        continue;
+      }
       context.fillStyle = syntheticSeat
         ? "#596b70"
         : prop === "bar"
@@ -2809,6 +2906,22 @@ function drawInteriorProps(
           context.lineTo(crateX - size * .4, crateY + size * .4);
           context.stroke();
         }
+      } else if (prop === "barrel" || prop === "bucket" || prop === "flower_pot") {
+        const size = prop === "bucket" ? cellSize * .52 : cellSize * .68;
+        context.fillStyle = prop === "flower_pot" ? "#9a634b"
+          : prop === "bucket" ? "#555d5d" : "#805238";
+        context.strokeStyle = prop === "bucket" ? "#252d2d" : "#3b281f";
+        context.beginPath();
+        context.ellipse(centerX, centerY, size / 2, size * .43, 0, 0, Math.PI * 2);
+        context.fill();
+        context.stroke();
+      } else if (prop === "drawers" || prop === "shelf" || prop === "statue") {
+        const width = cellSize * .72;
+        const height = cellSize * .82;
+        context.fillStyle = prop === "statue" ? "#8e918b" : "#765139";
+        context.strokeStyle = prop === "statue" ? "#484c49" : "#39281f";
+        context.fillRect(centerX - width / 2, centerY - height / 2, width, height);
+        context.strokeRect(centerX - width / 2, centerY - height / 2, width, height);
       } else if (prop === "console") {
         const width = spanWidth * (vertical ? .5 : .92);
         const height = spanHeight * (vertical ? .92 : .5);
@@ -5073,7 +5186,8 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
       drawSailingShipDeckElevation(grid, cellSize, context);
     }
     if (!options.hideInteriorProps) {
-      drawInteriorProps(grid, cellSize, mode, context);
+      drawInteriorProps(grid, cellSize, mode, context,
+        options.useTileset ? options.tilesetProps : undefined);
     }
   }
   drawReliefBevels(

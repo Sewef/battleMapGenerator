@@ -577,6 +577,60 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
     return false;
   };
 
+  const placeDoubleBed = (room: Room) => {
+    const candidates = wallRuns(room).flatMap((run) => {
+      const inward = facingStep[run.facing];
+      return Array.from({ length: Math.max(0, run.points.length - 1) }, (_, index) => {
+        const heads = run.points.slice(index, index + 2);
+        const tails = heads.map((point) => ({
+          x: point.x + inward.x,
+          y: point.y + inward.y,
+        }));
+        const feet = tails.map((point) => ({
+          x: point.x + inward.x,
+          y: point.y + inward.y,
+        }));
+        return {
+          points: [...heads, ...tails],
+          feet,
+          facing: oppositeFacing[run.facing],
+          score: random(),
+        };
+      });
+    }).filter(({ points, feet }) => available(room, points) &&
+      feet.every((point) => pointInRoom(room, point.x, point.y) && available(room, [point])) &&
+      roomRemainsConnected(room, points))
+      .sort((first, second) => second.score - first.score);
+    for (const candidate of candidates) {
+      if (!place(room, "bed", candidate.points, "vertical", candidate.facing)) continue;
+      candidate.feet.forEach((point) => reserved.add(key(point)));
+      return true;
+    }
+    return false;
+  };
+
+  const placeNorthWallProp = (room: Room, kind: "drawers" | "shelf" | "statue") => {
+    const candidates = shuffled(room.cells, random).filter((point) => {
+      const frontage = { x: point.x, y: point.y + 1 };
+      return grid[point.y - 1]?.[point.x]?.terrain === Terrain.Wall &&
+        pointInRoom(room, frontage.x, frontage.y) && available(room, [point, frontage]) &&
+        roomRemainsConnected(room, [point]);
+    });
+    for (const point of candidates) {
+      if (!place(room, kind, [point], "horizontal", "south")) continue;
+      reserved.add(key({ x: point.x, y: point.y + 1 }));
+      return true;
+    }
+    return false;
+  };
+
+  const placeSmallProp = (room: Room, kind: "barrel" | "bucket" | "flower_pot") => {
+    const candidates = shuffled(room.cells, random).sort((a, b) =>
+      Number(neighbors(b).some(({ x, y }) => grid[y]?.[x]?.terrain === Terrain.Wall)) -
+      Number(neighbors(a).some(({ x, y }) => grid[y]?.[x]?.terrain === Terrain.Wall)));
+    return candidates.some((point) => place(room, kind, [point], "horizontal"));
+  };
+
   const reserveDoorAxis = (room: Room) => {
     const entries = room.cells.flatMap((approach) => neighbors(approach)
       .filter(({ x, y }) => grid[y]?.[x]?.terrain === Terrain.Door)
@@ -1173,6 +1227,7 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
       furnishCathedralNave(room);
     } else if (/Side chapel|Inner sanctum|Reliquary/i.test(role)) {
       furnishAxialChapel(room);
+      if (room.cells.length >= 28) placeNorthWallProp(room, "statue");
     } else if (/Common room/i.test(role)) {
       placeServiceBar(room);
       placeHearth(room);
@@ -1183,6 +1238,7 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
       const squareTables = placeDiningSets(room, squareTarget, 1, "chair", 1);
       placeDiningSets(room,
         Math.max(2, tableCount - boothTables - squareTables), 2, "chair", 1);
+      if (room.cells.length >= 120 && random() < .7) placeSmallProp(room, "barrel");
     } else if (/Great hall/i.test(role)) {
       placeHearth(room);
       placeWallRun(room, "cabinet", 2, 4);
@@ -1210,6 +1266,8 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
       if (!loungeGroups && room.cells.length >= 80) {
         placeDiningSets(room, 1, 1, "chair", 1);
       }
+      if (room.cells.length >= 80) placeNorthWallProp(room, random() < .55 ? "drawers" : "shelf");
+      if (room.cells.length >= 120 && random() < .65) placeSmallProp(room, "flower_pot");
     } else if (/Chart room|Guardroom/i.test(role)) {
       if (!placeDiningSets(room, room.cells.length >= 35 ? 2 : 1, 2, "chair")) {
         placeCompactCouncilTable(room);
@@ -1231,6 +1289,7 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
         placeCompactWorkTable(room);
       }
       placeWallRun(room, "crate", 1, room.cells.length >= 50 ? 3 : 2);
+      if (room.cells.length >= 40) placeSmallProp(room, random() < .58 ? "barrel" : "bucket");
     } else if (/Bedroom|Guest room|cabin|berths|quarters|Barracks|Medbay|Sick bay|Royal chamber|Clergy chamber/i.test(role)) {
       const sharedSleepingRoom = /berths|quarters|Barracks|Medbay|Sick bay/i.test(role);
       const crewBerths = /Crew berths/i.test(role);
@@ -1239,7 +1298,11 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
         ? Math.min(4, Math.max(2, Math.ceil(room.cells.length / 20)))
         : room.cells.length >= 90 ? 3
           : room.cells.length >= 48 || sharedSleepingRoom ? 2 : 1;
-      let bedsPlaced = placeWallDepth(room, "bed", 2, bedCount);
+      const wantsDoubleBed = !sharedSleepingRoom &&
+        /Bedroom|Guest room|cabin|Royal chamber/i.test(role) &&
+        room.cells.length >= 30 && random() < .58;
+      let bedsPlaced = wantsDoubleBed && placeDoubleBed(room) ? 1 : 0;
+      bedsPlaced += placeWallDepth(room, "bed", 2, Math.max(0, bedCount - bedsPlaced));
       while (crewBerths && bedsPlaced < bedCount && placeCompactBed(room, crewAisle)) {
         bedsPlaced += 1;
       }
@@ -1255,6 +1318,10 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
           Math.max(2, Math.min(4, Math.floor(room.cells.length * .36)))) {
         placeWallRun(room, "table", 1, 1);
       }
+      if (room.cells.length >= 64 && random() < .7) {
+        placeNorthWallProp(room, random() < .6 ? "drawers" : "shelf");
+      }
+      if (room.cells.length >= 90 && random() < .45) placeSmallProp(room, "flower_pot");
     } else if (/Burial vault/i.test(role)) {
       furnishBurialVault(room);
     } else if (/Cargo|hold|store|Magazine|Provision|Armory|Treasury/i.test(role)) {
@@ -1263,6 +1330,7 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
       if (!room.cells.some(({ x, y }) => grid[y][x].interiorProp === "crate")) {
         placeCompactWallProp(room, "crate");
       }
+      if (room.cells.length >= 18) placeSmallProp(room, random() < .7 ? "barrel" : "bucket");
     } else if (/Engineering/i.test(role)) {
       if (!placeWallRun(room, "console", 2, 5)) placeCompactWallProp(room, "console", true);
       const workTarget = Math.max(1, Math.min(3, Math.ceil(room.cells.length / 32)));
@@ -1320,6 +1388,7 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
     } else if (/Sacristy|Vestry|Archive|Clergy|Chapter/i.test(role)) {
       placeWallRun(room, "cabinet", 2, 4);
       if (room.cells.length >= 20) placeDiningSets(room, 1, 2, "chair");
+      if (room.cells.length >= 28) placeNorthWallProp(room, "shelf");
     } else if (!/Hallway|passage|spine|gangway/i.test(role)) {
       placeWallRun(room, "cabinet", 1, 3);
       if (room.cells.length >= 28) placeDiningSets(room, 1, 2, "chair");
