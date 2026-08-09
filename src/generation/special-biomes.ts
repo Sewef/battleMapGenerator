@@ -20,26 +20,63 @@ function paintCircle(
 export function generateFarmland(grid: Grid, random: Random, difficultWeight: number) {
   const height = grid.length;
   const width = grid[0].length;
-  const lanesX = [0, Math.floor(width * (.42 + random() * .12)), width - 1];
-  const lanesY = [0, Math.floor(height * (.44 + random() * .12)), height - 1];
-  for (const x of lanesX) {
+  const laneX = Math.floor(width * (.38 + random() * .24));
+  const laneY = Math.floor(height * (.38 + random() * .24));
+  const laneWidth = random() < .3 ? 2 : 1;
+
+  // A through-road and a crossing farm lane guarantee access from every edge
+  // without wrapping every field in an implausible paved border.
+  for (let offset = 0; offset < laneWidth; offset += 1) {
+    const x = Math.min(width - 1, laneX + offset);
     for (let y = 0; y < height; y += 1) {
       setTileSurface(grid[y][x], Terrain.Road);
     }
   }
-  for (const y of lanesY) {
+  for (let offset = 0; offset < laneWidth; offset += 1) {
+    const y = Math.min(height - 1, laneY + offset);
     for (let x = 0; x < width; x += 1) {
       setTileSurface(grid[y][x], Terrain.Road);
     }
   }
-  for (let by = 0; by < lanesY.length - 1; by += 1) {
-    for (let bx = 0; bx < lanesX.length - 1; bx += 1) {
-      if (random() > .35 + difficultWeight * .35) continue;
-      for (let y = lanesY[by] + 2; y < lanesY[by + 1] - 1; y += 1) {
-        for (let x = lanesX[bx] + 2; x < lanesX[bx + 1] - 1; x += 1) {
-          if ((x + y) % 3 !== 0) grid[y][x].terrain = Terrain.Difficult;
+
+  const plots = [
+    { left: 1, right: laneX - 1, top: 1, bottom: laneY - 1 },
+    { left: laneX + laneWidth, right: width - 2, top: 1, bottom: laneY - 1 },
+    { left: 1, right: laneX - 1, top: laneY + laneWidth, bottom: height - 2 },
+    {
+      left: laneX + laneWidth,
+      right: width - 2,
+      top: laneY + laneWidth,
+      bottom: height - 2,
+    },
+  ];
+  for (const plot of plots) {
+    if (plot.right < plot.left || plot.bottom < plot.top) continue;
+    const horizontalRows = random() < .5;
+    const rowWidth = random() < .35 ? 2 : 1;
+    const gap = 1 + Math.floor(random() * 2);
+    const phase = Math.floor(random() * (rowWidth + gap));
+    for (let y = plot.top; y <= plot.bottom; y += 1) {
+      for (let x = plot.left; x <= plot.right; x += 1) {
+        const across = horizontalRows ? y - plot.top : x - plot.left;
+        const inCropRow = (across + phase) % (rowWidth + gap) < rowWidth;
+        if (inCropRow && random() < Math.min(1, .88 + difficultWeight * .12)) {
+          grid[y][x].terrain = Terrain.Difficult;
         }
       }
+    }
+  }
+
+  // Some maps gain a short service track into one field, which breaks up the
+  // otherwise identical four-quadrant silhouette while remaining connected.
+  if (random() < .65) {
+    const toRight = random() < .5;
+    const spurY = Math.max(2, Math.min(height - 3,
+      laneY + (random() < .5 ? -1 : 1) * (3 + Math.floor(random() * 4))));
+    const start = toRight ? laneX : 0;
+    const end = toRight ? Math.min(width - 2, laneX + 5 + Math.floor(random() * 5)) : laneX;
+    for (let x = start; x <= end; x += 1) {
+      setTileSurface(grid[spurY][x], Terrain.Road);
     }
   }
 }
@@ -68,41 +105,73 @@ export function generateSewer(grid: Grid, random: Random, waterWeight: number) {
   const height = grid.length;
   const width = grid[0].length;
   for (const row of grid) for (const tile of row) tile.terrain = Terrain.Cliff;
-  const centerX = Math.floor(width / 2);
-  const centerY = Math.floor(height / 2);
-  const corridorWidth = 2;
-  for (let y = 0; y < height; y += 1) {
-    for (let offset = -corridorWidth; offset <= corridorWidth; offset += 1) {
-      if (grid[y]?.[centerX + offset]) grid[y][centerX + offset].terrain = Terrain.Ground;
+  const horizontal = random() < .5;
+  const crossSize = horizontal ? height : width;
+  const longSize = horizontal ? width : height;
+  const mainAcross = Math.floor(crossSize * (.38 + random() * .24));
+  // Five cells leave a usable walkway on both sides of the open channel and
+  // keep every arm tactically meaningful even when the junction is offset.
+  const corridorRadius = 2;
+  const carve = (along: number, across: number) => {
+    const x = horizontal ? along : across;
+    const y = horizontal ? across : along;
+    if (grid[y]?.[x]) grid[y][x].terrain = Terrain.Ground;
+  };
+  for (let along = 0; along < longSize; along += 1) {
+    for (let offset = -corridorRadius; offset <= corridorRadius; offset += 1) {
+      carve(along, mainAcross + offset);
     }
   }
-  for (let x = 0; x < width; x += 1) {
-    for (let offset = -corridorWidth; offset <= corridorWidth; offset += 1) {
-      if (grid[centerY + offset]?.[x]) grid[centerY + offset][x].terrain = Terrain.Ground;
-    }
-  }
-  for (const [x, y] of [
-    [Math.floor(width * .25), centerY],
-    [Math.floor(width * .75), centerY],
-    [centerX, Math.floor(height * .25)],
-    [centerX, Math.floor(height * .75)],
-  ]) {
-    paintCircle(grid, x, y, 3 + Math.floor(random() * 2), Terrain.Ground);
-  }
-  if (waterWeight > 0) {
-    const horizontal = random() > .5;
-    const thickness = Math.max(1, Math.round(waterWeight));
-    if (horizontal) {
-      for (let x = 0; x < width; x += 1) {
-        for (let offset = 0; offset < thickness; offset += 1) {
-          grid[centerY + offset][x].terrain = Terrain.Water;
-        }
+
+  const crossCount = random() < .45 ? 2 : 1;
+  const crossPositions = crossCount === 2
+    ? [Math.floor(longSize * (.27 + random() * .08)), Math.floor(longSize * (.65 + random() * .08))]
+    : [Math.floor(longSize / 2)];
+  const crossRadius = crossCount === 1 ? 3 : corridorRadius;
+  for (const along of crossPositions) {
+    for (let across = 0; across < crossSize; across += 1) {
+      for (let offset = -crossRadius; offset <= crossRadius; offset += 1) {
+        carve(along + offset, across);
       }
-    } else {
-      for (let y = 0; y < height; y += 1) {
-        for (let offset = 0; offset < thickness; offset += 1) {
-          grid[y][centerX + offset].terrain = Terrain.Water;
-        }
+    }
+    for (const chamberAcross of [
+      Math.floor(crossSize * (.22 + random() * .07)),
+      Math.floor(crossSize * (.71 + random() * .07)),
+    ]) {
+      const chamberX = horizontal ? along : chamberAcross;
+      const chamberY = horizontal ? chamberAcross : along;
+      paintCircle(grid, chamberX, chamberY, 3 + Math.floor(random() * 2), Terrain.Ground);
+    }
+  }
+
+  // A blind maintenance branch and terminal chamber make the network read as
+  // infrastructure rather than four identical cave mouths.
+  const branchAlong = Math.floor(longSize * (.2 + random() * .6));
+  const branchDirection = random() < .5 ? -1 : 1;
+  const branchEnd = Math.max(3, Math.min(crossSize - 4,
+    mainAcross + branchDirection * (5 + Math.floor(random() * crossSize * .2))));
+  const branchStart = Math.min(mainAcross, branchEnd);
+  const branchStop = Math.max(mainAcross, branchEnd);
+  for (let across = branchStart; across <= branchStop; across += 1) {
+    for (let offset = -1; offset <= 1; offset += 1) carve(branchAlong + offset, across);
+  }
+  paintCircle(
+    grid,
+    horizontal ? branchAlong : branchEnd,
+    horizontal ? branchEnd : branchAlong,
+    3,
+    Terrain.Ground,
+  );
+
+  if (waterWeight > 0) {
+    const thickness = Math.max(1, Math.round(waterWeight));
+    const waterOffset = corridorRadius > 1 && random() < .5 ? -1 : 0;
+    for (let along = 0; along < longSize; along += 1) {
+      for (let offset = 0; offset < thickness; offset += 1) {
+        const across = mainAcross + waterOffset + offset;
+        const x = horizontal ? along : across;
+        const y = horizontal ? across : along;
+        if (grid[y]?.[x]) grid[y][x].terrain = Terrain.Water;
       }
     }
   }

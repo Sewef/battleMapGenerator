@@ -111,11 +111,17 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
   const { reserved, doorClearance } = reserveCirculation(grid, rooms);
   let nextPropId = 1;
 
-  const available = (room: Room, points: Point[]) => points.every(({ x, y }) => {
+  const availableWithMask = (
+    room: Room,
+    points: Point[],
+    reservationMask: Set<string>,
+  ) => points.every(({ x, y }) => {
     const tile = grid[y]?.[x];
     return tile?.terrain === Terrain.Ground && tile.roomId === room.id &&
-      !tile.interiorProp && !reserved.has(`${x},${y}`);
+      !tile.interiorProp && !reservationMask.has(`${x},${y}`);
   });
+  const available = (room: Room, points: Point[]) =>
+    availableWithMask(room, points, reserved);
   const roomRemainsConnected = (room: Room, proposed: Point[]) => {
     const blocked = new Set([
       ...room.cells.filter(({ x, y }) => Boolean(grid[y][x].interiorProp)).map(key),
@@ -498,6 +504,78 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
     NonNullable<Tile["propFacing"]>
   > = { north: "south", east: "west", south: "north", west: "east" };
 
+  const placeCompactWallProp = (
+    room: Room,
+    kind: PropKind,
+    needsFrontage = false,
+  ) => {
+    const doorApproaches = room.cells.filter((point) =>
+      neighbors(point).some(({ x, y }) => grid[y]?.[x]?.terrain === Terrain.Door));
+    const candidates = wallRuns(room).flatMap((run) => {
+      const inward = facingStep[run.facing];
+      return run.points.map((point) => {
+        const frontage = { x: point.x + inward.x, y: point.y + inward.y };
+        const frontageFree = pointInRoom(room, frontage.x, frontage.y) &&
+          !grid[frontage.y][frontage.x].interiorProp;
+        const doorDistance = doorApproaches.length
+          ? Math.min(...doorApproaches.map((door) =>
+            Math.abs(point.x - door.x) + Math.abs(point.y - door.y)))
+          : 0;
+        return { run, point, frontage, frontageFree, score: doorDistance * 4 + random() };
+      });
+    }).filter(({ point, frontageFree }) =>
+      (!needsFrontage || frontageFree) &&
+      availableWithMask(room, [point], doorClearance) &&
+      roomRemainsConnected(room, [point]))
+      .sort((first, second) => second.score - first.score);
+    for (const candidate of candidates) {
+      if (!placeComposition(room, [{
+        kind,
+        points: [candidate.point],
+        orientation: candidate.run.orientation,
+        facing: candidate.run.facing,
+      }], doorClearance)) continue;
+      if (candidate.frontageFree) reserved.add(key(candidate.frontage));
+      return true;
+    }
+    return false;
+  };
+
+  const placeCompactBed = (room: Room) => {
+    const doorApproaches = room.cells.filter((point) =>
+      neighbors(point).some(({ x, y }) => grid[y]?.[x]?.terrain === Terrain.Door));
+    const doorwayApproaches = new Set(doorApproaches.map(key));
+    const candidates = wallAnchors(room).map((anchor) => {
+      const points = [anchor.head, {
+        x: anchor.head.x + anchor.dx,
+        y: anchor.head.y + anchor.dy,
+      }];
+      const foot = {
+        x: anchor.head.x + anchor.dx * 2,
+        y: anchor.head.y + anchor.dy * 2,
+      };
+      const doorDistance = doorApproaches.length
+        ? Math.min(...doorApproaches.map((door) =>
+          Math.abs(anchor.head.x - door.x) + Math.abs(anchor.head.y - door.y)))
+        : 0;
+      return { anchor, points, foot, score: doorDistance * 3 + random() };
+    }).filter(({ points, foot }) => pointInRoom(room, foot.x, foot.y) &&
+      !grid[foot.y][foot.x].interiorProp &&
+      availableWithMask(room, points, doorwayApproaches) && roomRemainsConnected(room, points))
+      .sort((first, second) => second.score - first.score);
+    for (const candidate of candidates) {
+      if (!placeComposition(room, [{
+        kind: "bed",
+        points: candidate.points,
+        orientation: candidate.anchor.orientation,
+        facing: candidate.anchor.facing,
+      }], doorwayApproaches)) continue;
+      reserved.add(key(candidate.foot));
+      return true;
+    }
+    return false;
+  };
+
   const placeHearth = (room: Room) => {
     const doors = room.cells.filter((point) =>
       neighbors(point).some(({ x, y }) => grid[y]?.[x]?.terrain === Terrain.Door));
@@ -654,6 +732,46 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
     return false;
   };
 
+  const placeCompactCouncilTable = (room: Room) => {
+    if (placeWritingNook(room) || placeWorkTables(room, 1, 1)) return true;
+
+    // Tiny council rooms often have almost their whole floor reserved by the
+    // route to their door. Keep the actual doorway approach clear, but allow a
+    // compact table (and a chair when possible) on a diagonal landing cell.
+    const doorwayApproaches = new Set(room.cells.filter((point) =>
+      neighbors(point).some(({ x, y }) => grid[y]?.[x]?.terrain === Terrain.Door))
+      .map(key));
+    const doors = room.cells.filter((point) => doorwayApproaches.has(key(point)));
+    const candidates = shuffled(room.cells, random).sort((first, second) => {
+      const distance = (point: Point) => doors.length
+        ? Math.min(...doors.map((door) =>
+          Math.abs(point.x - door.x) + Math.abs(point.y - door.y)))
+        : 0;
+      return distance(second) - distance(first);
+    });
+    for (const table of candidates) {
+      for (const chair of neighbors(table)) {
+        if (!pointInRoom(room, chair.x, chair.y)) continue;
+        const dx = table.x - chair.x;
+        const dy = table.y - chair.y;
+        const facing: NonNullable<Tile["propFacing"]> = dx > 0 ? "east"
+          : dx < 0 ? "west" : dy > 0 ? "south" : "north";
+        const orientation: Orientation = dx === 0 ? "horizontal" : "vertical";
+        if (placeComposition(room, [
+          { kind: "table", points: [table], orientation },
+          { kind: "chair", points: [chair], orientation, facing },
+        ], doorwayApproaches)) return true;
+      }
+      if (placeComposition(room, [{
+        kind: "table",
+        points: [table],
+        orientation: room.right - room.left >= room.bottom - room.top
+          ? "horizontal" : "vertical",
+      }], doorwayApproaches)) return true;
+    }
+    return false;
+  };
+
   const placeDiningSets = (
     room: Room,
     count: number,
@@ -793,32 +911,41 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
     ].map((offsets) => offsets.map((offset) => horizontalAxis
       ? { x: altarDepth, y: axis + offset }
       : { x: axis + offset, y: altarDepth }));
-    for (const altar of altarVariants) {
-      if (!available(room, altar)) continue;
-      const rowPlans: PlannedProp[][] = [];
-      const axialLength = Math.abs(altarDepth - entranceDepth);
-      for (let distance = 3; distance <= axialLength - 1 && rowPlans.length < 2; distance += 2) {
-        const rowDepth = altarDepth - (horizontalAxis ? dx : dy) * distance;
-        const first = [-2, -1].map((offset) => horizontalAxis
-          ? { x: rowDepth, y: axis + offset }
-          : { x: axis + offset, y: rowDepth });
-        const second = [1, 2].map((offset) => horizontalAxis
-          ? { x: rowDepth, y: axis + offset }
-          : { x: axis + offset, y: rowDepth });
-        const pair = [first, second].filter((points) => available(room, points)).map((points): PlannedProp => ({
-          kind: "bench", points, orientation, facing: benchFacing,
-        }));
-        if (pair.length) rowPlans.push(pair);
+    const tryLayout = (reservationMask: Set<string>) => {
+      for (const altar of altarVariants) {
+        if (!availableWithMask(room, altar, reservationMask)) continue;
+        const rowPlans: PlannedProp[][] = [];
+        const axialLength = Math.abs(altarDepth - entranceDepth);
+        for (let distance = 3; distance <= axialLength - 1 && rowPlans.length < 2; distance += 2) {
+          const rowDepth = altarDepth - (horizontalAxis ? dx : dy) * distance;
+          const first = [-2, -1].map((offset) => horizontalAxis
+            ? { x: rowDepth, y: axis + offset }
+            : { x: axis + offset, y: rowDepth });
+          const second = [1, 2].map((offset) => horizontalAxis
+            ? { x: rowDepth, y: axis + offset }
+            : { x: axis + offset, y: rowDepth });
+          const pair = [first, second]
+            .filter((points) => availableWithMask(room, points, reservationMask))
+            .map((points): PlannedProp => ({
+              kind: "bench", points, orientation, facing: benchFacing,
+            }));
+          if (pair.length) rowPlans.push(pair);
+        }
+        for (let usedRows = rowPlans.length; usedRows >= 1; usedRows -= 1) {
+          const benches = rowPlans.slice(0, usedRows).flat();
+          if (placeComposition(room, [
+            { kind: "altar", points: altar, orientation, facing: altarFacing },
+            ...benches,
+          ], reservationMask)) return true;
+        }
+        if (placeComposition(room, [{
+          kind: "altar", points: altar, orientation, facing: altarFacing,
+        }], reservationMask)) return true;
       }
-      for (let usedRows = rowPlans.length; usedRows >= 1; usedRows -= 1) {
-        const benches = rowPlans.slice(0, usedRows).flat();
-        if (placeComposition(room, [
-          { kind: "altar", points: altar, orientation, facing: altarFacing },
-          ...benches,
-        ])) return;
-      }
-      if (place(room, "altar", altar, orientation, altarFacing)) return;
-    }
+      return false;
+    };
+    if (tryLayout(reserved) || tryLayout(doorClearance)) return;
+    placeWallRun(room, "altar", 2, 3);
   };
 
   const furnishCathedralNave = (room: Room) => {
@@ -873,9 +1000,21 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
       placeDiningSets(room,
         Math.max(2, tableCount - boothTables - squareTables), 2, "chair", 1);
     } else if (/Great hall/i.test(role)) {
-      placeDiningSets(room, Math.max(1, Math.min(3, Math.floor(room.cells.length / 32))), 3, "bench");
+      placeHearth(room);
+      placeWallRun(room, "cabinet", 2, 4);
+      const tableTarget = Math.max(3, Math.min(7, Math.round(room.cells.length / 55)));
+      const longTables = placeDiningSets(room, tableTarget, 3, "bench", 1);
+      if (longTables < tableTarget) {
+        placeDiningSets(room, tableTarget - longTables, 2, "bench");
+      }
     } else if (/Council room/i.test(role)) {
-      placeDiningSets(room, 1, 3, "chair");
+      const tableLength = room.cells.length >= 36 ? 3 : 2;
+      if (!placeDiningSets(room, 1, tableLength, "chair") &&
+        !placeDiningSets(room, 1, 1, "chair")) {
+        placeCompactCouncilTable(room);
+      }
+      placeWallRun(room, "cabinet", 1, Math.min(3, Math.max(1,
+        Math.ceil(room.cells.length / 20))));
     } else if (/Living room/i.test(role)) {
       placeHearth(room);
       const loungeGroups = placeWallSeatingGroups(room, room.cells.length >= 110 ? 2 : 1);
@@ -888,10 +1027,12 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
         placeDiningSets(room, 1, 1, "chair", 1);
       }
     } else if (/Chart room|Guardroom/i.test(role)) {
-      placeDiningSets(room, room.cells.length >= 35 ? 2 : 1, 2, "chair");
+      if (!placeDiningSets(room, room.cells.length >= 35 ? 2 : 1, 2, "chair")) {
+        placeCompactCouncilTable(room);
+      }
       placeWallRun(room, "cabinet", 1, 3);
     } else if (/Kitchen|Galley/i.test(role)) {
-      placeHearth(room);
+      if (!placeHearth(room)) placeCompactWallProp(room, "hearth", true);
       const cabinetTarget = room.cells.length < 24
         ? 2
         : Math.max(3, Math.min(9, Math.ceil(room.cells.length * .08)));
@@ -907,7 +1048,8 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
       const sharedSleepingRoom = /berths|quarters|Barracks|Medbay|Sick bay/i.test(role);
       const bedCount = room.cells.length >= 90 ? 3
         : room.cells.length >= 48 || sharedSleepingRoom ? 2 : 1;
-      placeWallDepth(room, "bed", 2, bedCount);
+      const bedsPlaced = placeWallDepth(room, "bed", 2, bedCount);
+      if (!bedsPlaced) placeCompactBed(room);
       placeWallRun(room, "cabinet", 1,
         Math.max(2, Math.min(4, Math.ceil(room.cells.length / 32))));
       if (room.cells.length >= 80) placeWallRun(room, "cabinet", 1, 3);
@@ -925,10 +1067,29 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
     } else if (/Cargo|hold|store|Magazine|Provision|Armory|Treasury/i.test(role)) {
       placeWallRun(room, "crate", 2, 5);
       placeScattered(room, "crate", Math.max(1, Math.min(4, Math.floor(room.cells.length / 14))));
-    } else if (/Cockpit|Engineering|Laboratory|Life support|Utility|Observation|Airlock/i.test(role)) {
-      placeWallRun(room, "console", 2, 5);
+      if (!room.cells.some(({ x, y }) => grid[y][x].interiorProp === "crate")) {
+        placeCompactWallProp(room, "crate");
+      }
+    } else if (/Cockpit|Engineering|Laboratory|Life support|Utility|Observation|Airlock|Escape pods/i.test(role)) {
+      if (!placeWallRun(room, "console", 2, 5)) {
+        placeCompactWallProp(room, "console", true);
+      }
       if (/Cockpit|Laboratory/i.test(role)) placeDiningSets(room, 1, 1, "chair");
-    } else if (/Sacristy|Vestry|Archive|Clergy|Chapter|Workshop/i.test(role)) {
+    } else if (/Choir room/i.test(role)) {
+      const benchTarget = Math.max(1, Math.min(3, Math.floor(room.cells.length / 12)));
+      if (!placeWallAlignedObjects(room, "bench", 2, benchTarget)) {
+        placeWallRun(room, "bench", 2, Math.min(4, Math.max(2,
+          Math.floor(room.cells.length / 3))));
+      }
+      placeWallRun(room, "cabinet", 1, 3);
+    } else if (/Workshop/i.test(role)) {
+      if (!placeWorkTables(room, 1, 2) && !placeWorkTables(room, 1, 1)) {
+        placeCompactCouncilTable(room);
+      }
+      if (!placeWallRun(room, "cabinet", 1, 4)) {
+        placeCompactWallProp(room, "cabinet", true);
+      }
+    } else if (/Sacristy|Vestry|Archive|Clergy|Chapter/i.test(role)) {
       placeWallRun(room, "cabinet", 2, 4);
       if (room.cells.length >= 20) placeDiningSets(room, 1, 2, "chair");
     } else if (!/Hallway|passage|spine|gangway/i.test(role)) {

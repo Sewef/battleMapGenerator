@@ -5,11 +5,13 @@ import {
   INTERIOR_ROOM_LIMITS,
   INTERIOR_MINIMUM_DIMENSIONS,
   Obstacle,
+  TERRAIN_RULES,
   Terrain,
   isInteriorMode,
   tileSurface,
   type Grid,
   type InteriorMode,
+  type LandscapeMode,
 } from "../domain/map";
 import { generateTerrain } from "./generate";
 import { createOwlbearSceneJson } from "../export/owlbear";
@@ -868,6 +870,202 @@ const requiredInteriorProps: Partial<Record<InteriorMode, Array<NonNullable<Grid
   spaceship: ["console", "bed", "crate"],
 };
 
+type ExteriorEdge = "north" | "east" | "south" | "west";
+
+function exteriorComponents(
+  grid: Grid,
+  includes: (tile: Grid[number][number], point: GridPoint) => boolean,
+) {
+  const visited = new Set<string>();
+  const components: GridPoint[][] = [];
+  const key = ({ x, y }: GridPoint) => `${x},${y}`;
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      const start = { x, y };
+      if (visited.has(key(start)) || !includes(grid[y][x], start)) continue;
+      const component = [start];
+      const queue = [start];
+      visited.add(key(start));
+      for (let index = 0; index < queue.length; index += 1) {
+        for (const next of adjacentPoints(queue[index])) {
+          const nextTile = grid[next.y]?.[next.x];
+          if (!nextTile || visited.has(key(next)) || !includes(nextTile, next)) continue;
+          visited.add(key(next));
+          queue.push(next);
+          component.push(next);
+        }
+      }
+      components.push(component);
+    }
+  }
+  return components.sort((a, b) => b.length - a.length);
+}
+
+function exteriorEdges(grid: Grid, points: GridPoint[]) {
+  const edges = new Set<ExteriorEdge>();
+  for (const { x, y } of points) {
+    if (y === 0) edges.add("north");
+    if (x === grid[0].length - 1) edges.add("east");
+    if (y === grid.length - 1) edges.add("south");
+    if (x === 0) edges.add("west");
+  }
+  return edges;
+}
+
+function touchesOppositeEdges(edges: ReadonlySet<ExteriorEdge>) {
+  return (edges.has("north") && edges.has("south")) ||
+    (edges.has("east") && edges.has("west"));
+}
+
+function assertExteriorSemantics(
+  grid: Grid,
+  mode: string,
+  requestedBuildings: number,
+  label: string,
+) {
+  const walkableComponents = exteriorComponents(grid, (tile) =>
+    tile.obstacle === Obstacle.None &&
+    (tileSurface(tile) === Terrain.Bridge ||
+      TERRAIN_RULES[tile.terrain].movement !== "blocked"));
+  assert(walkableComponents.length === 1,
+    `${label}: walkable terrain forms ${walkableComponents.length} disconnected areas`);
+
+  if (requestedBuildings > 0) {
+    const buildingIds = new Set<number>();
+    for (const row of grid) {
+      for (const tile of row) {
+        if (tile.obstacle !== Obstacle.Building) continue;
+        assert(tile.obstacleId !== undefined, `${label}: building without an object id`);
+        buildingIds.add(tile.obstacleId);
+      }
+    }
+    assert(buildingIds.size >= requestedBuildings,
+      `${label}: expected at least ${requestedBuildings} buildings, got ${buildingIds.size}`);
+  }
+
+  const routeComponents = exteriorComponents(grid, (tile) => tileSurface(tile) !== undefined);
+  if (mode === "city") {
+    assert(routeComponents.length === 1,
+      `${label}: city streets form ${routeComponents.length} disconnected networks`);
+  }
+
+  if (mode === "countryside" || mode === "desert-canyon" || mode === "frozen-lake") {
+    const water = exteriorComponents(grid, (tile) => tile.terrain === Terrain.Water).flat();
+    assert(water.length > 0, `${label}: missing interior water feature`);
+    assert(water.every(({ x, y }) =>
+      x > 0 && y > 0 && x < grid[0].length - 1 && y < grid.length - 1),
+    `${label}: pond, oasis, or open water leaks off the map edge`);
+  }
+
+  if (mode === "archipelago") {
+    const ocean = exteriorComponents(grid, (tile) => tile.terrain === Terrain.Water);
+    assert(ocean.length === 1,
+      `${label}: archipelago ocean forms ${ocean.length} disconnected basins`);
+    const islands = exteriorComponents(grid, (tile) => tile.terrain !== Terrain.Water);
+    assert(islands.length === 4,
+      `${label}: expected four separated islands, got ${islands.length}`);
+  }
+
+  if (mode === "farmland") {
+    assert(routeComponents.length === 1,
+      `${label}: farm lanes form ${routeComponents.length} disconnected networks`);
+    const routeEdges = exteriorEdges(grid, routeComponents[0] ?? []);
+    assert(routeEdges.size === 4,
+      `${label}: farm lanes must serve all four map edges`);
+    const width = grid[0].length;
+    const height = grid.length;
+    const interiorRoutes = exteriorComponents(grid, (tile, { x, y }) =>
+      tileSurface(tile) !== undefined && x > 0 && y > 0 && x < width - 1 && y < height - 1);
+    const dividesBothAxes = interiorRoutes.some((component) => {
+      const edges = new Set<string>();
+      for (const { x, y } of component) {
+        if (x === 1) edges.add("west");
+        if (x === width - 2) edges.add("east");
+        if (y === 1) edges.add("north");
+        if (y === height - 2) edges.add("south");
+      }
+      return edges.size === 4;
+    });
+    assert(dividesBothAxes,
+      `${label}: farm lanes do not divide the map along both axes`);
+    const significantFields = exteriorComponents(grid, (tile) => tileSurface(tile) === undefined)
+      .filter((component) => component.length >= grid.length * width * .03);
+    assert(significantFields.length >= 4,
+      `${label}: farm layout has only ${significantFields.length} meaningful fields`);
+    const crops = grid.flat().filter((tile) => tile.terrain === Terrain.Difficult).length;
+    assert(crops >= grid.length * width * .05,
+      `${label}: farmland has too little cultivated ground`);
+  }
+
+  if (mode === "sewer") {
+    const water = exteriorComponents(grid, (tile) => tile.terrain === Terrain.Water);
+    assert(water.length === 1, `${label}: sewer channel is not continuous`);
+    const waterEdges = exteriorEdges(grid, water[0]);
+    assert(waterEdges.size === 2 && touchesOppositeEdges(waterEdges),
+      `${label}: sewer channel must cross between one pair of opposite edges`);
+    const open = exteriorComponents(grid, (tile) =>
+      TERRAIN_RULES[tile.terrain].movement !== "blocked");
+    assert(open.length === 1 && exteriorEdges(grid, open[0]).size === 4,
+      `${label}: sewer tunnels must form one four-way network`);
+    const total = grid.length * grid[0].length;
+    const cliffCount = grid.flat().filter((tile) => tile.terrain === Terrain.Cliff).length;
+    assert(cliffCount >= total * .35 && cliffCount <= total * .8,
+      `${label}: sewer wall coverage ${cliffCount}/${total} is degenerate`);
+    const floorByQuadrant = [0, 0, 0, 0];
+    grid.forEach((row, y) => row.forEach((tile, x) => {
+      if (tile.terrain !== Terrain.Ground && tile.terrain !== Terrain.Difficult) return;
+      const quadrant = (x >= grid[0].length / 2 ? 1 : 0) +
+        (y >= grid.length / 2 ? 2 : 0);
+      floorByQuadrant[quadrant] += 1;
+    }));
+    assert(floorByQuadrant.every((count) => count >= total * .04),
+      `${label}: sewer chambers do not occupy every quadrant`);
+  }
+}
+
+function assertCompactVesselFurniture(
+  grid: Grid,
+  mode: "ship" | "spaceship",
+  label: string,
+) {
+  const rooms = new Map<number, {
+    role: string;
+    cells: GridPoint[];
+  }>();
+  grid.forEach((row, y) => row.forEach((tile, x) => {
+    if (tile.terrain !== Terrain.Ground || tile.roomId === undefined || tile.roomId === 0) return;
+    const room = rooms.get(tile.roomId) ?? {
+      role: tile.roomRole ?? "",
+      cells: [],
+    };
+    room.cells.push({ x, y });
+    rooms.set(tile.roomId, room);
+  }));
+  const expectedProp = (role: string) => {
+    if (mode === "ship") {
+      if (/Galley/i.test(role)) return "hearth";
+      if (/Captain|berths|Sick bay|Guest cabin/i.test(role)) return "bed";
+      if (/Cargo hold|store|Magazine|Provision hold/i.test(role)) return "crate";
+      if (/Chart room|Workshop/i.test(role)) return "table";
+    } else {
+      if (/Crew quarters|Medbay/i.test(role)) return "bed";
+      if (/Cargo bay|Armory/i.test(role)) return "crate";
+      if (/Cockpit|Engineering|Laboratory|Life support|Observation|Utility|Escape pods/i.test(role)) {
+        return "console";
+      }
+    }
+    return undefined;
+  };
+  for (const room of rooms.values()) {
+    assert(room.cells.length >= 6,
+      `${label}: ${room.role} is only ${room.cells.length} cells`);
+    const required = expectedProp(room.role);
+    if (!required) continue;
+    assert(room.cells.some(({ x, y }) => grid[y][x].interiorProp === required),
+      `${label}: ${room.role} needs a ${required}`);
+  }
+}
+
 let generated = 0;
 for (const preset of PRESETS) {
   for (let index = 0; index < 3; index += 1) {
@@ -886,6 +1084,68 @@ for (const preset of PRESETS) {
         `${preset.id}: generation is not deterministic`,
       );
     }
+    generated += 1;
+  }
+}
+
+const exteriorSemanticPresets = PRESETS.filter(({ mode }) => !isInteriorMode(mode));
+for (const preset of exteriorSemanticPresets) {
+  for (let index = 0; index < 32; index += 1) {
+    const label = `${preset.id}:exterior-semantics:${index}`;
+    const grid = generateTerrain({ ...preset, seed: label });
+    assertGrid(grid, label);
+    assertExteriorSemantics(grid, preset.mode, preset.buildingCount, label);
+    generated += 1;
+  }
+}
+
+const compactExteriorRegressionSeeds: Partial<Record<LandscapeMode, string>> = {
+  archipelago: "arch-audit:16x12:0",
+  "frozen-lake": "water-compact:frozen-lake:66",
+  "ancient-ruins": "stress:ancient-ruins:16x12:0",
+  city: "stress:city:16x12:0",
+};
+for (const preset of PRESETS.filter(({ mode }) =>
+  mode === "archipelago" || mode === "frozen-lake" ||
+  mode === "ancient-ruins" || mode === "city"
+)) {
+  for (let index = 0; index < 32; index += 1) {
+    const label = `${preset.id}:compact-exterior:${index}`;
+    const seed = index === 0
+      ? compactExteriorRegressionSeeds[preset.mode] ?? label
+      : label;
+    const grid = generateTerrain({
+      ...preset,
+      width: 16,
+      height: 12,
+      seed,
+    });
+    assertGrid(grid, label);
+    assertExteriorSemantics(grid, preset.mode, preset.buildingCount, label);
+    generated += 1;
+  }
+}
+
+for (const [mode, seeds] of [
+  ["archipelago", [
+    "arch-audit:16x12:258",
+    "arch-audit:16x12:285",
+    "arch-audit:16x12:290",
+  ]],
+  ["city", [
+    "stress:city:16x12:19",
+    "stress:city:16x12:91",
+    "stress:city:16x12:97",
+    "stress:city:16x12:109",
+  ]],
+] as const) {
+  const preset = PRESETS.find((candidate) => candidate.mode === mode);
+  assert(preset, `missing ${mode} preset`);
+  for (const seed of seeds) {
+    const label = `${mode}:compact-regression:${seed.split(":").at(-1)}`;
+    const grid = generateTerrain({ ...preset, width: 16, height: 12, seed });
+    assertGrid(grid, label);
+    assertExteriorSemantics(grid, mode, preset.buildingCount, label);
     generated += 1;
   }
 }
@@ -1053,6 +1313,31 @@ for (const dimensions of shipDeckDimensions) {
       assertGrid(grid, label);
       assertInterior(grid, areaCount, label, 1);
       assertShipDeck(grid, label);
+      generated += 1;
+    }
+  }
+}
+
+for (const mode of ["ship", "spaceship"] as const) {
+  const preset = PRESETS.find((candidate) => candidate.mode === mode);
+  assert(preset, `missing ${mode} preset`);
+  for (
+    let roomCount = INTERIOR_ROOM_LIMITS[mode].minimum;
+    roomCount <= INTERIOR_ROOM_LIMITS[mode].maximum;
+    roomCount += 1
+  ) {
+    for (let index = 0; index < 3; index += 1) {
+      const label = `${mode}:compact-functional:${roomCount}-rooms:${index}`;
+      const grid = generateTerrain({
+        ...preset,
+        width: INTERIOR_MINIMUM_DIMENSIONS[mode].width,
+        height: INTERIOR_MINIMUM_DIMENSIONS[mode].height,
+        buildingCount: roomCount,
+        seed: label,
+      });
+      assertGrid(grid, label);
+      assertInterior(grid, roomCount, label);
+      assertCompactVesselFurniture(grid, mode, label);
       generated += 1;
     }
   }

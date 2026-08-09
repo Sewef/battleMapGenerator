@@ -16,6 +16,23 @@ export interface BiomeObjectStyle {
   building: { primary: string; secondary: string; edge: string };
 }
 
+export type DifficultTerrainDetailKind =
+  | "grass"
+  | "undergrowth"
+  | "crop"
+  | "snow"
+  | "mud"
+  | "ash"
+  | "scree"
+  | "rubble";
+
+export interface DifficultTerrainDetailStyle {
+  kind: DifficultTerrainDetailKind;
+  dark: string;
+  light: string;
+  accent: string;
+}
+
 export interface InteriorVisualStyle {
   floorPattern: "wood" | "metal" | "stone";
   roomTints: string[];
@@ -276,6 +293,125 @@ const visualProfileByMode: Record<LandscapeMode, VisualProfileName> = {
   cathedral: "temperate", tavern: "temperate", crypt: "dark",
 };
 
+const difficultTerrainDetailStyles: Partial<
+  Record<LandscapeMode, DifficultTerrainDetailStyle>
+> = {
+  "ancient-forest": {
+    kind: "undergrowth",
+    dark: "rgba(39, 67, 43, .62)",
+    light: "rgba(153, 177, 104, .34)",
+    accent: "rgba(72, 101, 61, .5)",
+  },
+  farmland: {
+    kind: "crop",
+    dark: "rgba(92, 91, 45, .58)",
+    light: "rgba(220, 201, 111, .42)",
+    accent: "rgba(129, 113, 55, .52)",
+  },
+  "frozen-lake": {
+    kind: "snow",
+    dark: "rgba(82, 117, 128, .3)",
+    light: "rgba(249, 255, 253, .66)",
+    accent: "rgba(140, 174, 181, .38)",
+  },
+  wetlands: {
+    kind: "mud",
+    dark: "rgba(54, 61, 42, .55)",
+    light: "rgba(167, 183, 135, .28)",
+    accent: "rgba(100, 105, 56, .58)",
+  },
+  volcanic: {
+    kind: "ash",
+    dark: "rgba(31, 31, 30, .6)",
+    light: "rgba(166, 148, 128, .28)",
+    accent: "rgba(88, 69, 58, .48)",
+  },
+  "desert-canyon": {
+    kind: "scree",
+    dark: "rgba(105, 59, 43, .58)",
+    light: "rgba(229, 171, 110, .38)",
+    accent: "rgba(143, 82, 55, .5)",
+  },
+  badlands: {
+    kind: "scree",
+    dark: "rgba(91, 48, 39, .6)",
+    light: "rgba(210, 139, 91, .34)",
+    accent: "rgba(132, 70, 50, .52)",
+  },
+  "mountain-pass": {
+    kind: "scree",
+    dark: "rgba(65, 68, 65, .56)",
+    light: "rgba(190, 191, 176, .34)",
+    accent: "rgba(104, 105, 96, .5)",
+  },
+  highlands: {
+    kind: "scree",
+    dark: "rgba(67, 72, 61, .54)",
+    light: "rgba(193, 190, 145, .3)",
+    accent: "rgba(106, 107, 77, .48)",
+  },
+  underground: {
+    kind: "scree",
+    dark: "rgba(48, 49, 47, .62)",
+    light: "rgba(157, 155, 145, .28)",
+    accent: "rgba(89, 88, 82, .48)",
+  },
+  "ruined-battlefield": {
+    kind: "rubble",
+    dark: "rgba(54, 49, 42, .64)",
+    light: "rgba(166, 151, 117, .3)",
+    accent: "rgba(91, 72, 58, .52)",
+  },
+  "ancient-ruins": {
+    kind: "rubble",
+    dark: "rgba(66, 68, 60, .58)",
+    light: "rgba(190, 184, 151, .34)",
+    accent: "rgba(93, 105, 71, .48)",
+  },
+  city: {
+    kind: "rubble",
+    dark: "rgba(74, 68, 60, .54)",
+    light: "rgba(194, 184, 159, .32)",
+    accent: "rgba(116, 91, 68, .44)",
+  },
+  sewer: {
+    kind: "mud",
+    dark: "rgba(42, 50, 43, .64)",
+    light: "rgba(130, 143, 116, .24)",
+    accent: "rgba(91, 91, 53, .5)",
+  },
+};
+
+const defaultDifficultTerrainDetailStyle: DifficultTerrainDetailStyle = {
+  kind: "grass",
+  dark: "rgba(50, 76, 46, .56)",
+  light: "rgba(177, 198, 119, .3)",
+  accent: "rgba(76, 103, 58, .48)",
+};
+
+type BiomeObjectStyleOverride = {
+  [Kind in keyof BiomeObjectStyle]?: Partial<BiomeObjectStyle[Kind]>;
+};
+
+const biomeObjectOverrides: Partial<
+  Record<LandscapeMode, BiomeObjectStyleOverride>
+> = {
+  "ancient-ruins": {
+    building: {
+      primary: "#77766b",
+      secondary: "#65675e",
+      edge: "#353a37",
+    },
+  },
+  "ruined-battlefield": {
+    building: {
+      primary: "#686052",
+      secondary: "#575047",
+      edge: "#302d29",
+    },
+  },
+};
+
 export function getTerrainStyle(kind: TerrainKind, mode: LandscapeMode): TerrainStyle {
   const base = terrainStyles[kind];
   const biomeBase = kind === Terrain.Ground
@@ -297,7 +433,18 @@ export function getTerrainStyle(kind: TerrainKind, mode: LandscapeMode): Terrain
 }
 
 export function getBiomeObjectStyle(mode: LandscapeMode): BiomeObjectStyle {
-  return visualProfiles[visualProfileByMode[mode]].objects;
+  const style = visualProfiles[visualProfileByMode[mode]].objects;
+  const override = biomeObjectOverrides[mode];
+  return {
+    tree: { ...style.tree, ...override?.tree },
+    rock: { ...style.rock, ...override?.rock },
+    building: { ...style.building, ...override?.building },
+  };
+}
+
+export function getDifficultTerrainDetailStyle(mode: LandscapeMode) {
+  return difficultTerrainDetailStyles[mode] ??
+    defaultDifficultTerrainDetailStyle;
 }
 
 export function getInteriorVisualStyle(mode: LandscapeMode) {

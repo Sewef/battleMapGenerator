@@ -64,20 +64,89 @@ export function generateCity(
         continue;
       }
 
-      const insetX = random() < .5 ? 0 : 1;
-      const insetY = random() < .5 ? 0 : 1;
+      const blockWidth = right - left + 1;
+      const blockHeight = bottom - top + 1;
+      let insetX = random() < .5 ? 0 : 1;
+      let insetY = random() < .5 ? 0 : 1;
+      const canSplitVertically = blockWidth >= 5;
+      const canSplitHorizontally = blockHeight >= 5;
+      const useVerticalAlley = canSplitVertically && (
+        !canSplitHorizontally || blockWidth >= blockHeight || random() < .35
+      );
+      const useHorizontalAlley = canSplitHorizontally && (
+        !canSplitVertically || blockHeight > blockWidth || random() < .35
+      );
+      const alleyX = useVerticalAlley ? Math.floor((left + right) / 2) : undefined;
+      const alleyY = useHorizontalAlley ? Math.floor((top + bottom) / 2) : undefined;
+      if (alleyX !== undefined && blockWidth <= 6) insetX = 0;
+      if (alleyY !== undefined && blockHeight <= 6) insetY = 0;
       buildingId += 1;
       for (let y = top + insetY; y <= bottom - insetY; y += 1) {
         for (let x = left + insetX; x <= right - insetX; x += 1) {
           // Narrow alleys keep large blocks tactically traversable.
-          const alley = (right - left > 7 && x === Math.floor((left + right) / 2)) ||
-            (bottom - top > 6 && y === Math.floor((top + bottom) / 2));
+          const alley = x === alleyX || y === alleyY;
           if (alley) {
             setTileSurface(grid[y][x], Terrain.Road);
             continue;
           }
           grid[y][x].obstacle = Obstacle.Building;
           grid[y][x].obstacleId = buildingId;
+        }
+      }
+
+      // Insets used to leave a one-cell lawn between an alley and the street,
+      // producing several disconnected road components. Extend every alley
+      // through that setback and clear the complete doorway strip.
+      if (alleyX !== undefined) {
+        for (let y = top - 1; y <= bottom + 1; y += 1) {
+          const tile = grid[y]?.[alleyX];
+          if (!tile) continue;
+          tile.obstacle = Obstacle.None;
+          delete tile.obstacleId;
+          setTileSurface(tile, Terrain.Road);
+        }
+      }
+      if (alleyY !== undefined) {
+        for (let x = left - 1; x <= right + 1; x += 1) {
+          const tile = grid[alleyY]?.[x];
+          if (!tile) continue;
+          tile.obstacle = Obstacle.None;
+          delete tile.obstacleId;
+          setTileSurface(tile, Terrain.Road);
+        }
+      }
+    }
+  }
+
+  // An alley physically separates two buildings, so it must also separate
+  // their IDs. Relabeling connected roof masses makes the requested city
+  // density meaningful on compact maps and keeps rendering/fog grouping exact.
+  const visited = new Set<string>();
+  let normalizedBuildingId = 0;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (grid[y][x].obstacle !== Obstacle.Building || visited.has(`${x},${y}`)) continue;
+      normalizedBuildingId += 1;
+      const queue = [{ x, y }];
+      visited.add(`${x},${y}`);
+      for (let index = 0; index < queue.length; index += 1) {
+        const point = queue[index];
+        const tile = grid[point.y][point.x];
+        tile.obstacleId = normalizedBuildingId;
+        for (const direction of [
+          { x: 1, y: 0 }, { x: -1, y: 0 },
+          { x: 0, y: 1 }, { x: 0, y: -1 },
+        ]) {
+          const next = { x: point.x + direction.x, y: point.y + direction.y };
+          const key = `${next.x},${next.y}`;
+          if (
+            visited.has(key) ||
+            grid[next.y]?.[next.x]?.obstacle !== Obstacle.Building
+          ) {
+            continue;
+          }
+          visited.add(key);
+          queue.push(next);
         }
       }
     }

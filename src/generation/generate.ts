@@ -224,6 +224,15 @@ function edgeRegions(map: RegionMap, width: number, height: number, side: "left"
     .map(({ index }) => index);
 }
 
+function boundaryRegions(map: RegionMap, width: number, height: number) {
+  return new Set(map.cells
+    .map((cells, region) => ({ cells, region }))
+    .filter(({ cells }) => cells.some(({ x, y }) =>
+      x === 0 || y === 0 || x === width - 1 || y === height - 1
+    ))
+    .map(({ region }) => region));
+}
+
 function drawRegionPath(
   grid: Grid,
   map: RegionMap,
@@ -355,6 +364,121 @@ function paintShore(grid: Grid, random: Random, maxDepth: number) {
     }
   }
   for (const { x, y } of beach) grid[y][x].terrain = Terrain.Beach;
+}
+
+function paintCompactArchipelago(
+  grid: Grid,
+  landTarget: number,
+  random: Random,
+) {
+  const height = grid.length;
+  const width = grid[0].length;
+  const clampStart = (value: number, size: number) =>
+    Math.max(1, Math.min(size - 3, Math.round(value)));
+  const anchors = [
+    { x: clampStart(width * .2, width), y: clampStart(height * .18, height) },
+    { x: clampStart(width * .72, width), y: clampStart(height * .18, height) },
+    { x: clampStart(width * .2, width), y: clampStart(height * .68, height) },
+    { x: clampStart(width * .72, width), y: clampStart(height * .68, height) },
+  ];
+  const key = ({ x, y }: Point) => `${x},${y}`;
+  const islands = anchors.map(({ x, y }) => new Set([
+    `${x},${y}`, `${x + 1},${y}`,
+    `${x},${y + 1}`, `${x + 1},${y + 1}`,
+  ]));
+  const owners = new Map<string, number>();
+  islands.forEach((island, owner) => island.forEach((cell) => owners.set(cell, owner)));
+  const targetPerIsland = Math.max(4, Math.round(landTarget / 4));
+  const dividerX = [Math.floor((width - 1) / 2), Math.ceil((width - 1) / 2)];
+  const dividerY = [Math.floor((height - 1) / 2), Math.ceil((height - 1) / 2)];
+  const reservedForOcean = ({ x, y }: Point) =>
+    dividerX.includes(x) || dividerY.includes(y);
+  const directions = [
+    { x: 1, y: 0 }, { x: -1, y: 0 },
+    { x: 0, y: 1 }, { x: 0, y: -1 },
+  ];
+  let progressed = true;
+  while (progressed && islands.some((island) => island.size < targetPerIsland)) {
+    progressed = false;
+    islands.forEach((island, owner) => {
+      if (island.size >= targetPerIsland) return;
+      const frontier = new Map<string, Point>();
+      for (const cell of island) {
+        const [x, y] = cell.split(",").map(Number);
+        for (const direction of directions) {
+          const point = { x: x + direction.x, y: y + direction.y };
+          if (
+            point.x <= 0 || point.y <= 0 ||
+            point.x >= width - 1 || point.y >= height - 1 ||
+            reservedForOcean(point) ||
+            owners.has(key(point))
+          ) {
+            continue;
+          }
+          frontier.set(key(point), point);
+        }
+      }
+      const candidates = [...frontier.values()]
+        .filter((point) => directions.every((direction) => {
+          const neighborOwner = owners.get(`${point.x + direction.x},${point.y + direction.y}`);
+          return neighborOwner === undefined || neighborOwner === owner;
+        }))
+        .map((point) => ({
+          point,
+          score:
+            directions.filter((direction) =>
+              island.has(`${point.x + direction.x},${point.y + direction.y}`)
+            ).length * 1.6 -
+            Math.hypot(point.x - anchors[owner].x, point.y - anchors[owner].y) * .08 +
+            random() * 2,
+        }))
+        .sort((a, b) => b.score - a.score);
+      const selected = candidates[0]?.point;
+      if (!selected) return;
+      island.add(key(selected));
+      owners.set(key(selected), owner);
+      progressed = true;
+    });
+  }
+  for (const cell of owners.keys()) {
+    const [x, y] = cell.split(",").map(Number);
+    grid[y][x].terrain = Terrain.Ground;
+  }
+
+  // A compact blob can very rarely curl around one water cell. Fill only
+  // enclosed basins so the surrounding ocean remains a single component.
+  const visited = new Set<string>();
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (grid[y][x].terrain !== Terrain.Water || visited.has(`${x},${y}`)) continue;
+      const queue = [{ x, y }];
+      const component: Point[] = [];
+      let touchesEdge = false;
+      visited.add(`${x},${y}`);
+      for (let index = 0; index < queue.length; index += 1) {
+        const point = queue[index];
+        component.push(point);
+        if (point.x === 0 || point.y === 0 || point.x === width - 1 || point.y === height - 1) {
+          touchesEdge = true;
+        }
+        for (const direction of directions) {
+          const next = { x: point.x + direction.x, y: point.y + direction.y };
+          const nextKey = key(next);
+          if (
+            visited.has(nextKey) ||
+            grid[next.y]?.[next.x]?.terrain !== Terrain.Water
+          ) {
+            continue;
+          }
+          visited.add(nextKey);
+          queue.push(next);
+        }
+      }
+      if (!touchesEdge) {
+        for (const point of component) grid[point.y][point.x].terrain = Terrain.Ground;
+      }
+    }
+  }
 }
 
 /**
@@ -758,11 +882,22 @@ export function generateTerrain(options: TerrainOptions): Grid {
   const regionHeights = map.cells.map((_, region) => regionHeight(grid, map, region));
   const preferLowland = (region: number) => 1 - regionHeights[region];
   const preferHighland = (region: number) => regionHeights[region];
+  const boundary = boundaryRegions(map, width, height);
+  const preferInlandLowland = (region: number) => {
+    const center = map.centers[region];
+    const edgeDistance = Math.min(
+      center.x / width,
+      (width - center.x) / width,
+      center.y / height,
+      (height - center.y) / height,
+    );
+    return preferLowland(region) * .72 + edgeDistance * 1.15;
+  };
 
   if (options.mode === "countryside") {
     const pond = selectConnectedRegions(
-      map, Math.round(total * .035 * options.waterWeight), seededRandom(`${seed}:pond`), () => true,
-      undefined, preferLowland,
+      map, Math.round(total * .035 * options.waterWeight), seededRandom(`${seed}:pond`),
+      (region) => !boundary.has(region), undefined, preferInlandLowland,
     );
     paintRegions(grid, map, pond, Terrain.Water);
     paintShore(grid, seededRandom(`${seed}:pond-shore`), 2);
@@ -826,9 +961,9 @@ export function generateTerrain(options: TerrainOptions): Grid {
     paintRegions(grid, map, mesa, Terrain.Cliff);
     const oasis = selectConnectedRegions(
       map, Math.round(total * .025 * options.waterWeight), canyonRandom,
-      (region) => !mesa.has(region),
+      (region) => !mesa.has(region) && !boundary.has(region),
       undefined,
-      preferLowland,
+      preferInlandLowland,
     );
     paintRegions(grid, map, oasis, Terrain.Water);
     scatterDifficultTerrain(
@@ -855,18 +990,21 @@ export function generateTerrain(options: TerrainOptions): Grid {
   }
 
   if (options.mode === "frozen-lake") {
+    const inlandSeeds = map.cells
+      .map((_, region) => region)
+      .filter((region) => !boundary.has(region));
     const frozenLake = selectConnectedRegions(
       map, Math.round(total * .34 * options.waterWeight),
       seededRandom(`${seed}:frozen-lake`), () => true,
-      undefined, preferLowland,
+      inlandSeeds, preferLowland,
     );
     paintRegions(grid, map, frozenLake, Terrain.Ice);
     const openWater = selectConnectedRegions(
       map, Math.round(total * .045 * options.waterWeight),
       seededRandom(`${seed}:open-water`),
-      (region) => frozenLake.has(region),
+      (region) => frozenLake.has(region) && !boundary.has(region),
       undefined,
-      preferLowland,
+      preferInlandLowland,
     );
     paintRegions(grid, map, openWater, Terrain.Water);
     scatterDifficultTerrain(
@@ -909,19 +1047,73 @@ export function generateTerrain(options: TerrainOptions): Grid {
   if (options.mode === "archipelago") {
     for (const row of grid) for (const tile of row) tile.terrain = Terrain.Water;
     const islandRandom = seededRandom(`${seed}:archipelago`);
-    const occupied = new Set<number>();
     const landTarget = total * Math.max(.2, .55 - options.waterWeight * .22);
-    for (let index = 0; index < 4; index += 1) {
-      const island = selectConnectedRegions(
-        map, Math.round(landTarget / 4), islandRandom,
-        (region) => !occupied.has(region),
-        undefined,
-        preferHighland,
-      );
-      for (const region of island) occupied.add(region);
-      paintRegions(grid, map, island, Terrain.Ground);
+    if (width < 24 || height < 18) {
+      paintCompactArchipelago(grid, landTarget, islandRandom);
+      paintShore(grid, seededRandom(`${seed}:island-beaches`), 2);
+    } else {
+    const anchors = shuffled([
+      { x: width * .25, y: height * .28 },
+      { x: width * .73, y: height * .24 },
+      { x: width * .28, y: height * .73 },
+      { x: width * .72, y: height * .72 },
+    ], islandRandom);
+    const islandSeeds: number[] = [];
+    for (const anchor of anchors) {
+      const available = map.centers
+        .map((center, region) => ({ center, region }))
+        .filter(({ region }) =>
+          !boundary.has(region) &&
+          !islandSeeds.includes(region) &&
+          islandSeeds.every((other) => !map.neighbors[region].includes(other))
+        )
+        .map(({ center, region }) => ({
+          region,
+          score:
+            Math.hypot(center.x - anchor.x, center.y - anchor.y) -
+            preferHighland(region) * 2 + islandRandom() * .7,
+        }))
+        .sort((a, b) => a.score - b.score);
+      if (available[0]) islandSeeds.push(available[0].region);
+    }
+    const islands = islandSeeds.map((region) => new Set([region]));
+    const owners = new Map(islandSeeds.map((region, index) => [region, index]));
+    const targetPerIsland = Math.round(landTarget / Math.max(1, islands.length));
+    for (let index = 0; index < islands.length; index += 1) {
+      const island = islands[index];
+      let islandSize = [...island]
+        .reduce((sum, region) => sum + map.cells[region].length, 0);
+      while (islandSize < targetPerIsland) {
+        const frontier = new Set([...island].flatMap((region) => map.neighbors[region]));
+        const candidates = [...frontier]
+          .filter((region) => {
+            if (boundary.has(region) || owners.has(region)) return false;
+            return map.neighbors[region].every((neighbor) => {
+              const owner = owners.get(neighbor);
+              return owner === undefined || owner === index;
+            });
+          })
+          .map((region) => ({
+            region,
+            score:
+              map.neighbors[region].filter((neighbor) => island.has(neighbor)).length * 1.4 +
+              preferHighland(region) * 2.4 + islandRandom() * 2,
+          }))
+          .sort((a, b) => b.score - a.score);
+        const next = candidates[0]?.region;
+        if (next === undefined) break;
+        island.add(next);
+        owners.set(next, index);
+        islandSize += map.cells[next].length;
+      }
+      for (const region of island) {
+        for (const point of map.cells[region]) {
+          paintTerrain(grid[point.y][point.x], Terrain.Ground);
+        }
+      }
     }
     paintShore(grid, seededRandom(`${seed}:island-beaches`), 2);
+    }
   }
 
   if (options.mode === "mountain-pass") {
@@ -1140,6 +1332,12 @@ export function generateTerrain(options: TerrainOptions): Grid {
   // Second pass: obstacles do not participate in terrain morphology.
   const waterDistance = cellDistancesFromWater(grid);
   if (options.mode !== "city") {
+    // Buildings establish the major points of interest. Smaller obstacles are
+    // fitted around them, so a few rocks can no longer silently erase the
+    // requested farmstead, ruin, or mountain refuge quota.
+    if (options.mode !== "underground" && options.mode !== "volcanic") {
+      placeBuildings(grid, options.buildingCount, seededRandom(`${seed}:buildings`));
+    }
     scatterRocks(grid, Math.round(total * options.rockRatio), seededRandom(`${seed}:rocks`));
   }
   if (
@@ -1147,7 +1345,6 @@ export function generateTerrain(options: TerrainOptions): Grid {
     options.mode !== "volcanic" &&
     options.mode !== "city"
   ) {
-    placeBuildings(grid, options.buildingCount, seededRandom(`${seed}:buildings`));
     placeTrees(
       grid,
       Math.round(total * options.treeRatio),
@@ -1157,6 +1354,15 @@ export function generateTerrain(options: TerrainOptions): Grid {
     );
   }
   if (options.mode === "city") {
+    const cityBuildings = new Set(grid.flatMap((row) => row)
+      .filter((tile) => tile.obstacle === Obstacle.Building)
+      .map((tile) => tile.obstacleId));
+    placeBuildings(
+      grid,
+      Math.max(0, options.buildingCount - cityBuildings.size),
+      seededRandom(`${seed}:city-infill`),
+      true,
+    );
     placeTrees(
       grid,
       Math.round(total * options.treeRatio),

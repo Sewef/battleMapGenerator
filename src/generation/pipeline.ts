@@ -158,12 +158,16 @@ const directions = [
 function routeCost(grid: Grid, from: Point, to: Point, slopeCost: number) {
   const tile = grid[to.y][to.x];
   if (tile.obstacle === Obstacle.Building) return Infinity;
+  const obstacleCost = tile.obstacle === Obstacle.Rock
+    ? 9
+    : tile.obstacle === Obstacle.Tree ? 5 : 0;
   if (tile.terrain === Terrain.Lava || tile.terrain === Terrain.Void) return 80;
   if (tile.terrain === Terrain.Cliff) return 24;
   const heightDelta = Math.abs(
     (grid[from.y][from.x].height ?? 0) - (tile.height ?? 0),
   );
   return 1 +
+    obstacleCost +
     heightDelta * slopeCost * 8 +
     (tile.terrain === Terrain.Difficult ? 2 : 0) +
     (tile.terrain === Terrain.Water || tile.terrain === Terrain.Ravine ? 4 : 0);
@@ -275,9 +279,7 @@ export function connectPointsOfInterest(grid: Grid, mode: LandscapeMode) {
 }
 
 function isPassable(tile: Tile) {
-  if (tile.obstacle === Obstacle.Building || tile.obstacle === Obstacle.Rock) {
-    return false;
-  }
+  if (tile.obstacle !== Obstacle.None) return false;
   if (tileSurface(tile) === Terrain.Bridge) return true;
   return tile.terrain !== Terrain.Cliff &&
     tile.terrain !== Terrain.Ravine &&
@@ -294,7 +296,7 @@ export interface ValidationReport {
 
 export function validateAndRepairGrid(
   grid: Grid,
-  mode?: LandscapeMode,
+  _mode?: LandscapeMode,
 ): ValidationReport {
   let repairedBridgeCells = 0;
   let carvedCliffCrossings = 0;
@@ -429,18 +431,22 @@ export function validateAndRepairGrid(
   components.sort((a, b) => b.length - a.length);
   const main = components[0] ?? [];
   const mainTargets = new Set(main.map(({ x, y }) => `${x},${y}`));
-  for (const component of mode === "archipelago" ? [] : components.slice(1)) {
-    if (component.length < 3 || !mainTargets.size) continue;
+  for (const component of components.slice(1)) {
+    if (!mainTargets.size) continue;
     const path = weightedPath(grid, component[0], mainTargets, 2);
     if (!path) continue;
     for (const point of path) {
       const tile = grid[point.y][point.x];
+      if (tile.obstacle === Obstacle.Tree || tile.obstacle === Obstacle.Rock) {
+        tile.obstacle = Obstacle.None;
+        delete tile.obstacleId;
+        removedInvalidObstacles += 1;
+      }
       if (tile.terrain === Terrain.Cliff) {
-        const normal = cliffTransitionNormal(point.x, point.y);
-        tile.transition = "slope";
-        tile.transitionNormalX = normal.x;
-        tile.transitionNormalY = normal.y;
         tile.terrain = Terrain.Ground;
+        delete tile.transition;
+        delete tile.transitionNormalX;
+        delete tile.transitionNormalY;
         carvedCliffCrossings += 1;
       } else if (
         tile.terrain === Terrain.Lava ||
@@ -448,12 +454,12 @@ export function validateAndRepairGrid(
       ) {
         tile.terrain = Terrain.Ground;
       }
-      setTileSurface(
-        tile,
-        tile.terrain === Terrain.Water || tile.terrain === Terrain.Ravine
-          ? Terrain.Bridge
-          : Terrain.Road,
-      );
+      // Connectivity repair is a terrain operation, not a request for a new
+      // road. Only span genuinely impassable water/ravines; ordinary ground
+      // remains a natural gap instead of creating decorative road fragments.
+      if (tile.terrain === Terrain.Water || tile.terrain === Terrain.Ravine) {
+        setTileSurface(tile, Terrain.Bridge);
+      }
       mainTargets.add(`${point.x},${point.y}`);
     }
   }

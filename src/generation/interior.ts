@@ -128,15 +128,6 @@ function assignRemainingGround(
   }
 }
 
-function balancedSplit(random: Random, minimum: number, maximum: number) {
-  const center = (minimum + maximum) / 2;
-  const jitter = Math.min(2, (maximum - minimum) * .22);
-  return Math.max(
-    minimum,
-    Math.min(maximum, Math.round(center + (random() - .5) * jitter * 2)),
-  );
-}
-
 // Keep openings away from wall junctions whenever the room has enough space.
 // Corner doors were the main source of layouts that were technically connected
 // but read as accidental or structurally implausible.
@@ -145,50 +136,61 @@ function doorwayPosition(random: Random, minimum: number, maximum: number) {
   return randomInteger(random, minimum + inset, maximum - inset);
 }
 
+function subdivisionCapacity(rectangle: Rectangle) {
+  // Every leaf needs two floor cells along each split axis, with one wall cell
+  // between neighboring leaves. Keeping this capacity invariant while splitting
+  // prevents a balanced early cut from making the requested room count
+  // impossible later on.
+  const columns = Math.max(1, Math.floor((rectangle.width + 1) / 3));
+  const rows = Math.max(1, Math.floor((rectangle.height + 1) / 3));
+  return columns * rows;
+}
+
 function splitRectangle(
   rectangle: Rectangle,
   random: Random,
 ): { rooms: [Rectangle, Rectangle]; wall: Rectangle; door: Door } | undefined {
   const minimumSpan = 2;
-  const verticalPossible = rectangle.width >= minimumSpan * 2 + 1;
-  const horizontalPossible = rectangle.height >= minimumSpan * 2 + 1;
-  if (!verticalPossible && !horizontalPossible) return undefined;
-  const vertical = verticalPossible && (
-    !horizontalPossible ||
-    rectangle.width / rectangle.height > 1.2 ||
-    (rectangle.height / rectangle.width <= 1.2 && random() < .5)
-  );
-  if (vertical) {
-    const wallX = balancedSplit(
-      random,
-      rectangle.x + minimumSpan,
-      rectangle.x + rectangle.width - minimumSpan - 1,
-    );
-    return {
-      rooms: [
-        { ...rectangle, width: wallX - rectangle.x },
-        {
-          x: wallX + 1,
-          y: rectangle.y,
-          width: rectangle.x + rectangle.width - wallX - 1,
-          height: rectangle.height,
-        },
-      ],
-      wall: { x: wallX, y: rectangle.y, width: 1, height: rectangle.height },
-      door: {
-        x: wallX,
-        y: doorwayPosition(random, rectangle.y, rectangle.y + rectangle.height - 1),
-        orientation: "vertical",
+  type Candidate = {
+    rooms: [Rectangle, Rectangle];
+    wall: Rectangle;
+    orientation: Door["orientation"];
+    capacity: number;
+    balance: number;
+    orientationPenalty: number;
+    order: number;
+  };
+  const candidates: Candidate[] = [];
+  for (
+    let wallX = rectangle.x + minimumSpan;
+    wallX <= rectangle.x + rectangle.width - minimumSpan - 1;
+    wallX += 1
+  ) {
+    const rooms: [Rectangle, Rectangle] = [
+      { ...rectangle, width: wallX - rectangle.x },
+      {
+        x: wallX + 1,
+        y: rectangle.y,
+        width: rectangle.x + rectangle.width - wallX - 1,
+        height: rectangle.height,
       },
-    };
+    ];
+    candidates.push({
+      rooms,
+      wall: { x: wallX, y: rectangle.y, width: 1, height: rectangle.height },
+      orientation: "vertical",
+      capacity: rooms.reduce((sum, room) => sum + subdivisionCapacity(room), 0),
+      balance: Math.abs(rooms[0].width - rooms[1].width),
+      orientationPenalty: rectangle.width >= rectangle.height ? 0 : 1,
+      order: random(),
+    });
   }
-  const wallY = balancedSplit(
-    random,
-    rectangle.y + minimumSpan,
-    rectangle.y + rectangle.height - minimumSpan - 1,
-  );
-  return {
-    rooms: [
+  for (
+    let wallY = rectangle.y + minimumSpan;
+    wallY <= rectangle.y + rectangle.height - minimumSpan - 1;
+    wallY += 1
+  ) {
+    const rooms: [Rectangle, Rectangle] = [
       { ...rectangle, height: wallY - rectangle.y },
       {
         x: rectangle.x,
@@ -196,13 +198,40 @@ function splitRectangle(
         width: rectangle.width,
         height: rectangle.y + rectangle.height - wallY - 1,
       },
-    ],
-    wall: { x: rectangle.x, y: wallY, width: rectangle.width, height: 1 },
-    door: {
-      x: doorwayPosition(random, rectangle.x, rectangle.x + rectangle.width - 1),
-      y: wallY,
+    ];
+    candidates.push({
+      rooms,
+      wall: { x: rectangle.x, y: wallY, width: rectangle.width, height: 1 },
       orientation: "horizontal",
-    },
+      capacity: rooms.reduce((sum, room) => sum + subdivisionCapacity(room), 0),
+      balance: Math.abs(rooms[0].height - rooms[1].height),
+      orientationPenalty: rectangle.height >= rectangle.width ? 0 : 1,
+      order: random(),
+    });
+  }
+  const maximumCapacity = Math.max(...candidates.map(({ capacity }) => capacity), 0);
+  const selected = candidates
+    .filter(({ capacity }) => capacity === maximumCapacity)
+    .sort((first, second) =>
+      first.orientationPenalty - second.orientationPenalty ||
+      first.balance - second.balance || first.order - second.order
+    )[0];
+  if (!selected) return undefined;
+  const vertical = selected.orientation === "vertical";
+  return {
+    rooms: selected.rooms,
+    wall: selected.wall,
+    door: vertical
+      ? {
+        x: selected.wall.x,
+        y: doorwayPosition(random, rectangle.y, rectangle.y + rectangle.height - 1),
+        orientation: "vertical",
+      }
+      : {
+        x: doorwayPosition(random, rectangle.x, rectangle.x + rectangle.width - 1),
+        y: selected.wall.y,
+        orientation: "horizontal",
+      },
   };
 }
 
@@ -256,6 +285,48 @@ function variedPartitionRange(
     cursor += size + 1;
   }
   return segments;
+}
+
+function balancedModuleCounts(moduleCount: number, random: Random) {
+  // Both vessel layouts give each side the same longitudinal span. Keeping the
+  // split balanced is therefore the only way to preserve useful compartment
+  // widths on the 24-cell presets (the old +/- 1 variation could make a 6/4
+  // spaceship split, leaving one-cell-wide functional rooms).
+  const smaller = Math.floor(moduleCount / 2);
+  const larger = moduleCount - smaller;
+  return moduleCount % 2 !== 0 && random() < .5
+    ? { upper: larger, lower: smaller }
+    : { upper: smaller, lower: larger };
+}
+
+function bowWeightedPartitionRange(
+  start: number,
+  end: number,
+  count: number,
+  random: Random,
+) {
+  const partitions = variedPartitionRange(start, end, count, random);
+  if (partitions.length < 2) return partitions;
+  const sizes = partitions.map((segment) => segment.end - segment.start + 1);
+  // The sailing hull loses several cells at the pointed bow after rooms are
+  // assigned. Give its terminal module a small allowance taken from roomy
+  // interior modules, while never reducing another compartment below width 2.
+  for (let moved = 0; moved < 2; moved += 1) {
+    const donors = sizes.slice(0, -1)
+      .map((size, index) => ({ size, index, order: random() }))
+      .filter(({ size }) => size > 2)
+      .sort((first, second) => second.size - first.size || first.order - second.order);
+    if (!donors.length) break;
+    sizes[donors[0].index] -= 1;
+    sizes[sizes.length - 1] += 1;
+  }
+  const weighted: Array<{ start: number; end: number }> = [];
+  let cursor = start;
+  for (const size of sizes) {
+    weighted.push({ start: cursor, end: cursor + size - 1 });
+    cursor += size + 1;
+  }
+  return weighted;
 }
 
 function mirrorInterior(grid: Grid, random: Random) {
@@ -565,9 +636,16 @@ function axialInterior(
   const right = bounds.right - 1;
   const top = bounds.top + 1;
   const bottom = bounds.bottom - 1;
-  const corridorCenter = Math.max(top + 4, Math.min(bottom - 4,
+  const interiorHeight = bottom - top + 1;
+  // A four-cell gangway only fits comfortably once both banks retain useful
+  // depth. Compact ships use three cells and keep a three-cell-deep cabin bank.
+  const upperGangwayDepth = interiorHeight <= 12 ? 1 : randomInteger(random, 1, 2);
+  const minimumBankDepth = 3;
+  const minimumCenter = top + upperGangwayDepth + minimumBankDepth + 1;
+  const maximumCenter = bottom - minimumBankDepth - 2;
+  const corridorCenter = Math.max(minimumCenter, Math.min(maximumCenter,
     Math.floor((top + bottom) / 2) + randomInteger(random, -2, 2)));
-  const corridorTop = corridorCenter - randomInteger(random, 1, 2);
+  const corridorTop = corridorCenter - upperGangwayDepth;
   const corridorBottom = corridorCenter + 1;
   horizontalWall(grid, corridorTop - 1, left, right);
   horizontalWall(grid, corridorBottom + 1, left, right);
@@ -581,11 +659,11 @@ function axialInterior(
     : mode === "ship-deck" ? "Weather deck" : "Main gangway");
 
   const moduleCount = roomCount - 1;
-  const upperCount = Math.max(1, Math.min(moduleCount - 1,
-    Math.ceil(moduleCount / 2) + randomInteger(random, -1, 1)));
-  const lowerCount = moduleCount - upperCount;
-  const upper = variedPartitionRange(left, right, upperCount, random);
-  const lower = lowerCount ? variedPartitionRange(left, right, lowerCount, random) : [];
+  const { upper: upperCount, lower: lowerCount } =
+    balancedModuleCounts(moduleCount, random);
+  const partition = mode === "ship" ? bowWeightedPartitionRange : variedPartitionRange;
+  const upper = partition(left, right, upperCount, random);
+  const lower = lowerCount ? partition(left, right, lowerCount, random) : [];
   const roles = mode === "spaceship"
     ? ["Cockpit", "Engineering", "Crew quarters", "Medbay", "Cargo bay", "Laboratory", "Life support", "Armory", "Observation room", "Airlock", "Utility bay"]
     : mode === "ship-deck"
@@ -644,10 +722,24 @@ function spaceshipInterior(
   const top = bounds.top + 1;
   const bottom = bounds.bottom - 1;
   const height = bottom - top + 1;
-  const cockpitWidth = Math.max(4, Math.min(6,
+  const moduleCount = roomCount - 2;
+  const { upper: upperCount, lower: lowerCount } =
+    balancedModuleCounts(moduleCount, random);
+  const largestSideCount = Math.max(upperCount, lowerCount);
+  const minimumModuleSpan = largestSideCount * 2 + Math.max(0, largestSideCount - 1);
+  const preferredCockpitWidth = Math.max(4, Math.min(6,
     Math.round((right - left + 1) * (.14 + random() * .05))));
+  // Reserve two floor cells per module plus their separating walls. On the
+  // minimum 24x16 map this only contracts the cockpit from four cells to three
+  // for the 11/12-room layouts; roomier ships keep the original proportions.
+  const maximumCockpitWidth = Math.max(2,
+    right - left + 1 - 1 - minimumModuleSpan);
+  const cockpitWidth = Math.min(preferredCockpitWidth, maximumCockpitWidth);
   const cockpitWall = right - cockpitWidth;
-  const corridorCenter = Math.max(top + 4, Math.min(bottom - 4,
+  const minimumBankDepth = 3;
+  const minimumCenter = top + minimumBankDepth + 2;
+  const maximumCenter = bottom - minimumBankDepth - 2;
+  const corridorCenter = Math.max(minimumCenter, Math.min(maximumCenter,
     Math.floor((top + bottom) / 2) + randomInteger(random, -1, 1)));
   const corridorTop = corridorCenter - 1;
   const corridorBottom = corridorCenter + 1;
@@ -674,10 +766,6 @@ function spaceshipInterior(
     orientation: "vertical",
   });
 
-  const moduleCount = roomCount - 2;
-  const upperCount = Math.max(1, Math.min(moduleCount - 1,
-    Math.ceil(moduleCount / 2) + randomInteger(random, -1, 1)));
-  const lowerCount = moduleCount - upperCount;
   const moduleRight = cockpitWall - 1;
   const upper = variedPartitionRange(left, moduleRight, upperCount, random);
   const lower = variedPartitionRange(left, moduleRight, lowerCount, random);
@@ -932,10 +1020,16 @@ function crossInterior(
       .map((zone, index) => ({
         index,
         capacity: zone.rectangle.width * zone.rectangle.height / allocations[index],
+        roomCapacity: subdivisionCapacity(zone.rectangle),
+        order: random(),
       }))
-      .filter(({ capacity }) => capacity >= 10);
-    const pool = candidates.length ? candidates : zones.map((_, index) => ({ index, capacity: 1 }));
-    allocations[pool[Math.floor(random() * pool.length)].index] += 1;
+      .filter(({ index, roomCapacity }) => allocations[index] < roomCapacity)
+      .sort((first, second) =>
+        second.capacity - first.capacity || first.order - second.order
+      );
+    const selected = candidates[0];
+    if (!selected) break;
+    allocations[selected.index] += 1;
   }
   const roles = mode === "cathedral"
     ? ["Sacristy", "Reliquary", "Side chapel", "Vestry", "Chapter room", "Clergy chamber", "Treasury", "Choir room"]

@@ -9,6 +9,7 @@ import {
 } from "../domain/map";
 import {
   getBiomeObjectStyle,
+  getDifficultTerrainDetailStyle,
   getInteriorVisualStyle,
   getTerrainStyle,
 } from "./palettes";
@@ -3456,6 +3457,17 @@ function drawContinuousLiquidMaterials(
   }
 }
 
+const coniferTreeModes = new Set<LandscapeMode>([
+  "frozen-lake",
+  "highlands",
+  "mountain-pass",
+]);
+
+const palmTreeModes = new Set<LandscapeMode>([
+  "archipelago",
+  "coast",
+]);
+
 function drawTree(
   points: Array<{ x: number; y: number }>,
   size: number,
@@ -3471,6 +3483,143 @@ function drawTree(
   const centerY = (minimumY + maximumY + 1) * size / 2;
   const radiusX = (maximumX - minimumX + 1) * size * .42;
   const radiusY = (maximumY - minimumY + 1) * size * .42;
+
+  if (coniferTreeModes.has(mode)) {
+    const rotation = terrainVariation(minimumX, minimumY, 4421) * Math.PI;
+    const crownPath = (scale: number, offsetX = 0, offsetY = 0) => {
+      const crown = new Path2D();
+      const pointCount = 18;
+      for (let index = 0; index < pointCount; index += 1) {
+        const angle = rotation + index * Math.PI * 2 / pointCount;
+        const pointVariation = terrainVariation(
+          minimumX * pointCount + index,
+          minimumY,
+          4441,
+        );
+        const radius = (index % 2 === 0 ? .98 : .65) *
+          (.92 + pointVariation * .12) * scale;
+        const x = centerX + offsetX + Math.cos(angle) * radiusX * radius;
+        const y = centerY + offsetY + Math.sin(angle) * radiusY * radius;
+        if (index === 0) crown.moveTo(x, y);
+        else crown.lineTo(x, y);
+      }
+      crown.closePath();
+      return crown;
+    };
+
+    context.save();
+    applyPropContactShadow(size, context);
+    context.fillStyle = colors.dark;
+    context.fill(crownPath(1));
+    context.restore();
+    context.fillStyle = colors.light;
+    context.fill(crownPath(.58, -radiusX * .1, -radiusY * .1));
+    context.fillStyle = colors.trunk;
+    context.beginPath();
+    context.arc(centerX, centerY, Math.max(1.1, size * .055), 0, Math.PI * 2);
+    context.fill();
+    return;
+  }
+
+  if (palmTreeModes.has(mode)) {
+    const rotation = terrainVariation(minimumX, minimumY, 4463) * Math.PI * 2;
+    const fronds = new Path2D();
+    for (let index = 0; index < 7; index += 1) {
+      const pointVariation = terrainVariation(
+        minimumX * 7 + index,
+        minimumY,
+        4481,
+      );
+      const angle = rotation + index * Math.PI * 2 / 7 +
+        (pointVariation - .5) * .22;
+      const reachX = Math.cos(angle) * radiusX * (.76 + pointVariation * .2);
+      const reachY = Math.sin(angle) * radiusY * (.76 + pointVariation * .2);
+      const bend = (pointVariation - .5) * .34;
+      fronds.moveTo(centerX, centerY);
+      fronds.quadraticCurveTo(
+        centerX + reachX * .48 - Math.sin(angle) * radiusX * bend,
+        centerY + reachY * .48 + Math.cos(angle) * radiusY * bend,
+        centerX + reachX,
+        centerY + reachY,
+      );
+    }
+
+    context.save();
+    applyPropContactShadow(size, context);
+    context.strokeStyle = colors.dark;
+    context.lineWidth = Math.max(1.5, size * .13);
+    context.lineCap = "round";
+    context.stroke(fronds);
+    context.restore();
+    context.strokeStyle = colors.light;
+    context.lineWidth = Math.max(.8, size * .055);
+    context.lineCap = "round";
+    context.stroke(fronds);
+    context.fillStyle = colors.trunk;
+    context.beginPath();
+    context.arc(centerX, centerY, Math.max(1.4, size * .085), 0, Math.PI * 2);
+    context.fill();
+    context.strokeStyle = colors.dark;
+    context.lineWidth = Math.max(.65, size * .022);
+    context.stroke();
+    return;
+  }
+
+  if (mode === "ruined-battlefield") {
+    const rotation = terrainVariation(minimumX, minimumY, 4513) * Math.PI * 2;
+    const branches = new Path2D();
+    for (let index = 0; index < 6; index += 1) {
+      const pointVariation = terrainVariation(
+        minimumX * 6 + index,
+        minimumY,
+        4547,
+      );
+      const angle = rotation + index * Math.PI * 2 / 6 +
+        (pointVariation - .5) * .3;
+      const reachX = Math.cos(angle) * radiusX * (.72 + pointVariation * .22);
+      const reachY = Math.sin(angle) * radiusY * (.72 + pointVariation * .22);
+      const branchX = centerX + reachX;
+      const branchY = centerY + reachY;
+      branches.moveTo(centerX, centerY);
+      branches.quadraticCurveTo(
+        centerX + reachX * .42 + Math.sin(angle) * radiusX * .12,
+        centerY + reachY * .42 - Math.cos(angle) * radiusY * .12,
+        branchX,
+        branchY,
+      );
+      const twigAngle = angle + (index % 2 ? .5 : -.5);
+      branches.moveTo(
+        centerX + reachX * .62,
+        centerY + reachY * .62,
+      );
+      branches.lineTo(
+        centerX + reachX * .62 + Math.cos(twigAngle) * radiusX * .24,
+        centerY + reachY * .62 + Math.sin(twigAngle) * radiusY * .24,
+      );
+    }
+
+    context.save();
+    applyPropContactShadow(size, context);
+    context.strokeStyle = colors.dark;
+    context.lineWidth = Math.max(1.6, size * .15);
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.stroke(branches);
+    context.restore();
+    context.strokeStyle = colors.trunk;
+    context.lineWidth = Math.max(.8, size * .065);
+    context.stroke(branches);
+    context.fillStyle = colors.dark;
+    context.beginPath();
+    context.arc(centerX, centerY, Math.max(1.5, size * .11), 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = colors.trunk;
+    context.beginPath();
+    context.arc(centerX - size * .015, centerY - size * .02, Math.max(.9, size * .06), 0, Math.PI * 2);
+    context.fill();
+    return;
+  }
+
   context.save();
   applyPropContactShadow(size, context);
   context.fillStyle = colors.dark;
@@ -3496,6 +3645,151 @@ function drawTree(
   context.fill();
 }
 
+function drawRuinedBuilding(
+  points: Array<{ x: number; y: number }>,
+  id: number,
+  size: number,
+  mode: LandscapeMode,
+  context: CanvasRenderingContext2D,
+) {
+  const colors = getBiomeObjectStyle(mode).building;
+  const cells = new Set(points.map(({ x, y }) => `${x},${y}`));
+  const footprint = new Path2D();
+  for (const { x, y } of points) {
+    footprint.rect(x * size, y * size, size, size);
+  }
+
+  context.save();
+  applyPropContactShadow(size, context);
+  context.fillStyle = id % 2 === 0 ? colors.primary : colors.secondary;
+  context.fill(footprint);
+  context.shadowColor = "transparent";
+  context.clip(footprint);
+  for (const { x, y } of points) {
+    const left = x * size;
+    const top = y * size;
+    const variation = terrainVariation(x, y, 4013 + id * 17);
+    const secondaryVariation = terrainVariation(x, y, 4051 + id * 23);
+    const inset = size * (.1 + variation * .045);
+
+    context.fillStyle = variation > .5 ? colors.secondary : colors.primary;
+    context.globalAlpha = .72;
+    context.fillRect(
+      left + inset,
+      top + inset,
+      size - inset * 2,
+      size - inset * 2,
+    );
+    context.globalAlpha = 1;
+
+    context.fillStyle = "rgba(25, 27, 25, .32)";
+    context.beginPath();
+    context.ellipse(
+      left + size * (.43 + (variation - .5) * .18),
+      top + size * (.5 + (secondaryVariation - .5) * .2),
+      size * (.18 + variation * .07),
+      size * (.11 + secondaryVariation * .055),
+      (variation - .5) * .75,
+      0,
+      Math.PI * 2,
+    );
+    context.fill();
+
+    context.strokeStyle = "rgba(225, 218, 190, .2)";
+    context.lineWidth = Math.max(.65, size * .02);
+    context.beginPath();
+    context.moveTo(left + size * .18, top + size * (.28 + variation * .12));
+    context.lineTo(left + size * (.45 + secondaryVariation * .1), top + size * .48);
+    context.lineTo(left + size * (.34 + variation * .12), top + size * .77);
+    context.stroke();
+
+    for (let rubble = 0; rubble < 2; rubble += 1) {
+      const rubbleX = terrainVariation(x * 3 + rubble, y, 4093 + id);
+      const rubbleY = terrainVariation(x, y * 3 + rubble, 4127 + id);
+      const centerX = left + size * (.14 + rubbleX * .72);
+      const centerY = top + size * (.16 + rubbleY * .68);
+      const radius = size * (.045 + rubbleX * .025);
+      context.fillStyle = rubble ? colors.primary : colors.secondary;
+      context.strokeStyle = colors.edge;
+      context.lineWidth = Math.max(.55, size * .015);
+      context.beginPath();
+      context.moveTo(centerX - radius, centerY + radius * .6);
+      context.lineTo(centerX - radius * .45, centerY - radius);
+      context.lineTo(centerX + radius, centerY - radius * .15);
+      context.lineTo(centerX + radius * .35, centerY + radius);
+      context.closePath();
+      context.fill();
+      context.stroke();
+    }
+  }
+  context.restore();
+
+  const drawBrokenEdge = (
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    salt: number,
+  ) => {
+    const variation = terrainVariation(
+      Math.round(startX / size),
+      Math.round(startY / size),
+      salt + id * 29,
+    );
+    const gapStart = .28 + variation * .18;
+    const gapEnd = gapStart + .16 + variation * .09;
+    context.moveTo(startX, startY);
+    context.lineTo(
+      startX + (endX - startX) * gapStart,
+      startY + (endY - startY) * gapStart,
+    );
+    context.moveTo(
+      startX + (endX - startX) * gapEnd,
+      startY + (endY - startY) * gapEnd,
+    );
+    context.lineTo(endX, endY);
+  };
+
+  context.save();
+  context.strokeStyle = colors.edge;
+  context.lineWidth = Math.max(1.5, size * .1);
+  context.lineCap = "round";
+  context.beginPath();
+  for (const { x, y } of points) {
+    const left = x * size;
+    const top = y * size;
+    const right = left + size;
+    const bottom = top + size;
+    if (!cells.has(`${x},${y - 1}`)) {
+      drawBrokenEdge(left, top, right, top, 4159 + x * 7 + y * 11);
+    }
+    if (!cells.has(`${x + 1},${y}`)) {
+      drawBrokenEdge(right, top, right, bottom, 4211 + x * 7 + y * 11);
+    }
+    if (!cells.has(`${x},${y + 1}`)) {
+      drawBrokenEdge(right, bottom, left, bottom, 4253 + x * 7 + y * 11);
+    }
+    if (!cells.has(`${x - 1},${y}`)) {
+      drawBrokenEdge(left, bottom, left, top, 4283 + x * 7 + y * 11);
+    }
+  }
+  context.stroke();
+
+  context.strokeStyle = "rgba(231, 224, 196, .26)";
+  context.lineWidth = Math.max(.7, size * .025);
+  context.beginPath();
+  for (const { x, y } of points) {
+    if (!cells.has(`${x},${y - 1}`)) {
+      const left = x * size;
+      const top = y * size;
+      context.moveTo(left + size * .08, top + size * .035);
+      context.lineTo(left + size * .35, top + size * .035);
+    }
+  }
+  context.stroke();
+  context.restore();
+}
+
 function drawBuilding(
   points: Array<{ x: number; y: number }>,
   id: number,
@@ -3504,6 +3798,10 @@ function drawBuilding(
   context: CanvasRenderingContext2D,
   tilesetImage?: CanvasImageSource,
 ) {
+  if (mode === "ancient-ruins" || mode === "ruined-battlefield") {
+    drawRuinedBuilding(points, id, size, mode, context);
+    return;
+  }
   const colors = getBiomeObjectStyle(mode).building;
   const cells = new Set(points.map(({ x, y }) => `${x},${y}`));
   const minimumX = Math.min(...points.map(({ x }) => x));
@@ -3581,6 +3879,8 @@ function drawBuilding(
 
   context.strokeStyle = "rgba(255, 226, 190, .22)";
   context.lineWidth = Math.max(1, size * .025);
+  context.save();
+  context.clip(footprint);
   context.beginPath();
   if (maximumX > minimumX) {
     const ridgeY = (minimumY + maximumY + 1) * size / 2;
@@ -3592,44 +3892,399 @@ function drawBuilding(
     context.lineTo(ridgeX, (maximumY + 1) * size - size * .14);
   }
   context.stroke();
+  context.restore();
 }
 
-function drawRock(
-  x: number,
-  y: number,
+function drawRockFormation(
+  points: Array<{ x: number; y: number }>,
   size: number,
   mode: LandscapeMode,
   context: CanvasRenderingContext2D,
-  span = 1,
 ) {
-  const left = x * size;
-  const top = y * size;
-  const rockSize = size * span;
   const colors = getBiomeObjectStyle(mode).rock;
+  if (points.length === 1) {
+    const { x, y } = points[0];
+    const left = x * size;
+    const top = y * size;
+    context.save();
+    applyPropContactShadow(size, context);
+    context.fillStyle = colors.fill;
+    context.beginPath();
+    context.moveTo(left + size * .1, top + size * .76);
+    context.lineTo(left + size * .26, top + size * .24);
+    context.lineTo(left + size * .65, top + size * .11);
+    context.lineTo(left + size * .91, top + size * .69);
+    context.lineTo(left + size * .64, top + size * .88);
+    context.closePath();
+    context.fill();
+    context.restore();
+    context.strokeStyle = colors.stroke;
+    context.lineWidth = Math.max(1, size * .03);
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.stroke();
+    context.fillStyle = colors.highlight;
+    context.beginPath();
+    context.moveTo(left + size * .26, top + size * .24);
+    context.lineTo(left + size * .65, top + size * .11);
+    context.lineTo(left + size * .51, top + size * .47);
+    context.closePath();
+    context.fill();
+    return;
+  }
+  const cells = new Set(points.map(({ x, y }) => `${x},${y}`));
+  const formation = new Path2D();
+
+  for (const { x, y } of points) {
+    const variation = terrainVariation(x, y, 4337);
+    const otherVariation = terrainVariation(x, y, 4363);
+    const left = x * size + (
+      cells.has(`${x - 1},${y}`) ? -size * .035 : size * (.075 + variation * .025)
+    );
+    const right = (x + 1) * size - (
+      cells.has(`${x + 1},${y}`) ? -size * .035 : size * (.07 + otherVariation * .025)
+    );
+    const top = y * size + (
+      cells.has(`${x},${y - 1}`) ? -size * .035 : size * (.07 + otherVariation * .03)
+    );
+    const bottom = (y + 1) * size - (
+      cells.has(`${x},${y + 1}`) ? -size * .035 : size * (.08 + variation * .025)
+    );
+    const width = right - left;
+    const height = bottom - top;
+    formation.moveTo(left, top + height * (.31 + variation * .08));
+    formation.lineTo(left + width * (.25 + otherVariation * .08), top);
+    formation.lineTo(right - width * (.2 + variation * .08), top + height * .02);
+    formation.lineTo(right, top + height * (.28 + otherVariation * .08));
+    formation.lineTo(right - width * .02, bottom - height * (.2 + variation * .05));
+    formation.lineTo(right - width * (.25 + otherVariation * .08), bottom);
+    formation.lineTo(left + width * (.2 + variation * .06), bottom - height * .015);
+    formation.lineTo(left + width * .01, bottom - height * (.24 + otherVariation * .06));
+    formation.closePath();
+  }
+
   context.save();
   applyPropContactShadow(size, context);
   context.fillStyle = colors.fill;
-  context.beginPath();
-  context.moveTo(left + rockSize * .1, top + rockSize * .76);
-  context.lineTo(left + rockSize * .26, top + rockSize * .24);
-  context.lineTo(left + rockSize * .65, top + rockSize * .11);
-  context.lineTo(left + rockSize * .91, top + rockSize * .69);
-  context.lineTo(left + rockSize * .64, top + rockSize * .88);
-  context.closePath();
-  context.fill();
+  context.fill(formation);
   context.restore();
+
   context.strokeStyle = colors.stroke;
-  context.lineWidth = Math.max(1, rockSize * .03);
+  context.lineWidth = Math.max(1, size * .035);
   context.lineCap = "round";
   context.lineJoin = "round";
-  context.stroke();
-  context.fillStyle = colors.highlight;
   context.beginPath();
-  context.moveTo(left + rockSize * .26, top + rockSize * .24);
-  context.lineTo(left + rockSize * .65, top + rockSize * .11);
-  context.lineTo(left + rockSize * .51, top + rockSize * .47);
-  context.closePath();
-  context.fill();
+  for (const { x, y } of points) {
+    const left = x * size;
+    const top = y * size;
+    const right = left + size;
+    const bottom = top + size;
+    if (!cells.has(`${x},${y - 1}`)) {
+      context.moveTo(left + size * .22, top + size * .08);
+      context.lineTo(right - size * .2, top + size * .08);
+    }
+    if (!cells.has(`${x + 1},${y}`)) {
+      context.moveTo(right - size * .08, top + size * .27);
+      context.lineTo(right - size * .08, bottom - size * .22);
+    }
+    if (!cells.has(`${x},${y + 1}`)) {
+      context.moveTo(right - size * .25, bottom - size * .08);
+      context.lineTo(left + size * .2, bottom - size * .08);
+    }
+    if (!cells.has(`${x - 1},${y}`)) {
+      context.moveTo(left + size * .08, bottom - size * .24);
+      context.lineTo(left + size * .08, top + size * .3);
+    }
+  }
+  context.stroke();
+
+  for (const { x, y } of points) {
+    const left = x * size;
+    const top = y * size;
+    const variation = terrainVariation(x, y, 4397);
+    context.fillStyle = colors.highlight;
+    context.globalAlpha = .72 + variation * .18;
+    context.beginPath();
+    context.moveTo(left + size * (.18 + variation * .05), top + size * .36);
+    context.lineTo(left + size * (.56 + variation * .1), top + size * .12);
+    context.lineTo(left + size * (.47 + variation * .08), top + size * .52);
+    context.closePath();
+    context.fill();
+  }
+  context.globalAlpha = 1;
+}
+
+function drawDifficultTerrainDetail(
+  grid: Grid,
+  x: number,
+  y: number,
+  cellSize: number,
+  mode: LandscapeMode,
+  context: CanvasRenderingContext2D,
+) {
+  const style = getDifficultTerrainDetailStyle(mode);
+  const left = x * cellSize;
+  const top = y * cellSize;
+  const variation = terrainVariation(x, y, 3701);
+  const secondaryVariation = terrainVariation(x, y, 3733);
+
+  context.save();
+  context.lineCap = "round";
+  context.lineJoin = "round";
+
+  if (style.kind === "crop") {
+    const fieldColumn = x < grid[0].length / 2 ? 0 : 1;
+    const fieldRow = y < grid.length / 2 ? 0 : 1;
+    const horizontal = (fieldColumn + fieldRow) % 2 === 0;
+    context.strokeStyle = style.dark;
+    context.lineWidth = Math.max(.8, cellSize * .035);
+    for (const offset of [.2, .5, .8]) {
+      context.beginPath();
+      if (horizontal) {
+        context.moveTo(left, top + cellSize * offset);
+        context.lineTo(left + cellSize, top + cellSize * offset);
+      } else {
+        context.moveTo(left + cellSize * offset, top);
+        context.lineTo(left + cellSize * offset, top + cellSize);
+      }
+      context.stroke();
+    }
+    context.strokeStyle = style.light;
+    context.lineWidth = Math.max(.6, cellSize * .018);
+    const highlightOffset = .2 + secondaryVariation * .6;
+    context.beginPath();
+    if (horizontal) {
+      context.moveTo(left + cellSize * highlightOffset, top + cellSize * .12);
+      context.lineTo(left + cellSize * highlightOffset, top + cellSize * .88);
+    } else {
+      context.moveTo(left + cellSize * .12, top + cellSize * highlightOffset);
+      context.lineTo(left + cellSize * .88, top + cellSize * highlightOffset);
+    }
+    context.stroke();
+  } else if (style.kind === "snow") {
+    for (const [offset, width] of [[.35, .08], [.72, .045]] as const) {
+      context.strokeStyle = width > .05 ? style.dark : style.light;
+      context.lineWidth = Math.max(.7, cellSize * width);
+      context.beginPath();
+      context.moveTo(left + cellSize * .08, top + cellSize * offset);
+      context.quadraticCurveTo(
+        left + cellSize * (.46 + (variation - .5) * .12),
+        top + cellSize * (offset - .12),
+        left + cellSize * .92,
+        top + cellSize * (offset + .02),
+      );
+      context.stroke();
+    }
+    if (variation > .58) {
+      const centerX = left + cellSize * (.28 + secondaryVariation * .45);
+      const centerY = top + cellSize * (.2 + variation * .45);
+      const radius = cellSize * .075;
+      context.strokeStyle = style.light;
+      context.lineWidth = Math.max(.65, cellSize * .018);
+      context.beginPath();
+      context.moveTo(centerX - radius, centerY);
+      context.lineTo(centerX + radius, centerY);
+      context.moveTo(centerX, centerY - radius);
+      context.lineTo(centerX, centerY + radius);
+      context.stroke();
+    }
+  } else if (style.kind === "mud") {
+    const puddleX = left + cellSize * (.42 + (variation - .5) * .18);
+    const puddleY = top + cellSize * (.57 + (secondaryVariation - .5) * .16);
+    context.fillStyle = style.dark;
+    context.beginPath();
+    context.ellipse(
+      puddleX,
+      puddleY,
+      cellSize * (.22 + variation * .08),
+      cellSize * (.1 + secondaryVariation * .04),
+      (variation - .5) * .35,
+      0,
+      Math.PI * 2,
+    );
+    context.fill();
+    context.strokeStyle = style.light;
+    context.lineWidth = Math.max(.6, cellSize * .018);
+    context.beginPath();
+    context.arc(
+      puddleX - cellSize * .035,
+      puddleY - cellSize * .02,
+      cellSize * .11,
+      Math.PI * 1.08,
+      Math.PI * 1.74,
+    );
+    context.stroke();
+    if (variation > .28) {
+      const reedX = left + cellSize * (.2 + secondaryVariation * .55);
+      const reedBase = top + cellSize * .86;
+      context.strokeStyle = style.accent;
+      context.lineWidth = Math.max(.75, cellSize * .025);
+      context.beginPath();
+      context.moveTo(reedX, reedBase);
+      context.quadraticCurveTo(
+        reedX - cellSize * .025,
+        reedBase - cellSize * .24,
+        reedX + cellSize * .025,
+        reedBase - cellSize * .43,
+      );
+      context.moveTo(reedX + cellSize * .07, reedBase);
+      context.quadraticCurveTo(
+        reedX + cellSize * .1,
+        reedBase - cellSize * .18,
+        reedX + cellSize * .055,
+        reedBase - cellSize * .34,
+      );
+      context.stroke();
+    }
+  } else if (style.kind === "ash") {
+    context.strokeStyle = style.light;
+    context.lineWidth = Math.max(.6, cellSize * .018);
+    context.beginPath();
+    context.moveTo(left + cellSize * .08, top + cellSize * (.3 + variation * .18));
+    context.quadraticCurveTo(
+      left + cellSize * .48,
+      top + cellSize * (.2 + secondaryVariation * .16),
+      left + cellSize * .92,
+      top + cellSize * (.32 + variation * .18),
+    );
+    context.stroke();
+    for (let index = 0; index < 4; index += 1) {
+      const pointVariation = terrainVariation(x * 7 + index, y, 3761);
+      const otherVariation = terrainVariation(x, y * 7 + index, 3793);
+      context.fillStyle = index % 2 ? style.accent : style.dark;
+      context.beginPath();
+      context.arc(
+        left + cellSize * (.14 + pointVariation * .72),
+        top + cellSize * (.2 + otherVariation * .65),
+        Math.max(.7, cellSize * (.018 + pointVariation * .018)),
+        0,
+        Math.PI * 2,
+      );
+      context.fill();
+    }
+  } else if (style.kind === "scree") {
+    for (let index = 0; index < 3; index += 1) {
+      const pointVariation = terrainVariation(x * 5 + index, y, 3821);
+      const otherVariation = terrainVariation(x, y * 5 + index, 3851);
+      const centerX = left + cellSize * (.18 + pointVariation * .64);
+      const centerY = top + cellSize * (.2 + otherVariation * .62);
+      const radius = cellSize * (.055 + pointVariation * .035);
+      context.fillStyle = index === 1 ? style.light : style.accent;
+      context.strokeStyle = style.dark;
+      context.lineWidth = Math.max(.55, cellSize * .015);
+      context.beginPath();
+      context.moveTo(centerX - radius, centerY + radius * .7);
+      context.lineTo(centerX - radius * .2, centerY - radius);
+      context.lineTo(centerX + radius, centerY + radius * .45);
+      context.closePath();
+      context.fill();
+      context.stroke();
+    }
+  } else if (style.kind === "rubble") {
+    if (mode === "ruined-battlefield" && variation > .68) {
+      context.strokeStyle = style.dark;
+      context.lineWidth = Math.max(1, cellSize * .055);
+      context.beginPath();
+      context.ellipse(
+        left + cellSize * (.5 + (variation - .5) * .1),
+        top + cellSize * (.52 + (secondaryVariation - .5) * .08),
+        cellSize * .31,
+        cellSize * .2,
+        (variation - .5) * .35,
+        Math.PI * .05,
+        Math.PI * 1.35,
+      );
+      context.stroke();
+    }
+    for (let index = 0; index < 2; index += 1) {
+      const pointVariation = terrainVariation(x * 3 + index, y, 3889);
+      const otherVariation = terrainVariation(x, y * 3 + index, 3911);
+      const centerX = left + cellSize * (.24 + pointVariation * .52);
+      const centerY = top + cellSize * (.24 + otherVariation * .5);
+      const radius = cellSize * (.07 + pointVariation * .04);
+      context.fillStyle = index ? style.light : style.accent;
+      context.strokeStyle = style.dark;
+      context.lineWidth = Math.max(.6, cellSize * .018);
+      context.beginPath();
+      context.moveTo(centerX - radius, centerY + radius * .55);
+      context.lineTo(centerX - radius * .55, centerY - radius);
+      context.lineTo(centerX + radius, centerY - radius * .35);
+      context.lineTo(centerX + radius * .5, centerY + radius);
+      context.closePath();
+      context.fill();
+      context.stroke();
+    }
+  } else if (style.kind === "undergrowth") {
+    const stemX = left + cellSize * (.32 + variation * .36);
+    const stemBase = top + cellSize * .84;
+    context.strokeStyle = style.dark;
+    context.lineWidth = Math.max(.8, cellSize * .03);
+    context.beginPath();
+    context.moveTo(stemX, stemBase);
+    context.quadraticCurveTo(
+      stemX - cellSize * .08,
+      top + cellSize * .52,
+      stemX + cellSize * .02,
+      top + cellSize * .2,
+    );
+    context.stroke();
+    context.fillStyle = style.accent;
+    for (const [offsetX, offsetY, angle] of [
+      [-.11, -.18, -.65], [.1, -.29, .58], [-.08, -.39, -.55],
+    ] as const) {
+      context.beginPath();
+      context.ellipse(
+        stemX + cellSize * offsetX,
+        stemBase + cellSize * offsetY,
+        cellSize * .12,
+        cellSize * .045,
+        angle,
+        0,
+        Math.PI * 2,
+      );
+      context.fill();
+    }
+    context.fillStyle = style.light;
+    context.beginPath();
+    context.arc(stemX + cellSize * .02, top + cellSize * .2, cellSize * .035, 0, Math.PI * 2);
+    context.fill();
+  } else {
+    const drawGrassClump = (
+      centerX: number,
+      baseY: number,
+      scale: number,
+      lean: number,
+    ) => {
+      context.beginPath();
+      for (const offset of [-.08, 0, .08]) {
+        context.moveTo(centerX, baseY);
+        context.quadraticCurveTo(
+          centerX + cellSize * (offset + lean * .04),
+          baseY - cellSize * scale * .52,
+          centerX + cellSize * (offset * 1.45 + lean * .06),
+          baseY - cellSize * scale,
+        );
+      }
+      context.stroke();
+    };
+    context.strokeStyle = style.dark;
+    context.lineWidth = Math.max(.75, cellSize * .027);
+    drawGrassClump(
+      left + cellSize * (.23 + variation * .08),
+      top + cellSize * .83,
+      .22 + secondaryVariation * .08,
+      variation - .5,
+    );
+    context.strokeStyle = style.accent;
+    drawGrassClump(
+      left + cellSize * (.67 + secondaryVariation * .09),
+      top + cellSize * (.48 + variation * .13),
+      .16 + variation * .06,
+      secondaryVariation - .5,
+    );
+  }
+
+  context.restore();
 }
 
 function drawTerrainDetail(
@@ -3637,6 +4292,7 @@ function drawTerrainDetail(
   x: number,
   y: number,
   cellSize: number,
+  mode: LandscapeMode,
   context: CanvasRenderingContext2D,
 ) {
   const tile = grid[y][x];
@@ -3664,9 +4320,7 @@ function drawTerrainDetail(
     }
     context.lineWidth = 1;
   } else if (tile.terrain === Terrain.Difficult) {
-    context.fillStyle = "rgba(64, 75, 49, .35)";
-    context.fillRect(x * cellSize + cellSize * .2, y * cellSize + cellSize * .68, cellSize * .08, cellSize * .16);
-    context.fillRect(x * cellSize + cellSize * .7, y * cellSize + cellSize * .22, cellSize * .07, cellSize * .13);
+    drawDifficultTerrainDetail(grid, x, y, cellSize, mode, context);
   } else if (tile.terrain === Terrain.Ravine) {
     context.strokeStyle = "rgba(35, 37, 31, .55)";
     context.beginPath();
@@ -3828,7 +4482,7 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
         tile.terrain !== Terrain.Cliff &&
         tile.terrain !== Terrain.Ravine
       ) {
-        drawTerrainDetail(grid, x, y, cellSize, context);
+        drawTerrainDetail(grid, x, y, cellSize, mode, context);
       }
     }
   }
@@ -3860,7 +4514,7 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
 
   const treeGroups = new Map<number, Array<{ x: number; y: number }>>();
   const buildingGroups = new Map<number, Array<{ x: number; y: number }>>();
-  const rockCells = new Set<string>();
+  const rockGroups = new Map<number, Array<{ x: number; y: number }>>();
   for (let y = 0; y < rows; y += 1) {
     for (let x = 0; x < columns; x += 1) {
       const tile = grid[y][x];
@@ -3877,7 +4531,10 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
         buildingGroups.set(id, group);
       }
       if (tile.obstacle === Obstacle.Rock) {
-        rockCells.add(`${x},${y}`);
+        const id = tile.obstacleId ?? y * columns + x;
+        const group = rockGroups.get(id) ?? [];
+        group.push({ x, y });
+        rockGroups.set(id, group);
       }
       if (tile.obstacle !== Obstacle.None) {
         counts.set(tile.obstacle, (counts.get(tile.obstacle) ?? 0) + 1);
@@ -3887,71 +4544,34 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   context.globalAlpha =
     hiddenItems.has(Obstacle.Rock) ? hiddenOpacity : 1;
   const objectStyle = getBiomeObjectStyle(mode);
-  const renderedRockCells = new Set<string>();
-  for (let y = 0; y < rows - 1; y += 1) {
-    for (let x = 0; x < columns - 1; x += 1) {
-      const formation = [
-        `${x},${y}`,
-        `${x + 1},${y}`,
-        `${x},${y + 1}`,
-        `${x + 1},${y + 1}`,
-      ];
-      if (
-        formation.every((key) => rockCells.has(key)) &&
-        formation.every((key) => !renderedRockCells.has(key))
-      ) {
-        if (useImageProps && options.customProps?.rock) {
-          drawCustomProp(
-            options.customProps.rock,
-            x,
-            y,
-            2,
-            cellSize,
-            context,
-          );
-        } else if (useImageProps && options.tilesetProps) {
-          drawTilesetProp(
-            options.tilesetProps.rock2x2,
-            x,
-            y,
-            2,
-            cellSize,
-            context,
-            objectStyle.rock.fill,
-            .58,
-          );
-        } else {
-          drawRock(x, y, cellSize, mode, context, 2);
-        }
-        for (const key of formation) renderedRockCells.add(key);
+  for (const points of rockGroups.values()) {
+    // `obstacleId` still makes the generator produce coherent scree clusters,
+    // but every occupied cell is rendered as its own rock. This keeps the new
+    // spatial distribution without visually welding adjacent rocks together.
+    for (const point of points) {
+      if (useImageProps && options.customProps?.rock) {
+        drawCustomProp(
+          options.customProps.rock,
+          point.x,
+          point.y,
+          1,
+          cellSize,
+          context,
+        );
+      } else if (useImageProps && options.tilesetProps) {
+        drawTilesetProp(
+          options.tilesetProps.rock1x1,
+          point.x,
+          point.y,
+          1,
+          cellSize,
+          context,
+          objectStyle.rock.fill,
+          .58,
+        );
+      } else {
+        drawRockFormation([point], cellSize, mode, context);
       }
-    }
-  }
-  for (const key of rockCells) {
-    if (renderedRockCells.has(key)) continue;
-    const [x, y] = key.split(",").map(Number);
-    if (useImageProps && options.customProps?.rock) {
-      drawCustomProp(
-        options.customProps.rock,
-        x,
-        y,
-        1,
-        cellSize,
-        context,
-      );
-    } else if (useImageProps && options.tilesetProps) {
-      drawTilesetProp(
-        options.tilesetProps.rock1x1,
-        x,
-        y,
-        1,
-        cellSize,
-        context,
-        objectStyle.rock.fill,
-        .58,
-      );
-    } else {
-      drawRock(x, y, cellSize, mode, context);
     }
   }
   context.globalAlpha = 1;
