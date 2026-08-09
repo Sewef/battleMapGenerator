@@ -94,6 +94,22 @@ const tilesetProps = {
   bed2x2: new Image(),
   bed2x2South: new Image(),
   bed2x2Horizontal: new Image(),
+  hearth1x2: new Image(),
+  hearth2x1: new Image(),
+  hearth1x3: new Image(),
+  hearth3x1: new Image(),
+  cabinet1x2: new Image(),
+  cabinet2x1: new Image(),
+  cabinet1x3: new Image(),
+  cabinet3x1: new Image(),
+  cabinet2x1South: new Image(),
+  cabinet3x1South: new Image(),
+  table1x2: new Image(),
+  table2x1: new Image(),
+  table1x3: new Image(),
+  table3x1: new Image(),
+  coffin1x2: new Image(),
+  coffin2x1: new Image(),
   table1x1: new Image(),
   table2x2: new Image(),
   indoorTerrain: new Image(),
@@ -116,6 +132,22 @@ tilesetProps.bed2x1.src = "/assets/tilesets/bed_2x1.png";
 tilesetProps.bed2x2.src = "/assets/tilesets/bed_2x2.png";
 tilesetProps.bed2x2South.src = "/assets/tilesets/bed_2x2_south.png";
 tilesetProps.bed2x2Horizontal.src = "/assets/tilesets/bed_2x2_horizontal.png";
+tilesetProps.hearth1x2.src = "/assets/tilesets/hearth_1x2.png";
+tilesetProps.hearth2x1.src = "/assets/tilesets/hearth_2x1.png";
+tilesetProps.hearth1x3.src = "/assets/tilesets/hearth_1x3.png";
+tilesetProps.hearth3x1.src = "/assets/tilesets/hearth_3x1.png";
+tilesetProps.cabinet1x2.src = "/assets/tilesets/cabinet_1x2.png";
+tilesetProps.cabinet2x1.src = "/assets/tilesets/cabinet_2x1.png";
+tilesetProps.cabinet1x3.src = "/assets/tilesets/cabinet_1x3.png";
+tilesetProps.cabinet3x1.src = "/assets/tilesets/cabinet_3x1.png";
+tilesetProps.cabinet2x1South.src = "/assets/tilesets/cabinet_2x1_south.png";
+tilesetProps.cabinet3x1South.src = "/assets/tilesets/cabinet_3x1_south.png";
+tilesetProps.table1x2.src = "/assets/tilesets/table_1x2.png";
+tilesetProps.table2x1.src = "/assets/tilesets/table_2x1.png";
+tilesetProps.table1x3.src = "/assets/tilesets/table_1x3.png";
+tilesetProps.table3x1.src = "/assets/tilesets/table_3x1.png";
+tilesetProps.coffin1x2.src = "/assets/tilesets/coffin_1x2.png";
+tilesetProps.coffin2x1.src = "/assets/tilesets/coffin_2x1.png";
 tilesetProps.table1x1.src = "/assets/tilesets/table_1x1.png";
 tilesetProps.table2x2.src = "/assets/tilesets/table_2x2.png";
 tilesetProps.indoorTerrain.src = "/assets/tilesets/terrain_indoor.png";
@@ -123,7 +155,7 @@ tilesetProps.drawers1x1.forEach((image, index) => {
   image.src = `/assets/tilesets/drawer_${index + 1}_1x1.png`;
 });
 tilesetProps.shelves1x1.forEach((image, index) => {
-  image.src = `/assets/tilesets/shelf_${index + 4}_1x1.png`;
+  image.src = `/assets/tilesets/shelf_${index + 1}_1x1.png`;
 });
 tilesetProps.statue1x1.src = "/assets/tilesets/statue_1x1.png";
 tilesetProps.flowerPots1x1.forEach((image, index) => {

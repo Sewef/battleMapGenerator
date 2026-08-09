@@ -48,6 +48,22 @@ export interface TilesetPropImages {
   bed2x2: CanvasImageSource;
   bed2x2South: CanvasImageSource;
   bed2x2Horizontal: CanvasImageSource;
+  hearth1x2: CanvasImageSource;
+  hearth2x1: CanvasImageSource;
+  hearth1x3: CanvasImageSource;
+  hearth3x1: CanvasImageSource;
+  cabinet1x2: CanvasImageSource;
+  cabinet2x1: CanvasImageSource;
+  cabinet1x3: CanvasImageSource;
+  cabinet3x1: CanvasImageSource;
+  cabinet2x1South: CanvasImageSource;
+  cabinet3x1South: CanvasImageSource;
+  table1x2: CanvasImageSource;
+  table2x1: CanvasImageSource;
+  table1x3: CanvasImageSource;
+  table3x1: CanvasImageSource;
+  coffin1x2: CanvasImageSource;
+  coffin2x1: CanvasImageSource;
   table1x1: CanvasImageSource;
   table2x2: CanvasImageSource;
   indoorTerrain: CanvasImageSource;
@@ -1476,14 +1492,14 @@ function drawInteriorArchitecture(
     const terrain = grid[y]?.[x]?.terrain;
     return terrain === Terrain.Wall || terrain === Terrain.Door;
   };
-  const floorTileIndex = mode === "house" || mode === "tavern" || mode === "ship"
-    ? 0
+  const floorTileIndex = mode === "house" || mode === "tavern" || mode === "ship" ||
+    mode === "ship-deck" ? 0
     : mode === "crypt" ? 2
     : mode === "castle" ? 2
     : mode === "cathedral" ? 3
     : 3;
   const drawFloorTile = (left: number, top: number) => {
-    if (!tilesetProps?.indoorTerrain || mode === "ship-deck") return false;
+    if (!tilesetProps?.indoorTerrain) return false;
     context.save();
     context.imageSmoothingEnabled = Math.abs(cellSize / 32 - Math.round(cellSize / 32)) > .001;
     context.imageSmoothingQuality = "high";
@@ -2343,6 +2359,10 @@ function drawInteriorProps(
       const variantIndex = Math.abs(interiorPropId ?? x * 31 + y * 17);
       const tableImage = prop === "table"
         ? propCells.length === 1 ? tilesetProps?.table1x1
+          : propCells.length === 2
+            ? vertical ? tilesetProps?.table1x2 : tilesetProps?.table2x1
+          : propCells.length === 3
+            ? vertical ? tilesetProps?.table1x3 : tilesetProps?.table3x1
           : propCells.length === 4 && spanWidth === cellSize * 2 && spanHeight === cellSize * 2
             ? tilesetProps?.table2x2 : undefined
         : undefined;
@@ -2361,6 +2381,49 @@ function drawInteriorProps(
         continue;
       }
       const horizontalBed = propFacing === "east" || propFacing === "west";
+      const wallPropImage = prop === "cabinet" && (propCells.length === 2 || propCells.length === 3)
+        ? propCells.length === 3
+          ? vertical ? tilesetProps?.cabinet1x3
+            : propFacing === "south" ? tilesetProps?.cabinet3x1South : tilesetProps?.cabinet3x1
+          : vertical ? tilesetProps?.cabinet1x2
+            : propFacing === "south" ? tilesetProps?.cabinet2x1South : tilesetProps?.cabinet2x1
+        : prop === "tomb" && propCells.length === 2
+          ? vertical ? tilesetProps?.coffin1x2 : tilesetProps?.coffin2x1
+          : undefined;
+      if (wallPropImage) {
+        const source = imageSourceSize(wallPropImage);
+        if (source) {
+          const scale = cellSize / 32;
+          context.save();
+          context.imageSmoothingEnabled = Math.abs(scale - Math.round(scale)) > .001;
+          context.imageSmoothingQuality = "high";
+          const imageTop = prop === "cabinet"
+            ? propBottom - source.height * scale
+            : centerY - source.height * scale / 2;
+          context.drawImage(wallPropImage, centerX - source.width * scale / 2,
+            imageTop, source.width * scale, source.height * scale);
+          context.restore();
+          continue;
+        }
+      }
+      const hearthImage = prop === "hearth" && (propCells.length === 2 || propCells.length === 3)
+        ? propCells.length === 3
+          ? vertical ? tilesetProps?.hearth1x3 : tilesetProps?.hearth3x1
+          : vertical ? tilesetProps?.hearth1x2 : tilesetProps?.hearth2x1
+        : undefined;
+      if (hearthImage) {
+        const source = imageSourceSize(hearthImage);
+        if (source) {
+          const scale = cellSize / 32;
+          context.save();
+          context.imageSmoothingEnabled = Math.abs(scale - Math.round(scale)) > .001;
+          context.imageSmoothingQuality = "high";
+          context.drawImage(hearthImage, centerX - source.width * scale / 2,
+            centerY - source.height * scale / 2, source.width * scale, source.height * scale);
+          context.restore();
+          continue;
+        }
+      }
       const bedImage = prop === "bed" && !spaceshipFurniture
         ? propCells.length === 4
           ? horizontalBed ? tilesetProps?.bed2x2Horizontal

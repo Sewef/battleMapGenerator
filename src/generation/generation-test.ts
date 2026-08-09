@@ -2053,6 +2053,47 @@ assert(southFacingBeds.length === 2 && southFacingBeds.every(({ rotation, scale 
   rotation === 0 && (scale?.x ?? 0) > 0),
 "interior tileset export: south-facing beds must use dedicated unrotated sprites");
 
+const hearthSpriteGrid: Grid = Array.from({ length: 6 }, () =>
+  Array.from({ length: 6 }, () => ({ terrain: Terrain.Ground, obstacle: Obstacle.None })));
+for (const [id, orientation, points] of [
+  [1, "horizontal", [[0, 0], [1, 0]]],
+  [2, "vertical", [[3, 0], [3, 1]]],
+  [3, "horizontal", [[0, 3], [1, 3], [2, 3]]],
+  [4, "vertical", [[5, 3], [5, 4], [5, 5]]],
+] as const) {
+  for (const [x, y] of points) {
+    Object.assign(hearthSpriteGrid[y][x], {
+      interiorProp: "hearth", interiorPropId: id, propOrientation: orientation,
+    });
+  }
+}
+const hearthSpriteExport = await createOwlbearSceneJson(
+  hearthSpriteGrid,
+  "hearth-sprite-export",
+  new Set(),
+  {
+    useTileset: true,
+    mapImage: {
+      url: "https://example.com/hearth-sprites.webp",
+      mime: "image/webp",
+      width: hearthSpriteGrid[0].length * 48,
+      height: hearthSpriteGrid.length * 48,
+    },
+  },
+);
+const hearthSpriteItems = Object.values((JSON.parse(hearthSpriteExport.json) as {
+  items: { shared: Record<string, {
+    type: string;
+    image?: { url?: string };
+    metadata?: Record<string, unknown>;
+  }> };
+}).items.shared).filter((item) => item.metadata?.[interiorPropMetadataKey] !== undefined);
+assert(hearthSpriteItems.length === 4 && hearthSpriteItems.every(({ type }) => type === "IMAGE"),
+  "interior tileset export: hearths must be movable image props");
+for (const asset of ["hearth_2x1.png", "hearth_1x2.png", "hearth_3x1.png", "hearth_1x3.png"])
+  assert(hearthSpriteItems.some(({ image }) => image?.url?.endsWith(asset)),
+    `interior tileset export: missing ${asset}`);
+
 const lightSourceGrid: Grid = [[
   {
     terrain: Terrain.Ground,

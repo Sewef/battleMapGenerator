@@ -579,6 +579,16 @@ function interiorPropSpriteItems(
         ? horizontalBed ? "bed_2x1.png"
           : prop.facing === "south" ? "bed_1x2_south.png" : "bed_1x2.png"
         : undefined
+    : prop.kind === "hearth" && (prop.points.length === 2 || prop.points.length === 3)
+      ? rectangle.width > rectangle.height
+        ? `hearth_${prop.points.length}x1.png`
+        : `hearth_1x${prop.points.length}.png`
+    : prop.kind === "cabinet" && (prop.points.length === 2 || prop.points.length === 3)
+      ? rectangle.width > rectangle.height
+        ? `cabinet_${prop.points.length}x1${prop.facing === "south" ? "_south" : ""}.png`
+        : `cabinet_1x${prop.points.length}.png`
+    : prop.kind === "tomb" && prop.points.length === 2
+      ? rectangle.width > rectangle.height ? "coffin_2x1.png" : "coffin_1x2.png"
     : prop.kind === "chair" ? "stool_1x1.png"
       : prop.kind === "crate" ? "crate_1x1.png"
         : prop.kind === "barrel" ? "barrel_1x1.png"
@@ -588,15 +598,28 @@ function interiorPropSpriteItems(
                 : prop.kind === "statue" ? "statue_1x1.png"
                   : prop.kind === "flower_pot" ? `flower_pot_${variant % 3 + 1}_1x1.png`
                     : prop.kind === "table" && prop.points.length === 1 ? "table_1x1.png"
+                      : prop.kind === "table" && prop.points.length === 2
+                        ? rectangle.width > rectangle.height ? "table_2x1.png" : "table_1x2.png"
+                      : prop.kind === "table" && prop.points.length === 3
+                        ? rectangle.width > rectangle.height ? "table_3x1.png" : "table_1x3.png"
                       : prop.kind === "table" && prop.points.length === 4 &&
                         rectangle.width === 2 && rectangle.height === 2 ? "table_2x2.png"
                         : undefined;
   if (!assetName) return [];
   const tall = prop.kind === "drawers" || prop.kind === "shelf" || prop.kind === "statue";
   const perCell = prop.kind === "crate";
-  const assetWidth = assetName.includes("2x2") || assetName.includes("2x1") ? 64 : 32;
-  const assetHeight = assetName.includes("1x2") || tall ? 64
-    : assetName.includes("2x1") ? 32 : assetWidth;
+  const fittedLength = prop.kind === "hearth" || prop.kind === "cabinet" ||
+    prop.kind === "tomb" || prop.kind === "table" && prop.points.length === 2
+    ? prop.points.length : 0;
+  const cabinetOverhang = prop.kind === "cabinet" &&
+    (rectangle.height > rectangle.width || prop.facing === "south") ? 1 : 0;
+  const assetWidth = fittedLength
+    ? rectangle.width * 32
+    : assetName.includes("2x2") || assetName.includes("2x1") ? 64 : 32;
+  const assetHeight = fittedLength
+    ? (rectangle.height + cabinetOverhang) * 32
+    : assetName.includes("1x2") || tall ? 64
+      : assetName.includes("2x1") ? 32 : assetWidth;
   const rotation = 0;
   const flipHorizontal = prop.kind === "bed" && horizontalBed && prop.facing === "east";
   const placements = perCell
@@ -609,7 +632,9 @@ function interiorPropSpriteItems(
     }))
     : [{
       centerX: rectangle.minimumX + rectangle.width / 2,
-      centerY: tall ? rectangle.minimumY : rectangle.minimumY + rectangle.height / 2,
+      centerY: prop.kind === "cabinet"
+        ? rectangle.minimumY + rectangle.height - assetHeight / 64
+        : tall ? rectangle.minimumY : rectangle.minimumY + rectangle.height / 2,
       widthCells: assetWidth / 32,
       heightCells: assetHeight / 32,
       footprint: prop.points,
