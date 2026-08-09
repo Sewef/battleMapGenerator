@@ -185,6 +185,16 @@ function assertInterior(grid: Grid, expectedRooms: number, label: string, expect
     if (kind === "bench") assert(cells.length >= 2, `${label}: bench ${propId} is too short`);
     if (kind === "bar") assert(cells.length >= 3, `${label}: bar ${propId} is too short`);
     if (kind === "altar") assert(cells.length >= 2, `${label}: altar ${propId} is too small`);
+    if (["drawers", "shelf", "statue", "barrel", "bucket", "flower_pot"].includes(kind)) {
+      assert(cells.length === 1, `${label}: ${kind} ${propId} must occupy one cell`);
+    }
+    if (kind === "drawers" || kind === "shelf") {
+      const cell = cells[0];
+      assert(grid[cell.y - 1]?.[cell.x]?.terrain === Terrain.Wall,
+        `${label}: ${kind} ${propId} must have a wall directly north`);
+      assert(cell.tile.propFacing === "south",
+        `${label}: ${kind} ${propId} must face into the room`);
+    }
   }
 
   const unobstructedStart = (unobstructedDoors.values().next().value as string | undefined) ??

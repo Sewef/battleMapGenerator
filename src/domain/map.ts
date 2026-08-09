@@ -117,7 +117,8 @@ export interface Tile {
     "stairs" | "railing" | "gangway";
   deckFeatureFacing?: "north" | "east" | "south" | "west";
   interiorProp?: "table" | "chair" | "bar" | "cabinet" | "bed" |
-    "bench" | "altar" | "crate" | "console" | "tomb" | "hearth";
+    "bench" | "altar" | "crate" | "console" | "tomb" | "hearth" |
+    "drawers" | "shelf" | "statue" | "barrel" | "bucket" | "flower_pot";
   interiorPropId?: number;
   propOrientation?: "horizontal" | "vertical";
   propFacing?: "north" | "east" | "south" | "west";
@@ -202,6 +203,12 @@ export const INTERIOR_PROP_RULES: Record<
   console: { label: "Console", movement: "blocked", blocksSight: false },
   tomb: { label: "Tomb", movement: "blocked", blocksSight: false },
   hearth: { label: "Hearth", movement: "blocked", blocksSight: false },
+  drawers: { label: "Drawers", movement: "blocked", blocksSight: false },
+  shelf: { label: "Shelf", movement: "blocked", blocksSight: false },
+  statue: { label: "Statue", movement: "blocked", blocksSight: false },
+  barrel: { label: "Barrel", movement: "blocked", blocksSight: false },
+  bucket: { label: "Bucket", movement: "blocked", blocksSight: false },
+  flower_pot: { label: "Flower pot", movement: "blocked", blocksSight: false },
 };
 
 export const DECK_FEATURE_RULES: Record<

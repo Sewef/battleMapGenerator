@@ -576,6 +576,189 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
     return false;
   };
 
+<<<<<<< Updated upstream
+=======
+  // The tall 1x1 sprites are front elevations: their base occupies the floor
+  // cell while the upper half is painted over the wall immediately north.
+  const placeNorthWallProp = (room: Room, kind: "drawers" | "shelf" | "statue") => {
+    const doorApproaches = room.cells.filter((point) =>
+      neighbors(point).some(({ x, y }) => grid[y]?.[x]?.terrain === Terrain.Door));
+    const candidates = shuffled(room.cells, random).filter((point) => {
+      const frontage = { x: point.x, y: point.y + 1 };
+      return grid[point.y - 1]?.[point.x]?.terrain === Terrain.Wall &&
+        pointInRoom(room, frontage.x, frontage.y) &&
+        !grid[frontage.y][frontage.x].interiorProp &&
+        available(room, [point]) &&
+        roomRemainsConnected(room, [point]);
+    }).sort((first, second) => {
+      const doorDistance = (point: Point) => doorApproaches.length
+        ? Math.min(...doorApproaches.map((door) =>
+          Math.abs(point.x - door.x) + Math.abs(point.y - door.y)))
+        : 0;
+      return doorDistance(second) - doorDistance(first);
+    });
+    for (const point of candidates) {
+      if (!placeComposition(room, [{
+        kind,
+        points: [point],
+        orientation: "horizontal",
+        facing: "south",
+      }])) continue;
+      reserved.add(key({ x: point.x, y: point.y + 1 }));
+      return true;
+    }
+    return false;
+  };
+
+  const placeSmallProp = (room: Room, kind: "barrel" | "bucket" | "flower_pot") => {
+    const candidates = shuffled(room.cells, random).sort((first, second) => {
+      const touchesWall = (point: Point) => neighbors(point).some(({ x, y }) =>
+        grid[y]?.[x]?.terrain === Terrain.Wall) ? 1 : 0;
+      return touchesWall(second) - touchesWall(first);
+    });
+    for (const point of candidates) {
+      if (place(room, kind, [point], "horizontal")) return true;
+    }
+    return false;
+  };
+
+  const reserveDoorAxis = (room: Room) => {
+    const entries = room.cells.flatMap((approach) => neighbors(approach)
+      .filter(({ x, y }) => grid[y]?.[x]?.terrain === Terrain.Door)
+      .map((door) => ({ approach, door })));
+    const aisle = new Set<string>();
+    if (!entries.length) return aisle;
+    const entry = entries.sort((first, second) => {
+      const distanceFromCenter = ({ approach }: { approach: Point }) => Math.abs(
+        approach.x - (room.left + room.right) / 2,
+      ) + Math.abs(approach.y - (room.top + room.bottom) / 2);
+      return distanceFromCenter(first) - distanceFromCenter(second);
+    })[0];
+    const step = {
+      x: entry.approach.x - entry.door.x,
+      y: entry.approach.y - entry.door.y,
+    };
+    const transverseSpan = step.x !== 0
+      ? room.bottom - room.top + 1
+      : room.right - room.left + 1;
+    aisle.add(key(entry.approach));
+    // A one- or two-cell transverse room has no separate centre aisle: the
+    // entire compartment would become a reservation and could not serve its
+    // function at all. Door clearance and the connectivity check remain active.
+    if (transverseSpan < 3) return aisle;
+    for (
+      let cursor = entry.approach;
+      pointInRoom(room, cursor.x, cursor.y);
+      cursor = { x: cursor.x + step.x, y: cursor.y + step.y }
+    ) {
+      reserved.add(key(cursor));
+      aisle.add(key(cursor));
+    }
+    return aisle;
+  };
+
+  const furnishBurialVault = (room: Room) => {
+    reserveDoorAxis(room);
+    const expected = Math.min(6, Math.max(1, Math.ceil(room.cells.length / 24)));
+    const target = Math.min(8, Math.max(expected,
+      Math.round(room.cells.length / (15 + random() * 3))));
+    const runs = wallRuns(room).filter((run) => run.points.length >= 2);
+    const orientations = (["horizontal", "vertical"] as const).map((orientation) => {
+      const matching = runs.filter((run) => run.orientation === orientation);
+      const facings = new Set(matching.map((run) => run.facing));
+      const capacity = matching.reduce((sum, run) =>
+        sum + Math.floor((run.points.length + 1) / 3), 0);
+      return { orientation, runs: matching, facings, capacity };
+    }).filter(({ facings, capacity }) => capacity > 0 &&
+      (room.cells.length < 60 || facings.size >= 2))
+      .sort((first, second) => second.capacity - first.capacity || random() - .5);
+    const selected = orientations[0];
+    if (!selected) {
+      return placeWallAlignedObjects(room, "tomb", 2, expected);
+    }
+
+    const placedByFacing = new Map<NonNullable<Tile["propFacing"]>, number>();
+    const placedCenters: Array<{
+      axis: number;
+      facing: NonNullable<Tile["propFacing"]>;
+    }> = [];
+    const packedStarts = new Map<(typeof runs)[number], number[]>();
+    for (const run of selected.runs) {
+      const variants = [0, 1, 2].map((offset) => {
+        const starts: number[] = [];
+        for (let start = offset; start <= run.points.length - 2; start += 3) {
+          starts.push(start);
+        }
+        const usable = starts.filter((start) => {
+          const points = run.points.slice(start, start + 2);
+          return available(room, points) && roomRemainsConnected(room, points);
+        }).length;
+        return { starts, usable, order: random() };
+      }).sort((first, second) => second.usable - first.usable || first.order - second.order);
+      packedStarts.set(run, variants[0].starts);
+    }
+    let placed = 0;
+    while (placed < target) {
+      const candidates = selected.runs.flatMap((run) =>
+        (packedStarts.get(run) ?? []).map((start) => {
+          const points = run.points.slice(start, start + 2);
+          const axis = selected.orientation === "horizontal"
+            ? (points[0].x + points[1].x) / 2
+            : (points[0].y + points[1].y) / 2;
+          const matchingOpposite = placedCenters.filter((candidate) =>
+            candidate.facing === oppositeFacing[run.facing]);
+          const symmetryDistance = matchingOpposite.length
+            ? Math.min(...matchingOpposite.map((candidate) => Math.abs(candidate.axis - axis)))
+            : 0;
+          const spread = placedCenters.length
+            ? Math.min(...placedCenters.map((candidate) => Math.abs(candidate.axis - axis)))
+            : 0;
+          return {
+            run,
+            points,
+            axis,
+            score: (matchingOpposite.length
+              ? -symmetryDistance * 10
+              : spread * 5) + random(),
+          };
+        }));
+      const viable = candidates.filter(({ points }) =>
+        available(room, points) && roomRemainsConnected(room, points))
+        .sort((first, second) => {
+          const firstCount = placedByFacing.get(first.run.facing) ?? 0;
+          const secondCount = placedByFacing.get(second.run.facing) ?? 0;
+          return firstCount - secondCount || second.score - first.score;
+        });
+      const candidate = viable[0];
+      if (!candidate || !placeComposition(room, [{
+        kind: "tomb",
+        points: candidate.points,
+        orientation: selected.orientation,
+        facing: candidate.run.facing,
+      }])) break;
+      const first = candidate.points[0];
+      const last = candidate.points[candidate.points.length - 1];
+      const along = selected.orientation === "horizontal"
+        ? { x: 1, y: 0 } : { x: 0, y: 1 };
+      for (const clearance of [
+        { x: first.x - along.x, y: first.y - along.y },
+        { x: last.x + along.x, y: last.y + along.y },
+        ...candidate.points.map((point) => ({
+          x: point.x + facingStep[candidate.run.facing].x,
+          y: point.y + facingStep[candidate.run.facing].y,
+        })),
+      ]) {
+        if (pointInRoom(room, clearance.x, clearance.y)) reserved.add(key(clearance));
+      }
+      placedByFacing.set(candidate.run.facing,
+        (placedByFacing.get(candidate.run.facing) ?? 0) + 1);
+      placedCenters.push({ axis: candidate.axis, facing: candidate.run.facing });
+      placed += 1;
+    }
+    return placed;
+  };
+
+>>>>>>> Stashed changes
   const placeHearth = (room: Room) => {
     const doors = room.cells.filter((point) =>
       neighbors(point).some(({ x, y }) => grid[y]?.[x]?.terrain === Terrain.Door));
@@ -989,6 +1172,7 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
       furnishCathedralNave(room);
     } else if (/Side chapel|Inner sanctum|Reliquary/i.test(role)) {
       furnishAxialChapel(room);
+      if (room.cells.length >= 28) placeNorthWallProp(room, "statue");
     } else if (/Common room/i.test(role)) {
       placeServiceBar(room);
       placeHearth(room);
@@ -999,6 +1183,7 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
       const squareTables = placeDiningSets(room, squareTarget, 1, "chair", 1);
       placeDiningSets(room,
         Math.max(2, tableCount - boothTables - squareTables), 2, "chair", 1);
+      if (room.cells.length >= 120 && random() < .7) placeSmallProp(room, "barrel");
     } else if (/Great hall/i.test(role)) {
       placeHearth(room);
       placeWallRun(room, "cabinet", 2, 4);
@@ -1015,6 +1200,7 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
       }
       placeWallRun(room, "cabinet", 1, Math.min(3, Math.max(1,
         Math.ceil(room.cells.length / 20))));
+      if (room.cells.length >= 32) placeNorthWallProp(room, random() < .5 ? "drawers" : "shelf");
     } else if (/Living room/i.test(role)) {
       placeHearth(room);
       const loungeGroups = placeWallSeatingGroups(room, room.cells.length >= 110 ? 2 : 1);
@@ -1026,6 +1212,8 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
       if (!loungeGroups && room.cells.length >= 80) {
         placeDiningSets(room, 1, 1, "chair", 1);
       }
+      if (room.cells.length >= 80) placeNorthWallProp(room, random() < .55 ? "drawers" : "shelf");
+      if (room.cells.length >= 120 && random() < .65) placeSmallProp(room, "flower_pot");
     } else if (/Chart room|Guardroom/i.test(role)) {
       if (!placeDiningSets(room, room.cells.length >= 35 ? 2 : 1, 2, "chair")) {
         placeCompactCouncilTable(room);
@@ -1044,6 +1232,7 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
       const workTables = placeWorkTables(room, workTableCount, 2);
       if (!workTables) placeWorkTables(room, 1, 1);
       placeWallRun(room, "crate", 1, room.cells.length >= 50 ? 3 : 2);
+      if (room.cells.length >= 40) placeSmallProp(room, random() < .58 ? "barrel" : "bucket");
     } else if (/Bedroom|Guest room|cabin|berths|quarters|Barracks|Medbay|Sick bay|Royal chamber|Clergy chamber/i.test(role)) {
       const sharedSleepingRoom = /berths|quarters|Barracks|Medbay|Sick bay/i.test(role);
       const bedCount = room.cells.length >= 90 ? 3
@@ -1061,6 +1250,10 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
           Math.max(2, Math.min(4, Math.floor(room.cells.length * .36)))) {
         placeWallRun(room, "table", 1, 1);
       }
+      if (room.cells.length >= 64 && random() < .7) {
+        placeNorthWallProp(room, random() < .6 ? "drawers" : "shelf");
+      }
+      if (room.cells.length >= 90 && random() < .45) placeSmallProp(room, "flower_pot");
     } else if (/Burial vault/i.test(role)) {
       placeWallAlignedObjects(room, "tomb", 2,
         Math.max(1, Math.min(3, Math.floor(room.cells.length / 14))));
@@ -1070,9 +1263,20 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
       if (!room.cells.some(({ x, y }) => grid[y][x].interiorProp === "crate")) {
         placeCompactWallProp(room, "crate");
       }
+<<<<<<< Updated upstream
     } else if (/Cockpit|Engineering|Laboratory|Life support|Utility|Observation|Airlock|Escape pods/i.test(role)) {
       if (!placeWallRun(room, "console", 2, 5)) {
         placeCompactWallProp(room, "console", true);
+=======
+      if (room.cells.length >= 18) placeSmallProp(room, random() < .7 ? "barrel" : "bucket");
+    } else if (/Engineering/i.test(role)) {
+      if (!placeWallRun(room, "console", 2, 5)) placeCompactWallProp(room, "console", true);
+      const workTarget = Math.max(1, Math.min(3, Math.ceil(room.cells.length / 32)));
+      if (!placeWorkTables(room, workTarget, 2)) placeCompactWorkTable(room);
+      if (!placeWallRun(room, "cabinet", 1,
+        Math.max(2, Math.min(5, Math.ceil(room.cells.length / 18))))) {
+        placeCompactWallProp(room, "cabinet", true);
+>>>>>>> Stashed changes
       }
       if (/Cockpit|Laboratory/i.test(role)) placeDiningSets(room, 1, 1, "chair");
     } else if (/Choir room/i.test(role)) {
@@ -1092,9 +1296,13 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
     } else if (/Sacristy|Vestry|Archive|Clergy|Chapter/i.test(role)) {
       placeWallRun(room, "cabinet", 2, 4);
       if (room.cells.length >= 20) placeDiningSets(room, 1, 2, "chair");
+      if (room.cells.length >= 28) placeNorthWallProp(room, "shelf");
     } else if (!/Hallway|passage|spine|gangway/i.test(role)) {
       placeWallRun(room, "cabinet", 1, 3);
       if (room.cells.length >= 28) placeDiningSets(room, 1, 2, "chair");
+      if (room.cells.length >= 38 && random() < .55) {
+        placeNorthWallProp(room, random() < .5 ? "drawers" : "shelf");
+      }
     }
   }
 }

@@ -84,13 +84,39 @@ const tilesetProps = {
   tree2x2: new Image(),
   rock1x1: new Image(),
   rock2x2: new Image(),
+  crate1x1: new Image(),
+  barrel1x1: new Image(),
+  bucket1x1: new Image(),
+  stool1x1: new Image(),
+  drawers1x1: [new Image(), new Image(), new Image()],
+  shelves1x1: [new Image(), new Image()],
+  statue1x1: new Image(),
+  flowerPots1x1: [new Image(), new Image(), new Image()],
 } satisfies TilesetPropImages;
 tilesetProps.tree1x1.src = "/assets/tilesets/tree_1x1.png";
 tilesetProps.tree2x2.src = "/assets/tilesets/tree_2x2.png";
 tilesetProps.rock1x1.src = "/assets/tilesets/rock_1x1.png";
 tilesetProps.rock2x2.src = "/assets/tilesets/rock_2x2.png";
+tilesetProps.crate1x1.src = "/assets/tilesets/crate_1x1.png";
+tilesetProps.barrel1x1.src = "/assets/tilesets/barrel_1x1.png";
+tilesetProps.bucket1x1.src = "/assets/tilesets/bucket_1x1.png";
+tilesetProps.stool1x1.src = "/assets/tilesets/stool_1x1.png";
+tilesetProps.drawers1x1.forEach((image, index) => {
+  image.src = `/assets/tilesets/drawer_${index + 1}_1x1.png`;
+});
+tilesetProps.shelves1x1.forEach((image, index) => {
+  image.src = `/assets/tilesets/shelf_${index + 4}_1x1.png`;
+});
+tilesetProps.statue1x1.src = "/assets/tilesets/statue_1x1.png";
+tilesetProps.flowerPots1x1.forEach((image, index) => {
+  image.src = `/assets/tilesets/flower_pot_${index + 1}_1x1.png`;
+});
 const tilesetPropsReady = () =>
-  Object.values(tilesetProps).every((image) => image.naturalWidth > 0);
+  Object.values(tilesetProps).every((value) => Array.isArray(value)
+    ? value.every((image) => image.naturalWidth > 0)
+    : value.naturalWidth > 0);
+const tilesetEnabledFor = (mode: Preset["mode"]) => useTilesetInput.checked &&
+  (isInteriorMode(mode) ? tilesetPropsReady() : tilesetReady());
 const customProps: CustomPropImages = {};
 const customPropSources: Partial<Record<"tree" | "rock", string>> = {};
 const activeCustomProps = (): CustomPropImages => ({
@@ -144,7 +170,7 @@ function updateBiomeParameterFields(preset: Preset) {
     : undefined;
   inputs.buildings.min = roomLimits ? String(roomLimits.minimum) : "0";
   inputs.buildings.max = roomLimits ? String(roomLimits.maximum) : "8";
-  useTilesetInput.closest<HTMLElement>("label")!.hidden = isInterior;
+  useTilesetInput.closest<HTMLElement>("label")!.hidden = false;
   document.querySelector<HTMLElement>("#custom-prop-settings")!.hidden = isInterior;
   for (const field of PARAMETER_FIELDS) {
     const label = profile[field.id];
@@ -183,8 +209,7 @@ function applyPreset(preset: Preset, useNewSeed = true) {
 }
 
 function renderMap(grid: Grid, targetCanvas = previewCanvas, cellSize?: number) {
-  const useTileset = !isInteriorMode(activePreset.mode) &&
-    useTilesetInput.checked && tilesetReady();
+  const useTileset = tilesetEnabledFor(activePreset.mode);
   drawGrid(grid, {
     targetCanvas,
     mode: activePreset.mode,
@@ -278,8 +303,7 @@ function webpRenderOptions(includeProps: boolean) {
     hiddenItems.add(Obstacle.Tree);
     hiddenItems.add(Obstacle.Rock);
   }
-  const useTileset = !isInteriorMode(activePreset.mode) &&
-    useTilesetInput.checked && tilesetReady();
+  const useTileset = tilesetEnabledFor(activePreset.mode);
   return {
     hiddenItems,
     showGrid: showGridInput.checked,
@@ -367,7 +391,7 @@ async function copyText(text: string) {
 }
 
 function owlbearExportKey() {
-  const useTileset = !isInteriorMode(activePreset.mode) && useTilesetInput.checked;
+  const useTileset = tilesetEnabledFor(activePreset.mode);
   return JSON.stringify({
     mapRevision,
     seed: generatedOptions?.seed ?? seedInput.value.trim(),
@@ -481,7 +505,7 @@ async function runOwlbearExport(action: "copy" | "download") {
   try {
     const generation = generatedOptions;
     if (!generation) throw new Error("Generate a map before exporting.");
-    const useTileset = !isInteriorMode(activePreset.mode) && useTilesetInput.checked;
+    const useTileset = tilesetEnabledFor(activePreset.mode);
     let scene = cachedScene;
     if (!scene) {
       owlbearStatus.textContent = "Rendering and uploading the exact background...";
@@ -552,7 +576,8 @@ stylizedLightingInput.addEventListener("change", () => renderMap(currentGrid));
 tilesetImage.addEventListener("load", () => {
   if (useTilesetInput.checked) renderMap(currentGrid);
 });
-Object.values(tilesetProps).forEach((image) => {
+Object.values(tilesetProps).flatMap((value) => Array.isArray(value) ? value : [value])
+  .forEach((image) => {
   image.addEventListener("load", () => {
     if (useTilesetInput.checked) renderMap(currentGrid);
   });

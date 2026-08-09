@@ -37,6 +37,14 @@ export interface TilesetPropImages {
   tree2x2: CanvasImageSource;
   rock1x1: CanvasImageSource;
   rock2x2: CanvasImageSource;
+  crate1x1: CanvasImageSource;
+  barrel1x1: CanvasImageSource;
+  bucket1x1: CanvasImageSource;
+  stool1x1: CanvasImageSource;
+  drawers1x1: readonly CanvasImageSource[];
+  shelves1x1: readonly CanvasImageSource[];
+  statue1x1: CanvasImageSource;
+  flowerPots1x1: readonly CanvasImageSource[];
 }
 
 export interface CustomPropImages {
@@ -837,6 +845,173 @@ function drawRavineUpperEdges(
 
 }
 
+<<<<<<< Updated upstream
+=======
+function imageSourceSize(image: CanvasImageSource) {
+  const source = image as CanvasImageSource & {
+    naturalWidth?: number;
+    naturalHeight?: number;
+    videoWidth?: number;
+    videoHeight?: number;
+    width?: number;
+    height?: number;
+  };
+  const width = source.naturalWidth ?? source.videoWidth ?? Number(source.width);
+  const height = source.naturalHeight ?? source.videoHeight ?? Number(source.height);
+  return Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0
+    ? { width, height }
+    : undefined;
+}
+
+function drawBattlefieldTrenchDetails(
+  grid: Grid,
+  cellSize: number,
+  opacity: number,
+  context: CanvasRenderingContext2D,
+) {
+  const isTrench = (x: number, y: number) =>
+    outsideGrid(grid, x, y) || grid[y][x].terrain === Terrain.Ravine;
+  const edgePath = new Path2D();
+  const addEdge = (x: number, y: number, side: 0 | 1 | 2 | 3) => {
+    const left = x * cellSize;
+    const top = y * cellSize;
+    if (side === 0) {
+      edgePath.moveTo(left, top);
+      edgePath.lineTo(left + cellSize, top);
+    } else if (side === 1) {
+      edgePath.moveTo(left + cellSize, top);
+      edgePath.lineTo(left + cellSize, top + cellSize);
+    } else if (side === 2) {
+      edgePath.moveTo(left + cellSize, top + cellSize);
+      edgePath.lineTo(left, top + cellSize);
+    } else {
+      edgePath.moveTo(left, top + cellSize);
+      edgePath.lineTo(left, top);
+    }
+  };
+
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      if (grid[y][x].terrain !== Terrain.Ravine) continue;
+      if (!isTrench(x, y - 1)) addEdge(x, y, 0);
+      if (!isTrench(x + 1, y)) addEdge(x, y, 1);
+      if (!isTrench(x, y + 1)) addEdge(x, y, 2);
+      if (!isTrench(x - 1, y)) addEdge(x, y, 3);
+    }
+  }
+
+  context.save();
+  context.globalAlpha = opacity;
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  context.strokeStyle = "rgba(55, 34, 22, .78)";
+  context.lineWidth = Math.max(2.5, cellSize * .13);
+  context.stroke(edgePath);
+  context.strokeStyle = "rgba(168, 129, 82, .48)";
+  context.lineWidth = Math.max(.8, cellSize * .032);
+  context.stroke(edgePath);
+
+  const drawTimber = (
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+  ) => {
+    context.strokeStyle = "rgba(48, 30, 21, .9)";
+    context.lineWidth = Math.max(2.2, cellSize * .12);
+    context.beginPath();
+    context.moveTo(startX, startY);
+    context.lineTo(endX, endY);
+    context.stroke();
+    context.strokeStyle = "rgba(139, 92, 52, .92)";
+    context.lineWidth = Math.max(1.2, cellSize * .068);
+    context.beginPath();
+    context.moveTo(startX, startY);
+    context.lineTo(endX, endY);
+    context.stroke();
+    context.strokeStyle = "rgba(213, 161, 93, .3)";
+    context.lineWidth = Math.max(.55, cellSize * .018);
+    context.beginPath();
+    context.moveTo(startX, startY);
+    context.lineTo(endX, endY);
+    context.stroke();
+  };
+
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      if (grid[y][x].terrain !== Terrain.Ravine) continue;
+      let horizontalSupport = 0;
+      let verticalSupport = 0;
+      for (const offset of [-1, 1]) {
+        for (let cross = -1; cross <= 1; cross += 1) {
+          if (grid[y + cross]?.[x + offset]?.terrain === Terrain.Ravine) {
+            horizontalSupport += 1;
+          }
+          if (grid[y + offset]?.[x + cross]?.terrain === Terrain.Ravine) {
+            verticalSupport += 1;
+          }
+        }
+      }
+      const horizontal = horizontalSupport >= verticalSupport;
+      const left = x * cellSize;
+      const top = y * cellSize;
+      if (horizontal) {
+        if (!isTrench(x, y - 1)) {
+          drawTimber(
+            left + cellSize * .12,
+            top + cellSize * .13,
+            left + cellSize * .88,
+            top + cellSize * .13,
+          );
+        }
+        if (!isTrench(x, y + 1)) {
+          drawTimber(
+            left + cellSize * .12,
+            top + cellSize * .87,
+            left + cellSize * .88,
+            top + cellSize * .87,
+          );
+        }
+        if ((x + y * 2) % 3 === 0) {
+          drawTimber(
+            left + cellSize * .5,
+            top + cellSize * .2,
+            left + cellSize * .5,
+            top + cellSize * .8,
+          );
+        }
+      } else {
+        if (!isTrench(x - 1, y)) {
+          drawTimber(
+            left + cellSize * .13,
+            top + cellSize * .12,
+            left + cellSize * .13,
+            top + cellSize * .88,
+          );
+        }
+        if (!isTrench(x + 1, y)) {
+          drawTimber(
+            left + cellSize * .87,
+            top + cellSize * .12,
+            left + cellSize * .87,
+            top + cellSize * .88,
+          );
+        }
+        if ((y + x * 2) % 3 === 0) {
+          drawTimber(
+            left + cellSize * .2,
+            top + cellSize * .5,
+            left + cellSize * .8,
+            top + cellSize * .5,
+          );
+        }
+      }
+    }
+  }
+  context.restore();
+}
+
+>>>>>>> Stashed changes
 function drawLiquidUpperEdges(
   grid: Grid,
   cellSize: number,
@@ -2089,6 +2264,7 @@ function drawInteriorProps(
   grid: Grid,
   cellSize: number,
   context: CanvasRenderingContext2D,
+  tilesetProps?: TilesetPropImages,
 ) {
   context.save();
   context.lineJoin = "round";
@@ -2119,8 +2295,63 @@ function drawInteriorProps(
       const spanWidth = propRight - propLeft;
       const spanHeight = propBottom - propTop;
       const vertical = propOrientation === "vertical";
+<<<<<<< Updated upstream
       context.fillStyle = prop === "bar" ? "#69432c" : "#795137";
       context.strokeStyle = "#39281f";
+=======
+      const syntheticSeat = spaceshipFurniture &&
+        (prop === "table" || prop === "chair");
+
+      const variantIndex = Math.abs(interiorPropId ?? x * 31 + y * 17);
+      const tileImage = prop === "chair" ? tilesetProps?.stool1x1
+        : prop === "crate" ? tilesetProps?.crate1x1
+        : prop === "barrel" ? tilesetProps?.barrel1x1
+          : prop === "bucket" ? tilesetProps?.bucket1x1
+            : prop === "drawers" && tilesetProps?.drawers1x1.length
+              ? tilesetProps.drawers1x1[variantIndex % tilesetProps.drawers1x1.length]
+              : prop === "shelf" && tilesetProps?.shelves1x1.length
+                ? tilesetProps.shelves1x1[variantIndex % tilesetProps.shelves1x1.length]
+                : prop === "statue" ? tilesetProps?.statue1x1
+                  : prop === "flower_pot" && tilesetProps?.flowerPots1x1.length
+                    ? tilesetProps.flowerPots1x1[variantIndex % tilesetProps.flowerPots1x1.length]
+                    : undefined;
+      if (tileImage) {
+        const tall = prop === "drawers" || prop === "shelf" || prop === "statue";
+        const sourceSize = imageSourceSize(tileImage);
+        const availableWidth = cellSize;
+        const availableHeight = cellSize * (tall ? 2 : 1);
+        const scale = sourceSize
+          ? Math.min(
+            availableWidth / sourceSize.width,
+            availableHeight / sourceSize.height,
+          )
+          : 1;
+        const drawWidth = sourceSize ? sourceSize.width * scale : availableWidth;
+        const drawHeight = sourceSize ? sourceSize.height * scale : availableHeight;
+        context.save();
+        // Integer pixel-art scales stay crisp. Fractional preview scales use
+        // interpolation so columns of source pixels are not unevenly dropped.
+        context.imageSmoothingEnabled = Math.abs(scale - Math.round(scale)) > .001;
+        context.imageSmoothingQuality = "high";
+        for (const cell of propCells) {
+          context.drawImage(
+            tileImage,
+            (cell.x + .5) * cellSize - drawWidth / 2,
+            (cell.y + 1) * cellSize - drawHeight,
+            drawWidth,
+            drawHeight,
+          );
+        }
+        context.restore();
+        continue;
+      }
+      context.fillStyle = syntheticSeat
+        ? "#596b70"
+        : prop === "bar"
+          ? "#69432c"
+          : "#795137";
+      context.strokeStyle = syntheticSeat ? "#23363d" : "#39281f";
+>>>>>>> Stashed changes
       context.lineWidth = Math.max(1, cellSize * .045);
       if (prop === "table") {
         const square = propCells.length === 1;
@@ -2461,6 +2692,34 @@ function drawInteriorProps(
           context.lineTo(crateX + size * .4, crateY + size * .4);
           context.moveTo(crateX + size * .4, crateY - size * .4);
           context.lineTo(crateX - size * .4, crateY + size * .4);
+          context.stroke();
+        }
+      } else if (prop === "barrel" || prop === "bucket" || prop === "flower_pot") {
+        const size = prop === "bucket" ? cellSize * .52 : cellSize * .68;
+        context.fillStyle = prop === "flower_pot" ? "#9a634b"
+          : prop === "bucket" ? "#555d5d" : "#805238";
+        context.strokeStyle = prop === "bucket" ? "#252d2d" : "#3b281f";
+        context.beginPath();
+        context.ellipse(centerX, centerY, size / 2, size * .43, 0, 0, Math.PI * 2);
+        context.fill();
+        context.stroke();
+        if (prop === "flower_pot") {
+          context.fillStyle = "#557044";
+          context.beginPath();
+          context.arc(centerX, centerY - size * .22, size * .22, 0, Math.PI * 2);
+          context.fill();
+        }
+      } else if (prop === "drawers" || prop === "shelf" || prop === "statue") {
+        const width = cellSize * .72;
+        const height = cellSize * .82;
+        context.fillStyle = prop === "statue" ? "#8e918b" : "#765139";
+        context.strokeStyle = prop === "statue" ? "#484c49" : "#39281f";
+        context.fillRect(centerX - width / 2, centerY - height / 2, width, height);
+        context.strokeRect(centerX - width / 2, centerY - height / 2, width, height);
+        if (prop !== "statue") {
+          context.beginPath();
+          context.moveTo(centerX - width * .38, centerY);
+          context.lineTo(centerX + width * .38, centerY);
           context.stroke();
         }
       } else if (prop === "console") {
@@ -4535,7 +4794,19 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     if (mode === "ship-deck") {
       drawSailingShipDeckElevation(grid, cellSize, context);
     }
+<<<<<<< Updated upstream
     drawInteriorProps(grid, cellSize, context);
+=======
+    if (!options.hideInteriorProps) {
+      drawInteriorProps(
+        grid,
+        cellSize,
+        mode,
+        context,
+        options.useTileset ? options.tilesetProps : undefined,
+      );
+    }
+>>>>>>> Stashed changes
   }
   drawReliefBevels(
     grid,
