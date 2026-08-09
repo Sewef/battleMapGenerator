@@ -14,6 +14,7 @@ import {
   getTerrainStyle,
 } from "./palettes";
 import { drawStylizedLighting } from "./lighting";
+import { interiorAssetSpriteLayout } from "./tileset-assets";
 
 export interface RenderOptions {
   targetCanvas: HTMLCanvasElement;
@@ -68,6 +69,9 @@ export interface TilesetPropImages {
   altar3x1: CanvasImageSource;
   benchNorth: CanvasImageSource;
   benchSouth: CanvasImageSource;
+  benchHorizontalLeft: CanvasImageSource;
+  benchHorizontalMiddle: CanvasImageSource;
+  benchHorizontalRight: CanvasImageSource;
   banquetteNorth: CanvasImageSource;
   banquetteSouth: CanvasImageSource;
   coffin1x2: CanvasImageSource;
@@ -2365,6 +2369,15 @@ function drawInteriorProps(
       const syntheticSeat = spaceshipFurniture &&
         (prop === "table" || prop === "chair");
       const variantIndex = Math.abs(interiorPropId ?? x * 31 + y * 17);
+      const tableAssetName = prop === "table"
+        ? propCells.length === 1 ? "table_1x1.png"
+          : propCells.length === 2
+            ? vertical ? "table_1x2.png" : "table_2x1.png"
+          : propCells.length === 3
+            ? vertical ? "table_1x3.png" : "table_3x1.png"
+          : propCells.length === 4 && spanWidth === cellSize * 2 && spanHeight === cellSize * 2
+            ? "table_2x2.png" : undefined
+        : undefined;
       const tableImage = prop === "table"
         ? propCells.length === 1 ? tilesetProps?.table1x1
           : propCells.length === 2
@@ -2380,11 +2393,17 @@ function drawInteriorProps(
           height: propCells.length === 4 ? 64 : 32,
         };
         const scale = cellSize / 32;
+        const layout = interiorAssetSpriteLayout(tableAssetName ?? "");
+        const drawWidth = source.width * scale;
+        const drawHeight = source.height * scale;
+        const drawTop = layout.anchor === "bottom"
+          ? propBottom - drawHeight
+          : centerY - drawHeight / 2;
         context.save();
         context.imageSmoothingEnabled = Math.abs(scale - Math.round(scale)) > .001;
         context.imageSmoothingQuality = "high";
-        context.drawImage(tableImage, centerX - source.width * scale / 2,
-          centerY - source.height * scale / 2, source.width * scale, source.height * scale);
+        context.drawImage(tableImage, centerX - drawWidth / 2,
+          drawTop, drawWidth, drawHeight);
         context.restore();
         continue;
       }
@@ -2407,6 +2426,26 @@ function drawInteriorProps(
         }
       }
       const upholsteredBench = /Living room|Common room|Bedroom|Guest room|cabin/i.test(propRoomRole);
+      if (prop === "bench" && !upholsteredBench && !vertical) {
+        const orderedCells = [...propCells].sort((first, second) => first.x - second.x);
+        context.save();
+        context.imageSmoothingEnabled = false;
+        for (let index = 0; index < orderedCells.length; index += 1) {
+          const image = index === 0 ? tilesetProps?.benchHorizontalLeft
+            : index === orderedCells.length - 1 ? tilesetProps?.benchHorizontalRight
+            : tilesetProps?.benchHorizontalMiddle;
+          if (!image) continue;
+          const cell = orderedCells[index];
+          const cellCenterX = (cell.x + .5) * cellSize;
+          const cellCenterY = (cell.y + .5) * cellSize;
+          context.save();
+          context.translate(cellCenterX, cellCenterY);
+          context.drawImage(image, -cellSize / 2, -cellSize / 2, cellSize, cellSize);
+          context.restore();
+        }
+        context.restore();
+        continue;
+      }
       const benchImage = prop === "bench"
         ? propFacing === "south" || propFacing === "west"
           ? upholsteredBench ? tilesetProps?.banquetteSouth : tilesetProps?.benchSouth
@@ -2491,6 +2530,15 @@ function drawInteriorProps(
         context.restore();
         continue;
       }
+      const tileAssetName = prop === "chair" ? "stool_1x1.png"
+        : prop === "crate" ? "crate_1x1.png"
+          : prop === "barrel" ? "barrel_1x1.png"
+            : prop === "bucket" ? "bucket_1x1.png"
+              : prop === "drawers" ? `drawer_${variantIndex % 3 + 1}_1x1.png`
+                : prop === "shelf" ? `shelf_${variantIndex % 2 + 1}_1x1.png`
+                  : prop === "statue" ? "statue_1x1.png"
+                    : prop === "flower_pot" ? `flower_pot_${variantIndex % 3 + 1}_1x1.png`
+                      : undefined;
       const tileImage = prop === "chair" ? tilesetProps?.stool1x1
         : prop === "crate" ? tilesetProps?.crate1x1
           : prop === "barrel" ? tilesetProps?.barrel1x1
@@ -2504,19 +2552,25 @@ function drawInteriorProps(
                       ? tilesetProps.flowerPots1x1[variantIndex % tilesetProps.flowerPots1x1.length]
                       : undefined;
       if (tileImage) {
-        const tall = prop === "drawers" || prop === "shelf" || prop === "statue";
+        const layout = interiorAssetSpriteLayout(tileAssetName ?? "");
         const source = imageSourceSize(tileImage);
         const scale = source
-          ? Math.min(cellSize / source.width, cellSize * (tall ? 2 : 1) / source.height)
+          ? Math.min(
+            cellSize * layout.renderWidthCells / source.width,
+            cellSize * layout.renderHeightCells / source.height,
+          )
           : 1;
-        const drawWidth = source ? source.width * scale : cellSize;
-        const drawHeight = source ? source.height * scale : cellSize * (tall ? 2 : 1);
+        const drawWidth = source ? source.width * scale : cellSize * layout.renderWidthCells;
+        const drawHeight = source ? source.height * scale : cellSize * layout.renderHeightCells;
         context.save();
         context.imageSmoothingEnabled = Math.abs(scale - Math.round(scale)) > .001;
         context.imageSmoothingQuality = "high";
         for (const cell of propCells) {
+          const drawTop = layout.anchor === "bottom"
+            ? (cell.y + 1) * cellSize - drawHeight
+            : (cell.y + .5) * cellSize - drawHeight / 2;
           context.drawImage(tileImage, (cell.x + .5) * cellSize - drawWidth / 2,
-            (cell.y + 1) * cellSize - drawHeight, drawWidth, drawHeight);
+            drawTop, drawWidth, drawHeight);
         }
         context.restore();
         continue;

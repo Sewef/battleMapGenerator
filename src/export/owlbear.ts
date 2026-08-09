@@ -12,6 +12,7 @@ import {
   collectMapLightSources,
   type MapLightSource,
 } from "../rendering/lighting";
+import { interiorAssetSpriteLayout } from "../rendering/tileset-assets";
 
 const OWLBEAR_SCENE_DPI = 150;
 const MAP_IMAGE_DPI = 48;
@@ -579,6 +580,10 @@ function interiorPropSpriteItems(
     };
   })();
   const horizontalBed = prop.facing === "east" || prop.facing === "west";
+  const upholsteredBench = prop.kind === "bench" &&
+    /Living room|Common room|Bedroom|Guest room|cabin/i.test(prop.roomRole ?? "");
+  const woodenHorizontalBench = prop.kind === "bench" && !upholsteredBench &&
+    rectangle.width > rectangle.height;
   const assetName = prop.kind === "bed"
     ? prop.points.length === 4 && rectangle.width === 2 && rectangle.height === 2
       ? horizontalBed ? "bed_2x2_horizontal.png"
@@ -602,8 +607,7 @@ function interiorPropSpriteItems(
         ? `altar_${prop.points.length}x1.png`
         : `altar_1x${prop.points.length}.png`
     : prop.kind === "bench"
-      ? `${/Living room|Common room|Bedroom|Guest room|cabin/i.test(prop.roomRole ?? "")
-        ? "banquette" : "bench"}_${prop.facing === "south" || prop.facing === "west"
+      ? `${upholsteredBench ? "banquette" : "bench"}_${prop.facing === "south" || prop.facing === "west"
           ? "south" : "north"}.png`
     : prop.kind === "chair" ? "stool_1x1.png"
       : prop.kind === "crate" ? "crate_1x1.png"
@@ -622,9 +626,10 @@ function interiorPropSpriteItems(
                         rectangle.width === 2 && rectangle.height === 2 ? "table_2x2.png"
                         : undefined;
   if (!assetName) return [];
-  const assetFolder = BAILEY_INTERIOR_ASSETS.has(assetName) ? "bailey/" : "ai/";
-  const tall = prop.kind === "drawers" || prop.kind === "shelf" || prop.kind === "statue";
-  const perCell = prop.kind === "crate";
+  const spriteLayout = interiorAssetSpriteLayout(assetName);
+  const assetFolder = woodenHorizontalBench ? "lpc/"
+    : BAILEY_INTERIOR_ASSETS.has(assetName) ? "bailey/" : "ai/";
+  const perCell = prop.kind === "crate" || woodenHorizontalBench;
   const fittedLength = prop.kind === "hearth" || prop.kind === "cabinet" ||
     prop.kind === "tomb" || prop.kind === "altar" ||
     prop.kind === "table" && (prop.points.length === 2 || prop.points.length === 3)
@@ -633,32 +638,48 @@ function interiorPropSpriteItems(
     (rectangle.height > rectangle.width || prop.facing === "south") ? 1 : 0;
   const benchAsset = prop.kind === "bench";
   const verticalBench = benchAsset && (prop.facing === "east" || prop.facing === "west");
-  const upholsteredBench = benchAsset && assetName.startsWith("banquette");
-  const assetWidth = benchAsset ? upholsteredBench ? 64 : 160 : fittedLength
+  const assetWidth = woodenHorizontalBench ? 32
+    : benchAsset ? upholsteredBench ? 64 : 160 : fittedLength
     ? rectangle.width * 32
     : assetName.includes("2x2") || assetName.includes("2x1") ? 64 : 32;
   const assetHeight = benchAsset ? 32 : fittedLength
     ? (rectangle.height + cabinetOverhang) * 32
-    : assetName.includes("1x2") || tall ? 64
+    : assetName.includes("1x2") ? 64
       : assetName.includes("2x1") ? 32 : assetWidth;
+  const layoutAssetWidth = !benchAsset && !fittedLength &&
+      spriteLayout.renderWidthCells !== 1
+    ? spriteLayout.renderWidthCells * 32 : assetWidth;
+  const layoutAssetHeight = !benchAsset && !fittedLength &&
+      spriteLayout.renderHeightCells !== 1
+    ? spriteLayout.renderHeightCells * 32 : assetHeight;
   const rotation = verticalBench ? 90 : 0;
   const flipHorizontal = prop.kind === "bed" && horizontalBed && prop.facing === "east";
+  const orderedBenchPoints = woodenHorizontalBench
+    ? [...prop.points].sort((first, second) => first.x - second.x)
+    : prop.points;
   const placements = perCell
-    ? prop.points.map((point) => ({
+    ? orderedBenchPoints.map((point, index) => ({
       centerX: point.x + .5,
       centerY: point.y + .5,
       widthCells: 1,
       heightCells: 1,
       footprint: [point],
+      assetName: woodenHorizontalBench
+        ? `bench_horizontal_${index === 0 ? "left"
+          : index === orderedBenchPoints.length - 1 ? "right" : "middle"}_1x1.png`
+        : assetName,
     }))
     : [{
       centerX: rectangle.minimumX + rectangle.width / 2,
       centerY: prop.kind === "cabinet"
-        ? rectangle.minimumY + rectangle.height - assetHeight / 64
-        : tall ? rectangle.minimumY : rectangle.minimumY + rectangle.height / 2,
-      widthCells: benchAsset ? prop.points.length : assetWidth / 32,
-      heightCells: benchAsset ? 1 : assetHeight / 32,
+        ? rectangle.minimumY + rectangle.height - layoutAssetHeight / 64
+        : spriteLayout.anchor === "bottom"
+          ? rectangle.minimumY + rectangle.height - layoutAssetHeight / 64
+          : rectangle.minimumY + rectangle.height / 2,
+      widthCells: benchAsset ? prop.points.length : layoutAssetWidth / 32,
+      heightCells: benchAsset ? 1 : layoutAssetHeight / 32,
       footprint: prop.points,
+      assetName,
     }];
   const roomSuffix = prop.roomRole ? ` · ${prop.roomRole}` : "";
   return placements.map((placement, index) => imageItem(
@@ -666,21 +687,21 @@ function interiorPropSpriteItems(
     `${INTERIOR_PROP_RULES[prop.kind].label} ${prop.id}${
       placements.length > 1 ? `.${index + 1}` : ""}${roomSuffix}`,
     "PROP",
-    `${PUBLIC_TILESET_ASSET_BASE}${assetFolder}${assetName}`,
+    `${PUBLIC_TILESET_ASSET_BASE}${assetFolder}${placement.assetName}`,
     "image/png",
-    assetWidth,
-    assetHeight,
+    layoutAssetWidth,
+    layoutAssetHeight,
     {
       x: placement.centerX * OWLBEAR_SCENE_DPI,
       y: placement.centerY * OWLBEAR_SCENE_DPI,
     },
     PROP_IMAGE_DPI,
-    { x: assetWidth / 2, y: assetHeight / 2 },
+    { x: layoutAssetWidth / 2, y: layoutAssetHeight / 2 },
     zIndex + index,
     false,
     {
-      x: (flipHorizontal ? -1 : 1) * placement.widthCells * PROP_IMAGE_DPI / assetWidth,
-      y: placement.heightCells * PROP_IMAGE_DPI / assetHeight,
+      x: (flipHorizontal ? -1 : 1) * placement.widthCells * PROP_IMAGE_DPI / layoutAssetWidth,
+      y: placement.heightCells * PROP_IMAGE_DPI / layoutAssetHeight,
     },
     rotation,
     {

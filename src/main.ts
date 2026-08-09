@@ -13,8 +13,8 @@ import {
 import {
   drawGrid,
   type CustomPropImages,
-  type TilesetPropImages,
 } from "./rendering/canvas";
+import { createTilesetAssets } from "./rendering/tileset-assets";
 import {
   BIOME_PARAMETER_PROFILES,
   PARAMETER_FIELDS,
@@ -76,111 +76,12 @@ const owlbearCopyButton =
   document.querySelector<HTMLButtonElement>("#copy-owlbear")!;
 const owlbearDownloadButton =
   document.querySelector<HTMLButtonElement>("#download-owlbear")!;
-const tilesetImage = new Image();
-tilesetImage.src = "/assets/tilesets/bailey/terrain.png";
-const tilesetReady = () => tilesetImage.naturalWidth > 0;
-const tilesetProps = {
-  tree1x1: new Image(),
-  tree2x2: new Image(),
-  rock1x1: new Image(),
-  rock2x2: new Image(),
-  crate1x1: new Image(),
-  barrel1x1: new Image(),
-  bucket1x1: new Image(),
-  stool1x1: new Image(),
-  bed1x2: new Image(),
-  bed1x2South: new Image(),
-  bed2x1: new Image(),
-  bed2x2: new Image(),
-  bed2x2South: new Image(),
-  bed2x2Horizontal: new Image(),
-  hearth1x2: new Image(),
-  hearth2x1: new Image(),
-  hearth1x3: new Image(),
-  hearth3x1: new Image(),
-  cabinet1x2: new Image(),
-  cabinet2x1: new Image(),
-  cabinet1x3: new Image(),
-  cabinet3x1: new Image(),
-  cabinet2x1South: new Image(),
-  cabinet3x1South: new Image(),
-  table1x2: new Image(),
-  table2x1: new Image(),
-  table1x3: new Image(),
-  table3x1: new Image(),
-  altar1x2: new Image(),
-  altar2x1: new Image(),
-  altar1x3: new Image(),
-  altar3x1: new Image(),
-  benchNorth: new Image(),
-  benchSouth: new Image(),
-  banquetteNorth: new Image(),
-  banquetteSouth: new Image(),
-  coffin1x2: new Image(),
-  coffin2x1: new Image(),
-  table1x1: new Image(),
-  table2x2: new Image(),
-  indoorTerrain: new Image(),
-  drawers1x1: [new Image(), new Image(), new Image()],
-  shelves1x1: [new Image(), new Image()],
-  statue1x1: new Image(),
-  flowerPots1x1: [new Image(), new Image(), new Image()],
-} satisfies TilesetPropImages;
-tilesetProps.tree1x1.src = "/assets/tilesets/bailey/tree_1x1.png";
-tilesetProps.tree2x2.src = "/assets/tilesets/bailey/tree_2x2.png";
-tilesetProps.rock1x1.src = "/assets/tilesets/bailey/rock_1x1.png";
-tilesetProps.rock2x2.src = "/assets/tilesets/bailey/rock_2x2.png";
-tilesetProps.crate1x1.src = "/assets/tilesets/bailey/crate_1x1.png";
-tilesetProps.barrel1x1.src = "/assets/tilesets/bailey/barrel_1x1.png";
-tilesetProps.bucket1x1.src = "/assets/tilesets/bailey/bucket_1x1.png";
-tilesetProps.stool1x1.src = "/assets/tilesets/bailey/stool_1x1.png";
-tilesetProps.bed1x2.src = "/assets/tilesets/bailey/bed_1x2.png";
-tilesetProps.bed1x2South.src = "/assets/tilesets/ai/bed_1x2_south.png";
-tilesetProps.bed2x1.src = "/assets/tilesets/ai/bed_2x1.png";
-tilesetProps.bed2x2.src = "/assets/tilesets/bailey/bed_2x2.png";
-tilesetProps.bed2x2South.src = "/assets/tilesets/ai/bed_2x2_south.png";
-tilesetProps.bed2x2Horizontal.src = "/assets/tilesets/ai/bed_2x2_horizontal.png";
-tilesetProps.hearth1x2.src = "/assets/tilesets/ai/hearth_1x2.png";
-tilesetProps.hearth2x1.src = "/assets/tilesets/ai/hearth_2x1.png";
-tilesetProps.hearth1x3.src = "/assets/tilesets/ai/hearth_1x3.png";
-tilesetProps.hearth3x1.src = "/assets/tilesets/ai/hearth_3x1.png";
-tilesetProps.cabinet1x2.src = "/assets/tilesets/ai/cabinet_1x2.png";
-tilesetProps.cabinet2x1.src = "/assets/tilesets/ai/cabinet_2x1.png";
-tilesetProps.cabinet1x3.src = "/assets/tilesets/ai/cabinet_1x3.png";
-tilesetProps.cabinet3x1.src = "/assets/tilesets/ai/cabinet_3x1.png";
-tilesetProps.cabinet2x1South.src = "/assets/tilesets/ai/cabinet_2x1_south.png";
-tilesetProps.cabinet3x1South.src = "/assets/tilesets/ai/cabinet_3x1_south.png";
-tilesetProps.table1x2.src = "/assets/tilesets/ai/table_1x2.png";
-tilesetProps.table2x1.src = "/assets/tilesets/ai/table_2x1.png";
-tilesetProps.table1x3.src = "/assets/tilesets/ai/table_1x3.png";
-tilesetProps.table3x1.src = "/assets/tilesets/ai/table_3x1.png";
-tilesetProps.altar1x2.src = "/assets/tilesets/ai/altar_1x2.png";
-tilesetProps.altar2x1.src = "/assets/tilesets/ai/altar_2x1.png";
-tilesetProps.altar1x3.src = "/assets/tilesets/ai/altar_1x3.png";
-tilesetProps.altar3x1.src = "/assets/tilesets/ai/altar_3x1.png";
-tilesetProps.benchNorth.src = "/assets/tilesets/ai/bench_north.png";
-tilesetProps.benchSouth.src = "/assets/tilesets/ai/bench_south.png";
-tilesetProps.banquetteNorth.src = "/assets/tilesets/ai/banquette_north.png";
-tilesetProps.banquetteSouth.src = "/assets/tilesets/ai/banquette_south.png";
-tilesetProps.coffin1x2.src = "/assets/tilesets/ai/coffin_1x2.png";
-tilesetProps.coffin2x1.src = "/assets/tilesets/ai/coffin_2x1.png";
-tilesetProps.table1x1.src = "/assets/tilesets/bailey/table_1x1.png";
-tilesetProps.table2x2.src = "/assets/tilesets/bailey/table_2x2.png";
-tilesetProps.indoorTerrain.src = "/assets/tilesets/bailey/terrain_indoor.png";
-tilesetProps.drawers1x1.forEach((image, index) => {
-  image.src = `/assets/tilesets/bailey/drawer_${index + 1}_1x1.png`;
-});
-tilesetProps.shelves1x1.forEach((image, index) => {
-  image.src = `/assets/tilesets/bailey/shelf_${index + 1}_1x1.png`;
-});
-tilesetProps.statue1x1.src = "/assets/tilesets/bailey/statue_1x1.png";
-tilesetProps.flowerPots1x1.forEach((image, index) => {
-  image.src = `/assets/tilesets/bailey/flower_pot_${index + 1}_1x1.png`;
-});
-const tilesetPropsReady = () =>
-  Object.values(tilesetProps).every((value) => Array.isArray(value)
-    ? value.every((image) => image.naturalWidth > 0)
-    : value.naturalWidth > 0);
+const {
+  terrain: tilesetImage,
+  props: tilesetProps,
+  terrainReady: tilesetReady,
+  propsReady: tilesetPropsReady,
+} = createTilesetAssets();
 const tilesetEnabledFor = (mode: Preset["mode"]) => useTilesetInput.checked &&
   (isInteriorMode(mode) ? tilesetPropsReady() : tilesetReady());
 const customProps: CustomPropImages = {};
