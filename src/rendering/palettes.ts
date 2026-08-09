@@ -293,6 +293,21 @@ const visualProfileByMode: Record<LandscapeMode, VisualProfileName> = {
   cathedral: "temperate", tavern: "temperate", crypt: "dark",
 };
 
+const terrainOverridesByMode: Partial<
+  Record<
+    LandscapeMode,
+    Partial<Record<TerrainKind, Omit<TerrainStyle, "label">>>
+  >
+> = {
+  sewer: {
+    [Terrain.Water]: { color: "#586857", alt: "#3d4d43" },
+    [Terrain.Cliff]: { color: "#62655d", alt: "#454a46" },
+  },
+  "ruined-battlefield": {
+    [Terrain.Ravine]: { color: "#5a4434", alt: "#392b24" },
+  },
+};
+
 const difficultTerrainDetailStyles: Partial<
   Record<LandscapeMode, DifficultTerrainDetailStyle>
 > = {
@@ -428,6 +443,7 @@ export function getTerrainStyle(kind: TerrainKind, mode: LandscapeMode): Terrain
   return {
     ...biomeBase,
     ...visualProfiles[visualProfileByMode[mode]].terrain[kind],
+    ...terrainOverridesByMode[mode]?.[kind],
     ...architectureStyle,
   };
 }

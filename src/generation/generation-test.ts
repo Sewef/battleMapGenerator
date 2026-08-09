@@ -752,6 +752,14 @@ function assertHouseTavernFurniture(
   }
 
   for (const bedroom of roomsMatching(/^(Bedroom|Guest room) \d+$/)) {
+    if (mode === "house") {
+      const roomWidth = Math.max(...bedroom.cells.map(({ x }) => x)) -
+        Math.min(...bedroom.cells.map(({ x }) => x)) + 1;
+      const roomHeight = Math.max(...bedroom.cells.map(({ y }) => y)) -
+        Math.min(...bedroom.cells.map(({ y }) => y)) + 1;
+      assert(roomWidth >= 2 && roomHeight >= 2,
+        `${label}: ${bedroom.role} is an implausible ${roomWidth}x${roomHeight} strip`);
+    }
     const roomDensity = density(bedroom);
     const maximumDensity = bedroom.cells.length <= 16 ? .50 : .36;
     const minimumOccupied = bedroom.cells.length <= 16
@@ -846,6 +854,86 @@ function assertHouseTavernFurniture(
     const maximumDetour = Math.max(baseline + 6, Math.ceil(baseline * 1.75));
     assert(furnished <= maximumDetour,
       `${label}: furniture turns route to ${target} from ${baseline} into ${furnished} steps`);
+  }
+}
+
+function assertRoleFurnitureRealism(
+  grid: Grid,
+  mode: InteriorMode,
+  label: string,
+) {
+  const roomsById = new Map<number, FurnitureRoom>();
+  grid.forEach((row, y) => row.forEach((tile, x) => {
+    if (tile.terrain !== Terrain.Ground || tile.roomId === undefined) return;
+    const room = roomsById.get(tile.roomId) ?? {
+      id: tile.roomId,
+      role: tile.roomRole ?? "",
+      cells: [],
+    };
+    room.cells.push({ x, y, tile });
+    roomsById.set(tile.roomId, room);
+  }));
+  const groups = (
+    room: FurnitureRoom,
+    kind?: NonNullable<Grid[number][number]["interiorProp"]>,
+  ) => {
+    const result = new Map<number, FurniturePoint[]>();
+    for (const point of room.cells) {
+      const prop = point.tile.interiorProp;
+      const propId = point.tile.interiorPropId;
+      if (!prop || propId === undefined || (kind && prop !== kind)) continue;
+      const cells = result.get(propId) ?? [];
+      cells.push(point);
+      result.set(propId, cells);
+    }
+    return result;
+  };
+
+  for (const room of roomsById.values()) {
+    if (mode === "ship" && room.role === "Crew berths") {
+      const expectedBeds = Math.min(4, Math.max(2,
+        Math.ceil(room.cells.length / 20)));
+      assert(groups(room, "bed").size >= expectedBeds,
+        `${label}: ${room.cells.length}-cell crew berths need ` +
+        `${expectedBeds} wall berths`);
+    }
+
+    if (mode === "spaceship" && room.cells.length >= 18 &&
+      /^(Engineering|Life support|Observation room|Utility bay|Escape pods)$/.test(room.role)) {
+      const propKinds = new Set(room.cells.flatMap(({ tile }) =>
+        tile.interiorProp ? [tile.interiorProp] : []));
+      assert(propKinds.size >= 2,
+        `${label}: ${room.role} needs a role-specific composition, not only ` +
+        `${[...propKinds].join(", ") || "empty floor"}`);
+    }
+
+    if (mode === "crypt" && room.role.startsWith("Burial vault ")) {
+      const tombs = groups(room, "tomb");
+      const expectedTombs = Math.min(6, Math.max(1,
+        Math.ceil(room.cells.length / 24)));
+      assert(tombs.size >= expectedTombs,
+        `${label}: ${room.role} needs ${expectedTombs} tombs for ` +
+        `${room.cells.length} cells`);
+      if (room.cells.length >= 60) {
+        const facings = new Set([...tombs.values()].map((tomb) =>
+          tomb[0].tile.propFacing));
+        assert(facings.size >= 2,
+          `${label}: large ${room.role} must use both opposing walls`);
+      }
+    }
+
+    if (mode === "crypt" && room.role === "Inner sanctum" &&
+      room.cells.length >= 60) {
+      const occupied = room.cells.filter(({ tile }) => tile.interiorProp).length;
+      assert(occupied / room.cells.length >= .07,
+        `${label}: ${room.cells.length}-cell inner sanctum is only ` +
+        `${(occupied / room.cells.length * 100).toFixed(1)}% furnished`);
+    }
+
+    if (mode === "castle" && room.role === "Kitchen" && room.cells.length >= 8) {
+      assert(groups(room, "table").size >= 1,
+        `${label}: castle kitchen needs a usable work table`);
+    }
   }
 }
 
@@ -970,31 +1058,41 @@ function assertExteriorSemantics(
     assert(routeComponents.length === 1,
       `${label}: farm lanes form ${routeComponents.length} disconnected networks`);
     const routeEdges = exteriorEdges(grid, routeComponents[0] ?? []);
-    assert(routeEdges.size === 4,
-      `${label}: farm lanes must serve all four map edges`);
+    assert(routeEdges.size >= 2,
+      `${label}: farm lanes need at least two meaningful map exits`);
     const width = grid[0].length;
     const height = grid.length;
-    const interiorRoutes = exteriorComponents(grid, (tile, { x, y }) =>
-      tileSurface(tile) !== undefined && x > 0 && y > 0 && x < width - 1 && y < height - 1);
-    const dividesBothAxes = interiorRoutes.some((component) => {
-      const edges = new Set<string>();
-      for (const { x, y } of component) {
-        if (x === 1) edges.add("west");
-        if (x === width - 2) edges.add("east");
-        if (y === 1) edges.add("north");
-        if (y === height - 2) edges.add("south");
-      }
-      return edges.size === 4;
-    });
-    assert(dividesBothAxes,
-      `${label}: farm lanes do not divide the map along both axes`);
-    const significantFields = exteriorComponents(grid, (tile) => tileSurface(tile) === undefined)
+    const hasFullRoadRow = grid.some((row) =>
+      row.every((tile) => tileSurface(tile) === Terrain.Road ||
+        tileSurface(tile) === Terrain.Bridge));
+    const hasFullRoadColumn = Array.from({ length: width }, (_, x) =>
+      grid.every((row) => tileSurface(row[x]) === Terrain.Road ||
+        tileSurface(row[x]) === Terrain.Bridge)).some(Boolean);
+    assert(!(hasFullRoadRow && hasFullRoadColumn),
+      `${label}: farm lanes fall back to a perfect map-wide cross`);
+    const significantFields = exteriorComponents(grid, (tile) =>
+      tileSurface(tile) === undefined && tile.terrain !== Terrain.Water)
       .filter((component) => component.length >= grid.length * width * .03);
-    assert(significantFields.length >= 4,
+    assert(significantFields.length >= 3,
       `${label}: farm layout has only ${significantFields.length} meaningful fields`);
     const crops = grid.flat().filter((tile) => tile.terrain === Terrain.Difficult).length;
     assert(crops >= grid.length * width * .05,
       `${label}: farmland has too little cultivated ground`);
+    const drainage = exteriorComponents(grid, (tile) => tile.terrain === Terrain.Water);
+    assert(drainage.length === 1,
+      `${label}: farm drainage must form one continuous ditch`);
+    assert(drainage[0].length >= Math.min(width, height),
+      `${label}: farm drainage ditch is too short to serve the fields`);
+    assert(touchesOppositeEdges(exteriorEdges(grid, drainage[0])),
+      `${label}: farm drainage ditch must discharge across the map`);
+    assert(grid.flat().some((tile) => tileSurface(tile) === Terrain.Bridge),
+      `${label}: farm lane needs a culvert across its drainage ditch`);
+  }
+
+  if (mode === "coast") {
+    const sea = exteriorComponents(grid, (tile) => tile.terrain === Terrain.Water);
+    assert(sea.length === 1,
+      `${label}: coastline contains ${sea.length} disconnected seas`);
   }
 
   if (mode === "sewer") {
@@ -1020,6 +1118,13 @@ function assertExteriorSemantics(
     }));
     assert(floorByQuadrant.every((count) => count >= total * .04),
       `${label}: sewer chambers do not occupy every quadrant`);
+    const openTile = (tile: Grid[number][number]) =>
+      TERRAIN_RULES[tile.terrain].movement !== "blocked";
+    const fullOpenRows = grid.filter((row) => row.every(openTile)).length;
+    const fullOpenColumns = Array.from({ length: grid[0].length }, (_, x) =>
+      grid.every((row) => openTile(row[x]))).filter(Boolean).length;
+    assert(fullOpenRows === 0 || fullOpenColumns === 0,
+      `${label}: sewer is still a perfect ${fullOpenRows}x${fullOpenColumns} cross`);
   }
 }
 
@@ -1150,9 +1255,26 @@ for (const [mode, seeds] of [
   }
 }
 
+for (const [mode, seeds] of [
+  ["coast", ["coherence:coast:12"]],
+  ["farmland", ["coherence:farmland:0"]],
+  ["sewer", ["coherence:sewer:0"]],
+] as const) {
+  const preset = PRESETS.find((candidate) => candidate.mode === mode);
+  assert(preset, `missing ${mode} preset`);
+  for (const seed of seeds) {
+    const label = `${mode}:realism-regression:${seed.split(":").at(-1)}`;
+    const grid = generateTerrain({ ...preset, seed });
+    assertGrid(grid, label);
+    assertExteriorSemantics(grid, mode, preset.buildingCount, label);
+    generated += 1;
+  }
+}
+
 for (const preset of PRESETS.filter(({ mode }) => isInteriorMode(mode))) {
   if (!isInteriorMode(preset.mode)) continue;
   const grid = generateTerrain({ ...preset, seed: `${preset.id}-semantics` });
+  assertRoleFurnitureRealism(grid, preset.mode, `${preset.id}:semantics`);
   const roles = roomRoles(grid);
   for (const role of requiredInteriorRoles[preset.mode]) {
     assert(roles.has(role), `${preset.id}: missing required ${role}`);
@@ -1338,6 +1460,43 @@ for (const mode of ["ship", "spaceship"] as const) {
       assertGrid(grid, label);
       assertInterior(grid, roomCount, label);
       assertCompactVesselFurniture(grid, mode, label);
+      assertRoleFurnitureRealism(grid, mode, label);
+      generated += 1;
+    }
+  }
+}
+
+for (const mode of ["ship", "spaceship"] as const) {
+  const preset = PRESETS.find((candidate) => candidate.mode === mode)!;
+  const roomCount = INTERIOR_ROOM_LIMITS[mode].maximum;
+  for (let index = 0; index < 32; index += 1) {
+    const label = `${mode}:default-role-realism:${index}`;
+    const grid = generateTerrain({
+      ...preset,
+      buildingCount: roomCount,
+      seed: label,
+    });
+    assertInterior(grid, roomCount, label);
+    assertRoleFurnitureRealism(grid, mode, label);
+    generated += 1;
+  }
+}
+
+for (const mode of ["castle", "crypt"] as const) {
+  const preset = PRESETS.find((candidate) => candidate.mode === mode)!;
+  const roomCounts = mode === "castle"
+    ? [INTERIOR_ROOM_LIMITS.castle.maximum]
+    : [INTERIOR_ROOM_LIMITS.crypt.minimum, preset.buildingCount];
+  for (const roomCount of roomCounts) {
+    for (let index = 0; index < 32; index += 1) {
+      const label = `${mode}:role-realism:${roomCount}-rooms:${index}`;
+      const grid = generateTerrain({
+        ...preset,
+        buildingCount: roomCount,
+        seed: label,
+      });
+      assertInterior(grid, roomCount, label);
+      assertRoleFurnitureRealism(grid, mode, label);
       generated += 1;
     }
   }
@@ -1373,6 +1532,7 @@ for (const seed of [
   "final-live-audit:house:compact-r7:1",
   "final-live-audit:house:compact-r7:15",
   "final-live-audit:house:compact-r7:24",
+  "tiny-house-audit:r7:5",
 ]) {
   const label = `house:compact-regression:${seed.split(":").at(-1)}`;
   const grid = generateTerrain({
@@ -1394,6 +1554,7 @@ for (const mode of ["house", "tavern", "cathedral", "crypt"] as const) {
     const grid = generateTerrain({ ...preset, seed: `${mode}-furniture-audit-${index}` });
     generated += 1;
     assertInterior(grid, preset.buildingCount, `${mode}:furniture-audit-${index}`);
+    assertRoleFurnitureRealism(grid, mode, `${mode}:furniture-audit-${index}`);
     if (mode === "house" || mode === "tavern") {
       assertHouseTavernFurniture(grid, mode, `${mode}:furniture-audit-${index}`);
     }

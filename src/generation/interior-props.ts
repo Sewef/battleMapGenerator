@@ -541,10 +541,11 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
     return false;
   };
 
-  const placeCompactBed = (room: Room) => {
+  const placeCompactBed = (room: Room, reservationMask?: Set<string>) => {
     const doorApproaches = room.cells.filter((point) =>
       neighbors(point).some(({ x, y }) => grid[y]?.[x]?.terrain === Terrain.Door));
     const doorwayApproaches = new Set(doorApproaches.map(key));
+    const placementMask = reservationMask ?? doorwayApproaches;
     const candidates = wallAnchors(room).map((anchor) => {
       const points = [anchor.head, {
         x: anchor.head.x + anchor.dx,
@@ -561,7 +562,7 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
       return { anchor, points, foot, score: doorDistance * 3 + random() };
     }).filter(({ points, foot }) => pointInRoom(room, foot.x, foot.y) &&
       !grid[foot.y][foot.x].interiorProp &&
-      availableWithMask(room, points, doorwayApproaches) && roomRemainsConnected(room, points))
+      availableWithMask(room, points, placementMask) && roomRemainsConnected(room, points))
       .sort((first, second) => second.score - first.score);
     for (const candidate of candidates) {
       if (!placeComposition(room, [{
@@ -569,11 +570,147 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
         points: candidate.points,
         orientation: candidate.anchor.orientation,
         facing: candidate.anchor.facing,
-      }], doorwayApproaches)) continue;
+      }], placementMask)) continue;
       reserved.add(key(candidate.foot));
       return true;
     }
     return false;
+  };
+
+  const reserveDoorAxis = (room: Room) => {
+    const entries = room.cells.flatMap((approach) => neighbors(approach)
+      .filter(({ x, y }) => grid[y]?.[x]?.terrain === Terrain.Door)
+      .map((door) => ({ approach, door })));
+    const aisle = new Set<string>();
+    if (!entries.length) return aisle;
+    const entry = entries.sort((first, second) => {
+      const distanceFromCenter = ({ approach }: { approach: Point }) => Math.abs(
+        approach.x - (room.left + room.right) / 2,
+      ) + Math.abs(approach.y - (room.top + room.bottom) / 2);
+      return distanceFromCenter(first) - distanceFromCenter(second);
+    })[0];
+    const step = {
+      x: entry.approach.x - entry.door.x,
+      y: entry.approach.y - entry.door.y,
+    };
+    const transverseSpan = step.x !== 0
+      ? room.bottom - room.top + 1
+      : room.right - room.left + 1;
+    aisle.add(key(entry.approach));
+    // A one- or two-cell transverse room has no separate centre aisle: the
+    // entire compartment would become a reservation and could not serve its
+    // function at all. Door clearance and the connectivity check remain active.
+    if (transverseSpan < 3) return aisle;
+    for (
+      let cursor = entry.approach;
+      pointInRoom(room, cursor.x, cursor.y);
+      cursor = { x: cursor.x + step.x, y: cursor.y + step.y }
+    ) {
+      reserved.add(key(cursor));
+      aisle.add(key(cursor));
+    }
+    return aisle;
+  };
+
+  const furnishBurialVault = (room: Room) => {
+    reserveDoorAxis(room);
+    const expected = Math.min(6, Math.max(1, Math.ceil(room.cells.length / 24)));
+    const target = Math.min(8, Math.max(expected,
+      Math.round(room.cells.length / (15 + random() * 3))));
+    const runs = wallRuns(room).filter((run) => run.points.length >= 2);
+    const orientations = (["horizontal", "vertical"] as const).map((orientation) => {
+      const matching = runs.filter((run) => run.orientation === orientation);
+      const facings = new Set(matching.map((run) => run.facing));
+      const capacity = matching.reduce((sum, run) =>
+        sum + Math.floor((run.points.length + 1) / 3), 0);
+      return { orientation, runs: matching, facings, capacity };
+    }).filter(({ facings, capacity }) => capacity > 0 &&
+      (room.cells.length < 60 || facings.size >= 2))
+      .sort((first, second) => second.capacity - first.capacity || random() - .5);
+    const selected = orientations[0];
+    if (!selected) {
+      return placeWallAlignedObjects(room, "tomb", 2, expected);
+    }
+
+    const placedByFacing = new Map<NonNullable<Tile["propFacing"]>, number>();
+    const placedCenters: Array<{
+      axis: number;
+      facing: NonNullable<Tile["propFacing"]>;
+    }> = [];
+    const packedStarts = new Map<(typeof runs)[number], number[]>();
+    for (const run of selected.runs) {
+      const variants = [0, 1, 2].map((offset) => {
+        const starts: number[] = [];
+        for (let start = offset; start <= run.points.length - 2; start += 3) {
+          starts.push(start);
+        }
+        const usable = starts.filter((start) => {
+          const points = run.points.slice(start, start + 2);
+          return available(room, points) && roomRemainsConnected(room, points);
+        }).length;
+        return { starts, usable, order: random() };
+      }).sort((first, second) => second.usable - first.usable || first.order - second.order);
+      packedStarts.set(run, variants[0].starts);
+    }
+    let placed = 0;
+    while (placed < target) {
+      const candidates = selected.runs.flatMap((run) =>
+        (packedStarts.get(run) ?? []).map((start) => {
+          const points = run.points.slice(start, start + 2);
+          const axis = selected.orientation === "horizontal"
+            ? (points[0].x + points[1].x) / 2
+            : (points[0].y + points[1].y) / 2;
+          const matchingOpposite = placedCenters.filter((candidate) =>
+            candidate.facing === oppositeFacing[run.facing]);
+          const symmetryDistance = matchingOpposite.length
+            ? Math.min(...matchingOpposite.map((candidate) => Math.abs(candidate.axis - axis)))
+            : 0;
+          const spread = placedCenters.length
+            ? Math.min(...placedCenters.map((candidate) => Math.abs(candidate.axis - axis)))
+            : 0;
+          return {
+            run,
+            points,
+            axis,
+            score: (matchingOpposite.length
+              ? -symmetryDistance * 10
+              : spread * 5) + random(),
+          };
+        }));
+      const viable = candidates.filter(({ points }) =>
+        available(room, points) && roomRemainsConnected(room, points))
+        .sort((first, second) => {
+          const firstCount = placedByFacing.get(first.run.facing) ?? 0;
+          const secondCount = placedByFacing.get(second.run.facing) ?? 0;
+          return firstCount - secondCount || second.score - first.score;
+        });
+      const candidate = viable[0];
+      if (!candidate || !placeComposition(room, [{
+        kind: "tomb",
+        points: candidate.points,
+        orientation: selected.orientation,
+        facing: candidate.run.facing,
+      }])) break;
+      const first = candidate.points[0];
+      const last = candidate.points[candidate.points.length - 1];
+      const along = selected.orientation === "horizontal"
+        ? { x: 1, y: 0 } : { x: 0, y: 1 };
+      for (const clearance of [
+        { x: first.x - along.x, y: first.y - along.y },
+        { x: last.x + along.x, y: last.y + along.y },
+        ...candidate.points.map((point) => ({
+          x: point.x + facingStep[candidate.run.facing].x,
+          y: point.y + facingStep[candidate.run.facing].y,
+        })),
+      ]) {
+        if (pointInRoom(room, clearance.x, clearance.y)) reserved.add(key(clearance));
+      }
+      placedByFacing.set(candidate.run.facing,
+        (placedByFacing.get(candidate.run.facing) ?? 0) + 1);
+      placedCenters.push({ axis: candidate.axis, facing: candidate.run.facing });
+      placed += 1;
+    }
+    return placed;
   };
 
   const placeHearth = (room: Room) => {
@@ -772,6 +909,30 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
     return false;
   };
 
+  const placeCompactWorkTable = (room: Room) => {
+    if (placeWorkTables(room, 1, 1)) return true;
+    const doorwayApproaches = new Set(room.cells.filter((point) =>
+      neighbors(point).some(({ x, y }) => grid[y]?.[x]?.terrain === Terrain.Door))
+      .map(key));
+    const approaches = room.cells.filter((point) => doorwayApproaches.has(key(point)));
+    const candidates = shuffled(room.cells, random).sort((first, second) => {
+      const distance = (point: Point) => approaches.length
+        ? Math.min(...approaches.map((approach) =>
+          Math.abs(point.x - approach.x) + Math.abs(point.y - approach.y)))
+        : 0;
+      return distance(second) - distance(first);
+    });
+    for (const point of candidates) {
+      if (placeComposition(room, [{
+        kind: "table",
+        points: [point],
+        orientation: room.right - room.left >= room.bottom - room.top
+          ? "horizontal" : "vertical",
+      }], doorwayApproaches)) return true;
+    }
+    return false;
+  };
+
   const placeDiningSets = (
     room: Room,
     count: number,
@@ -872,6 +1033,7 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
   };
 
   const furnishAxialChapel = (room: Room) => {
+    const innerSanctum = /Inner sanctum/i.test(room.role);
     const entries = room.cells.flatMap((approach) => neighbors(approach)
       .filter(({ x, y }) => grid[y]?.[x]?.terrain === Terrain.Door)
       .map((door) => ({ approach, door })))
@@ -899,6 +1061,14 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
       : dx < 0 ? "east" : dy > 0 ? "north" : "south";
     const benchFacing: NonNullable<Tile["propFacing"]> = dx > 0 ? "east"
       : dx < 0 ? "west" : dy > 0 ? "south" : "north";
+    const negativeCrossSpan = horizontalAxis ? axis - room.top : axis - room.left;
+    const positiveCrossSpan = horizontalAxis ? room.bottom - axis : room.right - axis;
+    const maximumSymmetricBenchLength = Math.min(negativeCrossSpan, positiveCrossSpan);
+    const proportionalBenchLength = innerSanctum
+      ? Math.max(3, Math.min(5, Math.floor((negativeCrossSpan + positiveCrossSpan + 1) / 5)))
+      : 2;
+    const benchLength = Math.max(2, Math.min(Math.max(2, maximumSymmetricBenchLength),
+      proportionalBenchLength - (innerSanctum && random() < .35 ? 1 : 0)));
 
     for (let depth = entranceDepth; depth !== altarDepth; depth += horizontalAxis ? dx : dy) {
       reserved.add(horizontalAxis ? `${depth},${axis}` : `${axis},${depth}`);
@@ -916,12 +1086,26 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
         if (!availableWithMask(room, altar, reservationMask)) continue;
         const rowPlans: PlannedProp[][] = [];
         const axialLength = Math.abs(altarDepth - entranceDepth);
-        for (let distance = 3; distance <= axialLength - 1 && rowPlans.length < 2; distance += 2) {
+        const firstRowDistance = innerSanctum
+          ? Math.max(2, Math.min(3, axialLength - 1))
+          : 3;
+        // Wide sanctum benches sit farther from the altar. In a four-row
+        // sanctum the shorter two-cell gap is paired with at most four seats,
+        // so their average depth still reads clearly before the altar.
+        const layoutBenchLength = innerSanctum
+          ? Math.min(benchLength, firstRowDistance * 2)
+          : benchLength;
+        const rowTarget = innerSanctum ? 3 : 2;
+        for (let distance = firstRowDistance;
+          distance <= axialLength - 1 && rowPlans.length < rowTarget;
+          distance += 2) {
           const rowDepth = altarDepth - (horizontalAxis ? dx : dy) * distance;
-          const first = [-2, -1].map((offset) => horizontalAxis
+          const first = Array.from({ length: layoutBenchLength }, (_, index) =>
+            -layoutBenchLength + index).map((offset) => horizontalAxis
             ? { x: rowDepth, y: axis + offset }
             : { x: axis + offset, y: rowDepth });
-          const second = [1, 2].map((offset) => horizontalAxis
+          const second = Array.from({ length: layoutBenchLength }, (_, index) =>
+            index + 1).map((offset) => horizontalAxis
             ? { x: rowDepth, y: axis + offset }
             : { x: axis + offset, y: rowDepth });
           const pair = [first, second]
@@ -1042,13 +1226,23 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
       if (room.cells.length >= 70) placeWallRun(room, "cabinet", 2, 5);
       const workTableCount = room.cells.length >= 70 ? 2 : 1;
       const workTables = placeWorkTables(room, workTableCount, 2);
-      if (!workTables) placeWorkTables(room, 1, 1);
+      if (!workTables) placeCompactWorkTable(room);
+      if (!room.cells.some(({ x, y }) => grid[y][x].interiorProp === "table")) {
+        placeCompactWorkTable(room);
+      }
       placeWallRun(room, "crate", 1, room.cells.length >= 50 ? 3 : 2);
     } else if (/Bedroom|Guest room|cabin|berths|quarters|Barracks|Medbay|Sick bay|Royal chamber|Clergy chamber/i.test(role)) {
       const sharedSleepingRoom = /berths|quarters|Barracks|Medbay|Sick bay/i.test(role);
-      const bedCount = room.cells.length >= 90 ? 3
-        : room.cells.length >= 48 || sharedSleepingRoom ? 2 : 1;
-      const bedsPlaced = placeWallDepth(room, "bed", 2, bedCount);
+      const crewBerths = /Crew berths/i.test(role);
+      const crewAisle = crewBerths ? reserveDoorAxis(room) : undefined;
+      const bedCount = crewBerths
+        ? Math.min(4, Math.max(2, Math.ceil(room.cells.length / 20)))
+        : room.cells.length >= 90 ? 3
+          : room.cells.length >= 48 || sharedSleepingRoom ? 2 : 1;
+      let bedsPlaced = placeWallDepth(room, "bed", 2, bedCount);
+      while (crewBerths && bedsPlaced < bedCount && placeCompactBed(room, crewAisle)) {
+        bedsPlaced += 1;
+      }
       if (!bedsPlaced) placeCompactBed(room);
       placeWallRun(room, "cabinet", 1,
         Math.max(2, Math.min(4, Math.ceil(room.cells.length / 32))));
@@ -1062,18 +1256,52 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
         placeWallRun(room, "table", 1, 1);
       }
     } else if (/Burial vault/i.test(role)) {
-      placeWallAlignedObjects(room, "tomb", 2,
-        Math.max(1, Math.min(3, Math.floor(room.cells.length / 14))));
+      furnishBurialVault(room);
     } else if (/Cargo|hold|store|Magazine|Provision|Armory|Treasury/i.test(role)) {
       placeWallRun(room, "crate", 2, 5);
       placeScattered(room, "crate", Math.max(1, Math.min(4, Math.floor(room.cells.length / 14))));
       if (!room.cells.some(({ x, y }) => grid[y][x].interiorProp === "crate")) {
         placeCompactWallProp(room, "crate");
       }
-    } else if (/Cockpit|Engineering|Laboratory|Life support|Utility|Observation|Airlock|Escape pods/i.test(role)) {
-      if (!placeWallRun(room, "console", 2, 5)) {
-        placeCompactWallProp(room, "console", true);
+    } else if (/Engineering/i.test(role)) {
+      if (!placeWallRun(room, "console", 2, 5)) placeCompactWallProp(room, "console", true);
+      const workTarget = Math.max(1, Math.min(3, Math.ceil(room.cells.length / 32)));
+      if (!placeWorkTables(room, workTarget, 2)) placeCompactWorkTable(room);
+      if (!placeWallRun(room, "cabinet", 1,
+        Math.max(2, Math.min(5, Math.ceil(room.cells.length / 18))))) {
+        placeCompactWallProp(room, "cabinet", true);
       }
+    } else if (/Life support/i.test(role)) {
+      if (!placeWallRun(room, "console", 2, 4)) placeCompactWallProp(room, "console", true);
+      if (!placeWallRun(room, "cabinet", 2,
+        Math.max(2, Math.min(6, Math.ceil(room.cells.length / 14))))) {
+        placeCompactWallProp(room, "cabinet", true);
+      }
+      if (room.cells.length >= 36) placeWallRun(room, "crate", 1, 2);
+    } else if (/Observation/i.test(role)) {
+      if (!placeWallRun(room, "console", 2, 4)) placeCompactWallProp(room, "console", true);
+      const loungeTarget = room.cells.length >= 48 ? 2 : 1;
+      if (!placeWallSeatingGroups(room, loungeTarget) &&
+        !placeWallAlignedObjects(room, "bench", 2, loungeTarget)) {
+        placeCompactWorkTable(room);
+      }
+    } else if (/Utility/i.test(role)) {
+      if (!placeWallRun(room, "console", 2, 4)) placeCompactWallProp(room, "console", true);
+      if (!placeWallRun(room, "cabinet", 1,
+        Math.max(2, Math.min(5, Math.ceil(room.cells.length / 16))))) {
+        placeCompactWallProp(room, "cabinet", true);
+      }
+      placeScattered(room, "crate", Math.max(1, Math.min(3,
+        Math.floor(room.cells.length / 24))));
+    } else if (/Escape pods/i.test(role)) {
+      const podAisle = reserveDoorAxis(room);
+      if (!placeWallRun(room, "console", 2, 4)) placeCompactWallProp(room, "console", true);
+      const podTarget = Math.max(1, Math.min(3, Math.ceil(room.cells.length / 22)));
+      let podsPlaced = placeWallDepth(room, "bed", 2, podTarget);
+      while (podsPlaced < podTarget && placeCompactBed(room, podAisle)) podsPlaced += 1;
+      if (!podsPlaced) placeCompactWallProp(room, "cabinet", true);
+    } else if (/Cockpit|Laboratory|Airlock/i.test(role)) {
+      if (!placeWallRun(room, "console", 2, 5)) placeCompactWallProp(room, "console", true);
       if (/Cockpit|Laboratory/i.test(role)) placeDiningSets(room, 1, 1, "chair");
     } else if (/Choir room/i.test(role)) {
       const benchTarget = Math.max(1, Math.min(3, Math.floor(room.cells.length / 12)));
