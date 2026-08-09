@@ -31,6 +31,14 @@ const FOG_TERRAINS = new Set<TerrainKind>([
 const PUBLIC_TILESET_ASSET_BASE =
   "https://cdn.jsdelivr.net/gh/Sewef/battleMapGenerator@main/public/assets/tilesets/";
 
+const BAILEY_INTERIOR_ASSETS = new Set([
+  "barrel_1x1.png", "bed_1x2.png", "bed_2x2.png", "bucket_1x1.png",
+  "crate_1x1.png", "drawer_1_1x1.png", "drawer_2_1x1.png", "drawer_3_1x1.png",
+  "flower_pot_1_1x1.png", "flower_pot_2_1x1.png", "flower_pot_3_1x1.png",
+  "shelf_1_1x1.png", "shelf_2_1x1.png", "statue_1x1.png", "stool_1x1.png",
+  "table_1x1.png",
+]);
+
 type ExportedObstacle = {
   kind: Exclude<ObstacleKind, "none">;
   id: number;
@@ -589,12 +597,20 @@ function interiorPropSpriteItems(
         : `cabinet_1x${prop.points.length}.png`
     : prop.kind === "tomb" && prop.points.length === 2
       ? rectangle.width > rectangle.height ? "coffin_2x1.png" : "coffin_1x2.png"
+    : prop.kind === "altar" && (prop.points.length === 2 || prop.points.length === 3)
+      ? rectangle.width > rectangle.height
+        ? `altar_${prop.points.length}x1.png`
+        : `altar_1x${prop.points.length}.png`
+    : prop.kind === "bench"
+      ? `${/Living room|Common room|Bedroom|Guest room|cabin/i.test(prop.roomRole ?? "")
+        ? "banquette" : "bench"}_${prop.facing === "south" || prop.facing === "west"
+          ? "south" : "north"}.png`
     : prop.kind === "chair" ? "stool_1x1.png"
       : prop.kind === "crate" ? "crate_1x1.png"
         : prop.kind === "barrel" ? "barrel_1x1.png"
           : prop.kind === "bucket" ? "bucket_1x1.png"
             : prop.kind === "drawers" ? `drawer_${variant % 3 + 1}_1x1.png`
-              : prop.kind === "shelf" ? `shelf_${variant % 2 + 4}_1x1.png`
+              : prop.kind === "shelf" ? `shelf_${variant % 2 + 1}_1x1.png`
                 : prop.kind === "statue" ? "statue_1x1.png"
                   : prop.kind === "flower_pot" ? `flower_pot_${variant % 3 + 1}_1x1.png`
                     : prop.kind === "table" && prop.points.length === 1 ? "table_1x1.png"
@@ -606,21 +622,26 @@ function interiorPropSpriteItems(
                         rectangle.width === 2 && rectangle.height === 2 ? "table_2x2.png"
                         : undefined;
   if (!assetName) return [];
+  const assetFolder = BAILEY_INTERIOR_ASSETS.has(assetName) ? "bailey/" : "ai/";
   const tall = prop.kind === "drawers" || prop.kind === "shelf" || prop.kind === "statue";
   const perCell = prop.kind === "crate";
   const fittedLength = prop.kind === "hearth" || prop.kind === "cabinet" ||
-    prop.kind === "tomb" || prop.kind === "table" && prop.points.length === 2
+    prop.kind === "tomb" || prop.kind === "altar" ||
+    prop.kind === "table" && (prop.points.length === 2 || prop.points.length === 3)
     ? prop.points.length : 0;
   const cabinetOverhang = prop.kind === "cabinet" &&
     (rectangle.height > rectangle.width || prop.facing === "south") ? 1 : 0;
-  const assetWidth = fittedLength
+  const benchAsset = prop.kind === "bench";
+  const verticalBench = benchAsset && (prop.facing === "east" || prop.facing === "west");
+  const upholsteredBench = benchAsset && assetName.startsWith("banquette");
+  const assetWidth = benchAsset ? upholsteredBench ? 64 : 160 : fittedLength
     ? rectangle.width * 32
     : assetName.includes("2x2") || assetName.includes("2x1") ? 64 : 32;
-  const assetHeight = fittedLength
+  const assetHeight = benchAsset ? 32 : fittedLength
     ? (rectangle.height + cabinetOverhang) * 32
     : assetName.includes("1x2") || tall ? 64
       : assetName.includes("2x1") ? 32 : assetWidth;
-  const rotation = 0;
+  const rotation = verticalBench ? 90 : 0;
   const flipHorizontal = prop.kind === "bed" && horizontalBed && prop.facing === "east";
   const placements = perCell
     ? prop.points.map((point) => ({
@@ -635,8 +656,8 @@ function interiorPropSpriteItems(
       centerY: prop.kind === "cabinet"
         ? rectangle.minimumY + rectangle.height - assetHeight / 64
         : tall ? rectangle.minimumY : rectangle.minimumY + rectangle.height / 2,
-      widthCells: assetWidth / 32,
-      heightCells: assetHeight / 32,
+      widthCells: benchAsset ? prop.points.length : assetWidth / 32,
+      heightCells: benchAsset ? 1 : assetHeight / 32,
       footprint: prop.points,
     }];
   const roomSuffix = prop.roomRole ? ` · ${prop.roomRole}` : "";
@@ -645,7 +666,7 @@ function interiorPropSpriteItems(
     `${INTERIOR_PROP_RULES[prop.kind].label} ${prop.id}${
       placements.length > 1 ? `.${index + 1}` : ""}${roomSuffix}`,
     "PROP",
-    `${PUBLIC_TILESET_ASSET_BASE}${assetName}`,
+    `${PUBLIC_TILESET_ASSET_BASE}${assetFolder}${assetName}`,
     "image/png",
     assetWidth,
     assetHeight,
@@ -679,7 +700,7 @@ function interiorPropSpriteItems(
 }
 
 const LIGHT_MARKER_ASSET = {
-  url: `${PUBLIC_TILESET_ASSET_BASE}rock_1x1.png`,
+  url: `${PUBLIC_TILESET_ASSET_BASE}bailey/rock_1x1.png`,
   mime: "image/png",
   width: 32,
   height: 32,
@@ -781,7 +802,11 @@ export async function inspectPropAsset(
     if (!filename) throw new Error("Missing default prop asset name.");
     const size = DEFAULT_PROP_DIMENSIONS[filename];
     if (!size) throw new Error(`Unknown default prop asset: ${filename}`);
-    const url = new URL(filename, PUBLIC_TILESET_ASSET_BASE).href;
+    const tilesetMarker = "/assets/tilesets/";
+    const relativePath = defaultAssetPath.includes(tilesetMarker)
+      ? defaultAssetPath.split(tilesetMarker, 2)[1]
+      : filename;
+    const url = new URL(relativePath, PUBLIC_TILESET_ASSET_BASE).href;
     return {
       url,
       mime: "image/png",
@@ -819,14 +844,14 @@ async function owlBearPropAssets(
   }
   if (useTileset) {
     const [oneByOne, twoByTwo] = await Promise.all([
-      inspectPropAsset(undefined, `/assets/tilesets/${kind}_1x1.png`),
-      inspectPropAsset(undefined, `/assets/tilesets/${kind}_2x2.png`),
+      inspectPropAsset(undefined, `/assets/tilesets/bailey/${kind}_1x1.png`),
+      inspectPropAsset(undefined, `/assets/tilesets/bailey/${kind}_2x2.png`),
     ]);
     return { oneByOne, twoByTwo };
   }
   const fallback = await inspectPropAsset(
     undefined,
-    `/assets/tilesets/${kind}.png`,
+    `/assets/tilesets/bailey/${kind}.png`,
   );
   return { oneByOne: fallback, twoByTwo: fallback };
 }

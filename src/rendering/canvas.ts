@@ -62,6 +62,14 @@ export interface TilesetPropImages {
   table2x1: CanvasImageSource;
   table1x3: CanvasImageSource;
   table3x1: CanvasImageSource;
+  altar1x2: CanvasImageSource;
+  altar2x1: CanvasImageSource;
+  altar1x3: CanvasImageSource;
+  altar3x1: CanvasImageSource;
+  benchNorth: CanvasImageSource;
+  benchSouth: CanvasImageSource;
+  banquetteNorth: CanvasImageSource;
+  banquetteSouth: CanvasImageSource;
   coffin1x2: CanvasImageSource;
   coffin2x1: CanvasImageSource;
   table1x1: CanvasImageSource;
@@ -2377,6 +2385,42 @@ function drawInteriorProps(
         context.imageSmoothingQuality = "high";
         context.drawImage(tableImage, centerX - source.width * scale / 2,
           centerY - source.height * scale / 2, source.width * scale, source.height * scale);
+        context.restore();
+        continue;
+      }
+      const altarImage = prop === "altar" && (propCells.length === 2 || propCells.length === 3)
+        ? propCells.length === 3
+          ? vertical ? tilesetProps?.altar1x3 : tilesetProps?.altar3x1
+          : vertical ? tilesetProps?.altar1x2 : tilesetProps?.altar2x1
+        : undefined;
+      if (altarImage) {
+        const source = imageSourceSize(altarImage);
+        if (source) {
+          const scale = cellSize / 32;
+          context.save();
+          context.imageSmoothingEnabled = Math.abs(scale - Math.round(scale)) > .001;
+          context.imageSmoothingQuality = "high";
+          context.drawImage(altarImage, centerX - source.width * scale / 2,
+            centerY - source.height * scale / 2, source.width * scale, source.height * scale);
+          context.restore();
+          continue;
+        }
+      }
+      const upholsteredBench = /Living room|Common room|Bedroom|Guest room|cabin/i.test(propRoomRole);
+      const benchImage = prop === "bench"
+        ? propFacing === "south" || propFacing === "west"
+          ? upholsteredBench ? tilesetProps?.banquetteSouth : tilesetProps?.benchSouth
+          : upholsteredBench ? tilesetProps?.banquetteNorth : tilesetProps?.benchNorth
+        : undefined;
+      if (benchImage) {
+        const rotation = propFacing === "east" || propFacing === "west" ? Math.PI / 2 : 0;
+        const drawWidth = propCells.length * cellSize;
+        const drawHeight = cellSize;
+        context.save();
+        context.translate(centerX, centerY);
+        context.rotate(rotation);
+        context.imageSmoothingEnabled = false;
+        context.drawImage(benchImage, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
         context.restore();
         continue;
       }

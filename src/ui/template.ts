@@ -183,7 +183,7 @@ export function renderApp(root: HTMLElement) {
                     <span>Tree image URL <small>Optional</small></span>
                     <input id="custom-tree-url" name="tree-prop-url" type="url" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" placeholder="https://example.com/tree.png" />
                     <span class="prop-preview" id="custom-tree-preview">
-                      <img src="/assets/tilesets/tree_1x1.png" alt="Tree prop preview" />
+                      <img src="/assets/tilesets/bailey/tree_1x1.png" alt="Tree prop preview" />
                       <small>Tileset fallback</small>
                     </span>
                   </label>
@@ -191,7 +191,7 @@ export function renderApp(root: HTMLElement) {
                     <span>Rock image URL <small>Optional</small></span>
                     <input id="custom-rock-url" name="rock-prop-url" type="url" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" placeholder="https://example.com/rock.png" />
                     <span class="prop-preview" id="custom-rock-preview">
-                      <img src="/assets/tilesets/rock_1x1.png" alt="Rock prop preview" />
+                      <img src="/assets/tilesets/bailey/rock_1x1.png" alt="Rock prop preview" />
                       <small>Tileset fallback</small>
                     </span>
                   </label>
