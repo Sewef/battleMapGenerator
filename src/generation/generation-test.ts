@@ -1,5 +1,6 @@
 import { PRESETS } from "../domain/biomes";
 import {
+  DECK_FEATURE_RULES,
   INTERIOR_PROP_RULES,
   INTERIOR_ROOM_LIMITS,
   INTERIOR_MINIMUM_DIMENSIONS,
@@ -303,6 +304,549 @@ function roomDoorApproaches(grid: Grid, role: string) {
   return approaches;
 }
 
+type DeckFeature = NonNullable<Grid[number][number]["deckFeature"]>;
+type DeckPoint = GridPoint & { tile: Grid[number][number] };
+
+function assertShipDeck(grid: Grid, label: string) {
+  const key = ({ x, y }: GridPoint) => `${x},${y}`;
+  const flood = (allowed: Set<string>, start: string) => {
+    const reached = new Set([start]);
+    const queue = [start];
+    for (let index = 0; index < queue.length; index += 1) {
+      const [x, y] = queue[index].split(",").map(Number);
+      for (const point of adjacentPoints({ x, y })) {
+        const next = key(point);
+        if (allowed.has(next) && !reached.has(next)) {
+          reached.add(next);
+          queue.push(next);
+        }
+      }
+    }
+    return reached;
+  };
+  const hull: DeckPoint[] = [];
+  const water = new Set<string>();
+  const features = new Map<DeckFeature, DeckPoint[]>();
+  const doors: DeckPoint[] = [];
+  grid.forEach((row, y) => row.forEach((tile, x) => {
+    if (tile.terrain === Terrain.Water) {
+      water.add(`${x},${y}`);
+    } else {
+      assert(tile.terrain === Terrain.Ground || tile.terrain === Terrain.Wall ||
+        tile.terrain === Terrain.Door,
+      `${label}: sailing-ship exterior contains unexpected ${tile.terrain} at ${x},${y}`);
+      hull.push({ x, y, tile });
+    }
+    if (tile.terrain === Terrain.Door) doors.push({ x, y, tile });
+    if (tile.deckFeature) {
+      const points = features.get(tile.deckFeature) ?? [];
+      points.push({ x, y, tile });
+      features.set(tile.deckFeature, points);
+    }
+  }));
+  assert(hull.length > 0 && water.size > 0, `${label}: deck needs both a hull and surrounding water`);
+
+  for (let x = 0; x < grid[0].length; x += 1) {
+    assert(grid[0][x].terrain === Terrain.Water &&
+      grid[grid.length - 1][x].terrain === Terrain.Water,
+    `${label}: water must reach the north and south map edges`);
+  }
+  for (let y = 0; y < grid.length; y += 1) {
+    assert(grid[y][0].terrain === Terrain.Water &&
+      grid[y][grid[y].length - 1].terrain === Terrain.Water,
+    `${label}: water must reach the east and west map edges`);
+  }
+  const waterStart = water.values().next().value as string;
+  assert(flood(water, waterStart).size === water.size,
+    `${label}: hull encloses an impossible pocket of water`);
+
+  const hullKeys = new Set(hull.map(key));
+  assert(flood(hullKeys, hullKeys.values().next().value as string).size === hullKeys.size,
+    `${label}: hull is not one connected shape`);
+  const minX = Math.min(...hull.map(({ x }) => x));
+  const maxX = Math.max(...hull.map(({ x }) => x));
+  const minY = Math.min(...hull.map(({ y }) => y));
+  const maxY = Math.max(...hull.map(({ y }) => y));
+  const axis2 = minY + maxY;
+  assert(maxX - minX + 1 >= (maxY - minY + 1) * 1.7,
+    `${label}: hull is not recognizably longitudinal`);
+  for (const point of hull) {
+    assert(hullKeys.has(`${point.x},${axis2 - point.y}`),
+      `${label}: hull footprint is not laterally symmetric at ${point.x},${point.y}`);
+    if (point.tile.terrain === Terrain.Ground) {
+      assert(!adjacentPoints(point).some(({ x, y }) => grid[y]?.[x]?.terrain === Terrain.Water),
+        `${label}: exposed deck bypasses the hull at ${point.x},${point.y}`);
+    }
+  }
+  const columnWidths: number[] = [];
+  for (let x = minX; x <= maxX; x += 1) {
+    const ys = hull.filter((point) => point.x === x).map(({ y }) => y);
+    assert(ys.length > 0, `${label}: hull has a longitudinal break at x=${x}`);
+    assert(Math.max(...ys) - Math.min(...ys) + 1 === ys.length,
+      `${label}: hull cross-section is hollow at x=${x}`);
+    columnWidths.push(ys.length);
+  }
+  const maximumBeam = Math.max(...columnWidths);
+  assert(columnWidths[0] < maximumBeam && columnWidths[columnWidths.length - 1] < maximumBeam,
+    `${label}: bow and stern must both taper relative to the midship beam`);
+
+  const byFeature = (feature: DeckFeature) => features.get(feature) ?? [];
+  const groundFeatures: DeckFeature[] = [
+    "mast", "hatch", "wheel", "capstan", "cannon", "stairs",
+  ];
+  for (const feature of groundFeatures) {
+    assert(byFeature(feature).every(({ tile }) => tile.terrain === Terrain.Ground),
+      `${label}: ${feature} must be placed on the wooden deck`);
+  }
+  assert(DECK_FEATURE_RULES.mast.movement === "blocked",
+    `${label}: masts must block movement`);
+  assert(DECK_FEATURE_RULES.cannon.movement === "blocked" &&
+    DECK_FEATURE_RULES.railing.movement === "blocked",
+  `${label}: cannons and railings must block movement`);
+  assert(DECK_FEATURE_RULES.hatch.movement !== "blocked" &&
+    DECK_FEATURE_RULES.stairs.movement !== "blocked" &&
+    DECK_FEATURE_RULES.gangway.movement !== "blocked",
+  `${label}: hatches, stairs, and gangway must remain traversable`);
+
+  const roleCells = (role: string) => hull.filter(({ tile }) =>
+    tile.terrain === Terrain.Ground && tile.roomRole === role);
+  const quarterdeck = roleCells("Quarterdeck");
+  const mainDeck = roleCells("Main deck");
+  const forecastle = roleCells("Forecastle");
+  assert(quarterdeck.length > 0 && mainDeck.length > 0 && forecastle.length > 0,
+    `${label}: Quarterdeck, Main deck, and Forecastle are mandatory`);
+  assert(quarterdeck.every(({ tile }) => tile.elevation === 2) &&
+    forecastle.every(({ tile }) => tile.elevation === 2),
+  `${label}: quarterdeck and forecastle must be uniformly elevated to level 2`);
+  assert(mainDeck.every(({ tile }) => tile.elevation === 1),
+    `${label}: main deck must be uniformly at level 1`);
+  const centerX = (cells: DeckPoint[]) =>
+    cells.reduce((sum, point) => sum + point.x, 0) / cells.length;
+  const quarterdeckX = centerX(quarterdeck);
+  const mainDeckX = centerX(mainDeck);
+  const forecastleX = centerX(forecastle);
+  const forwardSign = Math.sign(forecastleX - quarterdeckX);
+  assert(forwardSign !== 0 &&
+    (mainDeckX - quarterdeckX) * forwardSign > 0 &&
+    (forecastleX - mainDeckX) * forwardSign > 0,
+  `${label}: named deck areas are not ordered stern-to-bow`);
+  const progress = ({ x }: GridPoint) => x * forwardSign;
+
+  const masts = byFeature("mast");
+  assert(masts.length >= 2 && masts.length <= 3,
+    `${label}: deck needs two or three masts, got ${masts.length}`);
+  assert(masts.every(({ y }) => Math.abs(y * 2 - axis2) <= 1),
+    `${label}: every mast must stand on the longitudinal axis`);
+  const mastProgress = masts.map(progress).sort((a, b) => a - b);
+  const minimumMastSpacing = Math.max(3, Math.floor((maxX - minX + 1) * .1));
+  for (let index = 1; index < mastProgress.length; index += 1) {
+    assert(mastProgress[index] - mastProgress[index - 1] >= minimumMastSpacing,
+      `${label}: masts are not meaningfully separated`);
+  }
+
+  const wheels = byFeature("wheel");
+  const capstans = byFeature("capstan");
+  const hatches = byFeature("hatch");
+  assert(wheels.length === 1 && wheels[0].tile.roomRole === "Quarterdeck",
+    `${label}: exactly one wheel must stand on the quarterdeck`);
+  assert(capstans.length === 1 &&
+    new Set(["Fore waist", "Forecastle", "Head platform"]).has(capstans[0].tile.roomRole ?? ""),
+  `${label}: exactly one capstan must stand in the forward deck areas`);
+  assert(hatches.length >= 2 && new Set(hatches.map(({ x }) => x)).size >= 2,
+    `${label}: deck needs at least two longitudinally separated hatches`);
+  const wheelProgress = progress(wheels[0]);
+  const capstanProgress = progress(capstans[0]);
+  assert(wheelProgress < mastProgress[0] &&
+    mastProgress[mastProgress.length - 1] < capstanProgress,
+  `${label}: wheel, masts, and capstan are not ordered stern-to-bow`);
+  assert(hatches.every((point) =>
+    progress(point) > wheelProgress && progress(point) < capstanProgress),
+  `${label}: hatches must lie between the helm and foredeck machinery`);
+
+  const stairs = byFeature("stairs");
+  assert(stairs.length >= 2, `${label}: raised fore and aft decks both need stairs`);
+  for (const stair of stairs) {
+    assert(stair.tile.deckFeatureFacing === "east" || stair.tile.deckFeatureFacing === "west",
+      `${label}: deck stairs must face along the longitudinal axis`);
+    const elevation = stair.tile.elevation ?? 0;
+    assert(adjacentPoints(stair).some(({ x, y }) => {
+      const neighbor = grid[y]?.[x];
+      return neighbor?.terrain === Terrain.Ground &&
+        Math.abs((neighbor.elevation ?? 0) - elevation) === 1;
+    }), `${label}: stairs at ${stair.x},${stair.y} do not bridge two elevations`);
+  }
+  for (const raisedRole of ["Quarterdeck", "Forecastle"]) {
+    assert(stairs.some((stair) => stair.tile.roomRole === raisedRole ||
+      adjacentPoints(stair).some(({ x, y }) => grid[y]?.[x]?.roomRole === raisedRole)),
+    `${label}: ${raisedRole} has no stair connection`);
+  }
+
+  const railings = byFeature("railing");
+  assert(railings.length >= 4, `${label}: raised-deck transitions need blocking railings`);
+  const railingFacings = new Set(railings.map(({ tile }) => tile.deckFeatureFacing));
+  assert([...railingFacings].every((facing) => facing === "east" || facing === "west"),
+    `${label}: raised-deck railings must face along the longitudinal axis`);
+  const direction: Record<NonNullable<Grid[number][number]["deckFeatureFacing"]>, GridPoint> = {
+    north: { x: 0, y: -1 },
+    east: { x: 1, y: 0 },
+    south: { x: 0, y: 1 },
+    west: { x: -1, y: 0 },
+  };
+  for (const railing of railings) {
+    const facing = railing.tile.deckFeatureFacing;
+    assert(railing.tile.terrain === Terrain.Ground && facing,
+      `${label}: railing must occupy a raised-deck boundary cell`);
+    assert([{ x: -1, y: 0 }, { x: 1, y: 0 }].some((offset) => {
+      const neighbor = grid[railing.y + offset.y]?.[railing.x + offset.x];
+      return neighbor?.terrain === Terrain.Ground &&
+        Math.abs((neighbor.elevation ?? 0) - (railing.tile.elevation ?? 0)) === 1;
+    }), `${label}: railing at ${railing.x},${railing.y} does not guard an elevation change`);
+  }
+
+  const gangways = byFeature("gangway");
+  assert(doors.length === 1 && gangways.length === 1 &&
+    doors[0].x === gangways[0].x && doors[0].y === gangways[0].y,
+  `${label}: exactly one hull door must also be the gangway`);
+  const gangway = gangways[0];
+  const gangwayFacing = gangway.tile.deckFeatureFacing;
+  assert((gangwayFacing === "north" || gangwayFacing === "south") &&
+    gangway.tile.doorOrientation === "horizontal",
+  `${label}: gangway must open laterally through a horizontal gunwale`);
+  const gangwayDirection = direction[gangwayFacing];
+  assert(grid[gangway.y + gangwayDirection.y]?.[gangway.x + gangwayDirection.x]?.terrain === Terrain.Water &&
+    grid[gangway.y - gangwayDirection.y]?.[gangway.x - gangwayDirection.x]?.terrain === Terrain.Ground,
+  `${label}: gangway must connect open water to the deck interior`);
+
+  const cannons = byFeature("cannon");
+  assert(cannons.length >= 4 && cannons.length % 2 === 0,
+    `${label}: deck needs at least two complete cannon pairs`);
+  const cannonAt = new Map(cannons.map((point) => [key(point), point]));
+  const pairXs = new Set<number>();
+  for (const cannon of cannons) {
+    assert(cannon.tile.deckFeatureFacing === "north" ||
+      cannon.tile.deckFeatureFacing === "south",
+    `${label}: cannon at ${cannon.x},${cannon.y} must face broadside`);
+    assert(cannon.y * 2 !== axis2,
+      `${label}: cannon at ${cannon.x},${cannon.y} sits on the centerline`);
+    const expectedFacing = cannon.y * 2 < axis2 ? "north" : "south";
+    assert(cannon.tile.deckFeatureFacing === expectedFacing,
+      `${label}: cannon at ${cannon.x},${cannon.y} faces inward`);
+    const mirror = cannonAt.get(`${cannon.x},${axis2 - cannon.y}`);
+    assert(mirror && mirror.tile.deckFeatureFacing !== cannon.tile.deckFeatureFacing &&
+      mirror.tile.roomRole === cannon.tile.roomRole &&
+      mirror.tile.elevation === cannon.tile.elevation,
+    `${label}: cannon at ${cannon.x},${cannon.y} lacks a strict opposite broadside mate`);
+    const outward = direction[cannon.tile.deckFeatureFacing];
+    assert([1, 2].some((distance) => {
+      const terrain = grid[cannon.y + outward.y * distance]?.[cannon.x + outward.x * distance]?.terrain;
+      return terrain === Terrain.Wall || terrain === Terrain.Water;
+    }), `${label}: cannon at ${cannon.x},${cannon.y} is too far from its gunwale`);
+    const inward = grid[cannon.y - outward.y]?.[cannon.x - outward.x];
+    assert(inward?.terrain === Terrain.Ground,
+      `${label}: cannon at ${cannon.x},${cannon.y} has no inward service position`);
+    if (expectedFacing === "north") pairXs.add(cannon.x);
+  }
+  assert(pairXs.size >= 2, `${label}: cannon pairs need at least two longitudinal stations`);
+
+  const passable = new Set<string>();
+  for (const point of hull) {
+    const { tile } = point;
+    if (tile.terrain !== Terrain.Ground && tile.terrain !== Terrain.Door) continue;
+    if (tile.obstacle !== Obstacle.None) continue;
+    if (tile.interiorProp && INTERIOR_PROP_RULES[tile.interiorProp].movement === "blocked") continue;
+    if (tile.deckFeature && DECK_FEATURE_RULES[tile.deckFeature].movement === "blocked") continue;
+    passable.add(key(point));
+  }
+  assert(passable.has(key(gangway)), `${label}: gangway itself is not traversable`);
+  const reachable = flood(passable, key(gangway));
+  assert(reachable.size === passable.size,
+    `${label}: blocking deck features create an unreachable floor pocket`);
+  for (const role of ["Quarterdeck", "Main deck", "Forecastle"]) {
+    assert(roleCells(role).some((point) => reachable.has(key(point))),
+      `${label}: ${role} is unreachable from the gangway`);
+  }
+  for (const points of features.values()) {
+    for (const point of points) {
+      if (point.tile.deckFeature === "railing") continue;
+      if (passable.has(key(point))) {
+        assert(reachable.has(key(point)),
+          `${label}: ${point.tile.deckFeature} at ${point.x},${point.y} is unreachable`);
+      } else {
+        assert(adjacentPoints(point).some((neighbor) => reachable.has(key(neighbor))),
+          `${label}: ${point.tile.deckFeature} at ${point.x},${point.y} has no service clearance`);
+      }
+    }
+  }
+}
+
+type FurniturePoint = GridPoint & { tile: Grid[number][number] };
+type FurnitureRoom = {
+  id: number;
+  role: string;
+  cells: FurniturePoint[];
+};
+
+function assertHouseTavernFurniture(
+  grid: Grid,
+  mode: "house" | "tavern",
+  label: string,
+) {
+  const pointKey = ({ x, y }: GridPoint) => `${x},${y}`;
+  const facingStep: Record<NonNullable<Grid[number][number]["propFacing"]>, GridPoint> = {
+    north: { x: 0, y: -1 },
+    east: { x: 1, y: 0 },
+    south: { x: 0, y: 1 },
+    west: { x: -1, y: 0 },
+  };
+  const roomsById = new Map<number, FurnitureRoom>();
+  const allProps: FurniturePoint[] = [];
+  const doors: FurniturePoint[] = [];
+  grid.forEach((row, y) => row.forEach((tile, x) => {
+    if (tile.terrain === Terrain.Door) doors.push({ x, y, tile });
+    if (tile.terrain !== Terrain.Ground || tile.roomId === undefined) return;
+    const room = roomsById.get(tile.roomId) ?? {
+      id: tile.roomId,
+      role: tile.roomRole ?? "",
+      cells: [],
+    };
+    const point = { x, y, tile };
+    room.cells.push(point);
+    roomsById.set(tile.roomId, room);
+    if (tile.interiorProp) allProps.push(point);
+  }));
+  const rooms = [...roomsById.values()];
+  const roomsMatching = (pattern: RegExp) => rooms.filter(({ role }) => pattern.test(role));
+  const groupsInRoom = (
+    room: FurnitureRoom,
+    kind?: NonNullable<Grid[number][number]["interiorProp"]>,
+  ) => {
+    const groups = new Map<number, FurniturePoint[]>();
+    for (const point of room.cells) {
+      if (!point.tile.interiorProp || point.tile.interiorPropId === undefined ||
+        (kind !== undefined && point.tile.interiorProp !== kind)) continue;
+      const cells = groups.get(point.tile.interiorPropId) ?? [];
+      cells.push(point);
+      groups.set(point.tile.interiorPropId, cells);
+    }
+    return groups;
+  };
+  const occupiedCount = (room: FurnitureRoom) =>
+    room.cells.filter(({ tile }) => Boolean(tile.interiorProp)).length;
+  const density = (room: FurnitureRoom) => occupiedCount(room) / room.cells.length;
+
+  for (const door of doors) {
+    for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+      for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+        const tile = grid[door.y + offsetY]?.[door.x + offsetX];
+        if (tile?.terrain === Terrain.Ground) {
+          assert(!tile.interiorProp,
+            `${label}: prop intrudes into the 3x3 landing around door ${door.x},${door.y}`);
+        }
+      }
+    }
+  }
+
+  for (const chair of allProps.filter(({ tile }) => tile.interiorProp === "chair")) {
+    const facing = chair.tile.propFacing;
+    assert(facing, `${label}: chair at ${chair.x},${chair.y} has no facing`);
+    const step = facingStep[facing];
+    const facedTile = grid[chair.y + step.y]?.[chair.x + step.x];
+    assert(facedTile?.interiorProp === "table",
+      `${label}: chair at ${chair.x},${chair.y} does not face a table`);
+    const adjacentTableIds = new Set(adjacentPoints(chair).flatMap(({ x, y }) => {
+      const tile = grid[y]?.[x];
+      return tile?.interiorProp === "table" && tile.interiorPropId !== undefined
+        ? [tile.interiorPropId] : [];
+    }));
+    assert(adjacentTableIds.size === 1,
+      `${label}: chair at ${chair.x},${chair.y} is orphaned or shared by several tables`);
+  }
+
+  const wallBacked = (group: FurniturePoint[]) => {
+    const facings = new Set(group.map(({ tile }) => tile.propFacing));
+    if (facings.size !== 1) return false;
+    const facing = group[0].tile.propFacing;
+    if (!facing) return false;
+    const inward = facingStep[facing];
+    return group.every(({ x, y }) =>
+      grid[y - inward.y]?.[x - inward.x]?.terrain === Terrain.Wall);
+  };
+  const validateWallGroup = (group: FurniturePoint[], kind: string) => {
+    const orientations = new Set(group.map(({ tile }) => tile.propOrientation));
+    assert(orientations.size === 1 && group[0].tile.propOrientation,
+      `${label}: ${kind} wall group has inconsistent orientation`);
+    const orientation = group[0].tile.propOrientation!;
+    assert(orientation === "horizontal"
+      ? group.every(({ y }) => y === group[0].y)
+      : group.every(({ x }) => x === group[0].x),
+    `${label}: ${kind} wall group is not a straight run`);
+    assert(wallBacked(group), `${label}: ${kind} group is not backed by a wall`);
+    const facing = group[0].tile.propFacing!;
+    const inward = facingStep[facing];
+    const clearFronts = group.filter(({ x, y, tile }) => {
+      const front = grid[y + inward.y]?.[x + inward.x];
+      return front?.terrain === Terrain.Ground && front.roomId === tile.roomId &&
+        !front.interiorProp;
+    }).length;
+    assert(clearFronts >= Math.ceil(group.length / 2),
+      `${label}: ${kind} wall group has no usable frontage`);
+  };
+  for (const room of rooms) {
+    for (const kind of ["cabinet", "hearth"] as const) {
+      for (const group of groupsInRoom(room, kind).values()) validateWallGroup(group, kind);
+    }
+  }
+
+  const commonRoom = roomsMatching(/^Common room$/)[0];
+  if (commonRoom && commonRoom.cells.length >= 200) {
+    const roomDensity = density(commonRoom);
+    assert(roomDensity >= .15 && roomDensity <= .30,
+      `${label}: common-room density ${roomDensity.toFixed(3)} is outside 0.15..0.30`);
+    const minimumTables = Math.max(4, Math.min(8, Math.floor(commonRoom.cells.length / 40)));
+    assert(groupsInRoom(commonRoom, "table").size >= minimumTables,
+      `${label}: common room needs ${minimumTables} tables for ${commonRoom.cells.length} cells`);
+    assert(groupsInRoom(commonRoom, "hearth").size >= 1,
+      `${label}: common room needs a hearth`);
+    assert(groupsInRoom(commonRoom, "bar").size === 1,
+      `${label}: common room needs one continuous bar group`);
+    const wallBenches = [...groupsInRoom(commonRoom, "bench").values()].filter(wallBacked);
+    const minimumWallBenches = commonRoom.cells.length >= 250 ? 2 : 1;
+    assert(wallBenches.length >= minimumWallBenches,
+      `${label}: common room needs ${minimumWallBenches} wall banquette groups`);
+  }
+
+  const livingRoom = roomsMatching(/^Living room$/)[0];
+  if (livingRoom && livingRoom.cells.length >= 60) {
+    const roomDensity = density(livingRoom);
+    assert(roomDensity >= .12 && roomDensity <= .30,
+      `${label}: living-room density ${roomDensity.toFixed(3)} is outside 0.12..0.30`);
+    assert(groupsInRoom(livingRoom, "table").size >= 2,
+      `${label}: living room needs at least two table clusters`);
+    assert(groupsInRoom(livingRoom, "hearth").size >= 1,
+      `${label}: living room needs a hearth`);
+    assert(groupsInRoom(livingRoom, "cabinet").size >= 1,
+      `${label}: living room needs wall storage`);
+    assert([...groupsInRoom(livingRoom, "bench").values()].some(wallBacked),
+      `${label}: living room needs a wall-backed seating nook`);
+  }
+
+  for (const kitchen of roomsMatching(/^Kitchen$/)) {
+    assert(kitchen.cells.length >= 12,
+      `${label}: kitchen cannot function in only ${kitchen.cells.length} cells`);
+    if (kitchen.cells.length >= 14) {
+      for (const kind of ["cabinet", "table", "hearth"] as const) {
+        assert(groupsInRoom(kitchen, kind).size >= 1,
+          `${label}: kitchen needs at least one ${kind} group`);
+      }
+    }
+    assert(groupsInRoom(kitchen, "chair").size === 0,
+      `${label}: kitchen work tables must not be surrounded by dining chairs`);
+    if (kitchen.cells.length < 24) continue;
+    const roomDensity = density(kitchen);
+    const minimumDensity = mode === "house" ? .12 : .14;
+    assert(roomDensity >= minimumDensity && roomDensity <= .42,
+      `${label}: kitchen density ${roomDensity.toFixed(3)} is outside ` +
+      `${minimumDensity.toFixed(2)}..0.42`);
+  }
+
+  for (const bedroom of roomsMatching(/^(Bedroom|Guest room) \d+$/)) {
+    const roomDensity = density(bedroom);
+    const maximumDensity = bedroom.cells.length <= 16 ? .50 : .36;
+    const minimumOccupied = bedroom.cells.length <= 16
+      ? Math.max(2, Math.min(4, Math.floor(bedroom.cells.length * .36)))
+      : Math.max(4, Math.ceil(bedroom.cells.length * .08));
+    assert(occupiedCount(bedroom) >= minimumOccupied,
+      `${label}: ${bedroom.role} needs ${minimumOccupied} occupied cells`);
+    assert(roomDensity <= maximumDensity,
+      `${label}: ${bedroom.role} density ${roomDensity.toFixed(3)} exceeds ` +
+      maximumDensity.toFixed(2));
+    const expectedBeds = bedroom.cells.length >= 90 ? 3 : bedroom.cells.length >= 48 ? 2 : 1;
+    assert(groupsInRoom(bedroom, "bed").size >= expectedBeds,
+      `${label}: ${bedroom.role} needs ${expectedBeds} beds for ${bedroom.cells.length} cells`);
+    if (bedroom.cells.length >= 12) {
+      assert(groupsInRoom(bedroom, "cabinet").size >= 1,
+        `${label}: ${bedroom.role} needs storage`);
+    }
+    if (bedroom.cells.length >= 48) {
+      assert(groupsInRoom(bedroom, "table").size >= 1 ||
+        groupsInRoom(bedroom, "bench").size >= 1,
+      `${label}: large ${bedroom.role} needs a desk or bench`);
+    }
+  }
+
+  const floor = new Set<string>();
+  const free = new Set<string>();
+  grid.forEach((row, y) => row.forEach((tile, x) => {
+    if (tile.terrain !== Terrain.Ground && tile.terrain !== Terrain.Door) return;
+    floor.add(`${x},${y}`);
+    if (!tile.interiorProp || INTERIOR_PROP_RULES[tile.interiorProp].movement !== "blocked") {
+      free.add(`${x},${y}`);
+    }
+  }));
+  const exteriorDoor = doors.find((door) => adjacentPoints(door).some(({ x, y }) =>
+    grid[y]?.[x]?.terrain === Terrain.Void));
+  assert(exteriorDoor, `${label}: house or tavern has no exterior entrance`);
+  const distances = (allowed: Set<string>, start: string) => {
+    const result = new Map([[start, 0]]);
+    const queue = [start];
+    for (let index = 0; index < queue.length; index += 1) {
+      const [x, y] = queue[index].split(",").map(Number);
+      for (const next of adjacentPoints({ x, y })) {
+        const nextKey = pointKey(next);
+        if (!allowed.has(nextKey) || result.has(nextKey)) continue;
+        result.set(nextKey, result.get(queue[index])! + 1);
+        queue.push(nextKey);
+      }
+    }
+    return result;
+  };
+  const start = pointKey(exteriorDoor);
+  const baselineDistances = distances(floor, start);
+  const furnishedDistances = distances(free, start);
+  const semanticTargets = new Set(doors.map(pointKey));
+  for (const room of rooms) {
+    for (const bed of groupsInRoom(room, "bed").values()) {
+      const facing = bed[0].tile.propFacing;
+      if (!facing) continue;
+      const step = facingStep[facing];
+      const tail = [...bed].sort((a, b) =>
+        a.x * step.x + a.y * step.y - (b.x * step.x + b.y * step.y))[0];
+      semanticTargets.add(`${tail.x - step.x},${tail.y - step.y}`);
+    }
+    for (const kind of ["cabinet", "hearth"] as const) {
+      for (const group of groupsInRoom(room, kind).values()) {
+        const facing = group[0].tile.propFacing;
+        if (!facing) continue;
+        const step = facingStep[facing];
+        const target = group.map(({ x, y }) => ({ x: x + step.x, y: y + step.y }))
+          .find((point) => free.has(pointKey(point)));
+        assert(target, `${label}: ${kind} group has no reachable frontage target`);
+        semanticTargets.add(pointKey(target));
+      }
+    }
+    for (const kind of ["table", "bar"] as const) {
+      for (const group of groupsInRoom(room, kind).values()) {
+        const candidates = room.cells.filter((point) => free.has(pointKey(point)) &&
+          group.some((cell) => Math.abs(cell.x - point.x) + Math.abs(cell.y - point.y) <= 2))
+          .sort((a, b) => (furnishedDistances.get(pointKey(a)) ?? Number.POSITIVE_INFINITY) -
+            (furnishedDistances.get(pointKey(b)) ?? Number.POSITIVE_INFINITY));
+        assert(candidates.length > 0,
+          `${label}: ${kind} group has no usable free perimeter`);
+        semanticTargets.add(pointKey(candidates[0]));
+      }
+    }
+  }
+  for (const target of semanticTargets) {
+    const baseline = baselineDistances.get(target);
+    const furnished = furnishedDistances.get(target);
+    assert(baseline !== undefined && furnished !== undefined,
+      `${label}: semantic target ${target} is unreachable from the entrance`);
+    const maximumDetour = Math.max(baseline + 6, Math.ceil(baseline * 1.75));
+    assert(furnished <= maximumDetour,
+      `${label}: furniture turns route to ${target} from ${baseline} into ${furnished} steps`);
+  }
+}
+
 const requiredInteriorRoles: Record<InteriorMode, string[]> = {
   house: ["Living room", "Kitchen", "Hallway", "Bedroom 1"],
   tavern: ["Common room", "Kitchen", "Hallway", "Guest room 1"],
@@ -315,8 +859,8 @@ const requiredInteriorRoles: Record<InteriorMode, string[]> = {
 };
 
 const requiredInteriorProps: Partial<Record<InteriorMode, Array<NonNullable<Grid[number][number]["interiorProp"]>>>> = {
-  house: ["table", "chair", "bed", "cabinet"],
-  tavern: ["bar", "table", "chair", "bed", "cabinet"],
+  house: ["table", "chair", "bed", "cabinet", "hearth"],
+  tavern: ["bar", "table", "chair", "bed", "cabinet", "hearth"],
   castle: ["table", "bench", "crate"],
   cathedral: ["bench", "altar", "cabinet"],
   crypt: ["tomb", "altar"],
@@ -332,7 +876,8 @@ for (const preset of PRESETS) {
     assertGrid(grid, `${preset.id}:${index}`);
     if (isInteriorMode(preset.mode)) {
       assertInterior(grid, preset.buildingCount, `${preset.id}:${index}`,
-        preset.mode === "ship-deck" ? 0 : preset.buildingCount);
+        preset.mode === "ship-deck" ? 1 : preset.buildingCount);
+      if (preset.mode === "ship-deck") assertShipDeck(grid, `${preset.id}:${index}`);
     }
     if (index === 0) {
       const duplicate = generateTerrain(options);
@@ -436,7 +981,8 @@ for (const preset of PRESETS.filter(({ mode }) => isInteriorMode(mode))) {
   for (let index = 0; index < 12; index += 1) {
     const grid = generateTerrain({ ...preset, seed: `${preset.id}-variation-${index}` });
     layouts.add(grid.map((row) => row.map((tile) =>
-      `${tile.terrain}:${tile.roomId ?? ""}`
+      `${tile.terrain}:${tile.roomId ?? ""}:${tile.deckFeature ?? ""}:` +
+      `${tile.elevation ?? ""}:${tile.deckFeatureFacing ?? ""}`
     ).join(",")).join(";"));
   }
   assert(
@@ -479,12 +1025,93 @@ for (let index = 0; index < 24; index += 1) {
 assert(houseTopologies.has("corridor") && houseTopologies.has("living-room-entry"),
   "house: seeds must expose both hallway and direct living-room entrances");
 
+const shipDeckPreset = PRESETS.find(({ mode }) => mode === "ship-deck");
+assert(shipDeckPreset, "missing ship-deck preset");
+const shipDeckDimensions = [
+  { name: "default", width: shipDeckPreset.width, height: shipDeckPreset.height },
+  {
+    name: "compact",
+    width: INTERIOR_MINIMUM_DIMENSIONS["ship-deck"].width,
+    height: INTERIOR_MINIMUM_DIMENSIONS["ship-deck"].height,
+  },
+];
+for (const dimensions of shipDeckDimensions) {
+  for (
+    let areaCount = INTERIOR_ROOM_LIMITS["ship-deck"].minimum;
+    areaCount <= INTERIOR_ROOM_LIMITS["ship-deck"].maximum;
+    areaCount += 1
+  ) {
+    for (let index = 0; index < 3; index += 1) {
+      const label = `ship-deck:${dimensions.name}:${areaCount}-areas:${index}`;
+      const grid = generateTerrain({
+        ...shipDeckPreset,
+        width: dimensions.width,
+        height: dimensions.height,
+        buildingCount: areaCount,
+        seed: label,
+      });
+      assertGrid(grid, label);
+      assertInterior(grid, areaCount, label, 1);
+      assertShipDeck(grid, label);
+      generated += 1;
+    }
+  }
+}
+
+for (const mode of ["house", "tavern"] as const) {
+  const preset = PRESETS.find((candidate) => candidate.mode === mode);
+  assert(preset, `missing ${mode} preset`);
+  const roomCounts = [...new Set([
+    INTERIOR_ROOM_LIMITS[mode].minimum,
+    preset.buildingCount,
+    INTERIOR_ROOM_LIMITS[mode].maximum,
+  ])];
+  for (const roomCount of roomCounts) {
+    for (let index = 0; index < 8; index += 1) {
+      const label = `${mode}:compact-furniture:${roomCount}-rooms:${index}`;
+      const grid = generateTerrain({
+        ...preset,
+        width: INTERIOR_MINIMUM_DIMENSIONS[mode].width,
+        height: INTERIOR_MINIMUM_DIMENSIONS[mode].height,
+        buildingCount: roomCount,
+        seed: label,
+      });
+      assertGrid(grid, label);
+      assertInterior(grid, roomCount, label);
+      assertHouseTavernFurniture(grid, mode, label);
+      generated += 1;
+    }
+  }
+}
+
+for (const seed of [
+  "final-live-audit:house:compact-r7:1",
+  "final-live-audit:house:compact-r7:15",
+  "final-live-audit:house:compact-r7:24",
+]) {
+  const label = `house:compact-regression:${seed.split(":").at(-1)}`;
+  const grid = generateTerrain({
+    ...housePreset,
+    width: INTERIOR_MINIMUM_DIMENSIONS.house.width,
+    height: INTERIOR_MINIMUM_DIMENSIONS.house.height,
+    buildingCount: INTERIOR_ROOM_LIMITS.house.maximum,
+    seed,
+  });
+  assertGrid(grid, label);
+  assertInterior(grid, INTERIOR_ROOM_LIMITS.house.maximum, label);
+  assertHouseTavernFurniture(grid, "house", label);
+  generated += 1;
+}
+
 for (const mode of ["house", "tavern", "cathedral", "crypt"] as const) {
   const preset = PRESETS.find((candidate) => candidate.mode === mode)!;
   for (let index = 0; index < 32; index += 1) {
     const grid = generateTerrain({ ...preset, seed: `${mode}-furniture-audit-${index}` });
     generated += 1;
     assertInterior(grid, preset.buildingCount, `${mode}:furniture-audit-${index}`);
+    if (mode === "house" || mode === "tavern") {
+      assertHouseTavernFurniture(grid, mode, `${mode}:furniture-audit-${index}`);
+    }
     if (mode === "house") {
       const bedroomIds = new Set(grid.flatMap((row) => row.filter((tile) =>
         tile.roomRole?.startsWith("Bedroom ")).map((tile) => tile.roomId)));
@@ -650,7 +1277,13 @@ for (const preset of PRESETS.filter(({ mode }) => isInteriorMode(mode))) {
     seed: `${preset.id}-compact-interior`,
   });
   assertInterior(compactGrid, maximumRooms, `${preset.id}:compact-interior`,
-    preset.mode === "ship-deck" ? 0 : maximumRooms);
+    preset.mode === "ship-deck" ? 1 : maximumRooms);
+  if (preset.mode === "house" || preset.mode === "tavern") {
+    assertHouseTavernFurniture(compactGrid, preset.mode, `${preset.id}:compact-interior`);
+  }
+  if (preset.mode === "ship-deck") {
+    assertShipDeck(compactGrid, `${preset.id}:compact-interior`);
+  }
   if (preset.mode === "tavern") {
     const guestRoomIds = new Set(compactGrid.flatMap((row) => row.filter((tile) =>
       tile.roomRole?.startsWith("Guest room ")).map((tile) => tile.roomId)));

@@ -113,9 +113,11 @@ export interface Tile {
   roomId?: number;
   roomRole?: string;
   doorOrientation?: "horizontal" | "vertical";
-  deckFeature?: "mast" | "hatch" | "wheel" | "capstan";
+  deckFeature?: "mast" | "hatch" | "wheel" | "capstan" | "cannon" |
+    "stairs" | "railing" | "gangway";
+  deckFeatureFacing?: "north" | "east" | "south" | "west";
   interiorProp?: "table" | "chair" | "bar" | "cabinet" | "bed" |
-    "bench" | "altar" | "crate" | "console" | "tomb";
+    "bench" | "altar" | "crate" | "console" | "tomb" | "hearth";
   interiorPropId?: number;
   propOrientation?: "horizontal" | "vertical";
   propFacing?: "north" | "east" | "south" | "west";
@@ -199,4 +201,23 @@ export const INTERIOR_PROP_RULES: Record<
   crate: { label: "Crate", movement: "blocked", blocksSight: false },
   console: { label: "Console", movement: "blocked", blocksSight: false },
   tomb: { label: "Tomb", movement: "blocked", blocksSight: false },
+  hearth: { label: "Hearth", movement: "blocked", blocksSight: false },
+};
+
+export const DECK_FEATURE_RULES: Record<
+  NonNullable<Tile["deckFeature"]>,
+  {
+    label: string;
+    movement: "normal" | "blocked";
+    blocksSight: boolean;
+  }
+> = {
+  mast: { label: "Mast", movement: "blocked", blocksSight: false },
+  hatch: { label: "Hatch", movement: "normal", blocksSight: false },
+  wheel: { label: "Ship's wheel", movement: "blocked", blocksSight: false },
+  capstan: { label: "Capstan", movement: "blocked", blocksSight: false },
+  cannon: { label: "Deck cannon", movement: "blocked", blocksSight: false },
+  stairs: { label: "Deck stairs", movement: "normal", blocksSight: false },
+  railing: { label: "Raised-deck rail", movement: "blocked", blocksSight: false },
+  gangway: { label: "Gangway", movement: "normal", blocksSight: false },
 };

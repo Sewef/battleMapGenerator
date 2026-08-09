@@ -1228,6 +1228,46 @@ function drawTerrainLayers(
   context.globalAlpha = 1;
 }
 
+const cardinalCellEdges = [
+  {
+    dx: 0,
+    dy: -1,
+    startX: 0,
+    startY: 0,
+    endX: 1,
+    endY: 0,
+  },
+  {
+    dx: 1,
+    dy: 0,
+    startX: 1,
+    startY: 0,
+    endX: 1,
+    endY: 1,
+  },
+  {
+    dx: 0,
+    dy: 1,
+    startX: 1,
+    startY: 1,
+    endX: 0,
+    endY: 1,
+  },
+  {
+    dx: -1,
+    dy: 0,
+    startX: 0,
+    startY: 1,
+    endX: 0,
+    endY: 0,
+  },
+] as const;
+
+function isSailingShipDeckFloor(grid: Grid, x: number, y: number) {
+  const terrain = grid[y]?.[x]?.terrain;
+  return terrain === Terrain.Ground || terrain === Terrain.Door;
+}
+
 function drawInteriorArchitecture(
   grid: Grid,
   cellSize: number,
@@ -1248,9 +1288,10 @@ function drawInteriorArchitecture(
       const left = x * cellSize;
       const top = y * cellSize;
       if (tile.terrain === Terrain.Ground) {
-        context.fillStyle = style.roomTints[
-          (tile.roomId ?? 0) % style.roomTints.length
-        ];
+        const roomTintIndex = mode === "ship-deck"
+          ? 0
+          : (tile.roomId ?? 0) % style.roomTints.length;
+        context.fillStyle = style.roomTints[roomTintIndex];
         context.fillRect(left, top, cellSize, cellSize);
         context.lineWidth = Math.max(.65, cellSize * .018);
         if (style.floorPattern === "wood") {
@@ -1308,6 +1349,92 @@ function drawInteriorArchitecture(
       if (tile.terrain !== Terrain.Wall) continue;
       const left = x * cellSize;
       const top = y * cellSize;
+      if (mode === "ship-deck") {
+        const connectedHorizontally = isArchitecture(x - 1, y) ||
+          isArchitecture(x + 1, y);
+        const connectedVertically = isArchitecture(x, y - 1) ||
+          isArchitecture(x, y + 1);
+
+        context.fillStyle = style.wallAlt;
+        context.fillRect(
+          left + cellSize * .08,
+          top + cellSize * .08,
+          cellSize * .84,
+          cellSize * .84,
+        );
+        context.strokeStyle = "rgba(222, 153, 82, .2)";
+        context.lineWidth = Math.max(.65, cellSize * .022);
+        if (connectedHorizontally) {
+          for (const offset of [.36, .66]) {
+            context.beginPath();
+            context.moveTo(left, top + cellSize * offset);
+            context.lineTo(left + cellSize, top + cellSize * offset);
+            context.stroke();
+          }
+        }
+        if (connectedVertically) {
+          for (const offset of [.36, .66]) {
+            context.beginPath();
+            context.moveTo(left + cellSize * offset, top);
+            context.lineTo(left + cellSize * offset, top + cellSize);
+            context.stroke();
+          }
+        }
+
+        for (const edge of cardinalCellEdges) {
+          if (!isSailingShipDeckFloor(grid, x + edge.dx, y + edge.dy)) {
+            continue;
+          }
+          const inset = cellSize * .08;
+          const startX = left + edge.startX * cellSize - edge.dx * inset;
+          const startY = top + edge.startY * cellSize - edge.dy * inset;
+          const endX = left + edge.endX * cellSize - edge.dx * inset;
+          const endY = top + edge.endY * cellSize - edge.dy * inset;
+
+          context.save();
+          context.shadowColor = "rgba(27, 18, 14, .42)";
+          context.shadowBlur = Math.max(1.4, cellSize * .08);
+          context.shadowOffsetX = edge.dx * cellSize * .055;
+          context.shadowOffsetY = edge.dy * cellSize * .055;
+          context.strokeStyle = "#2f211b";
+          context.lineWidth = Math.max(1.35, cellSize * .09);
+          context.beginPath();
+          context.moveTo(startX, startY);
+          context.lineTo(endX, endY);
+          context.stroke();
+          context.restore();
+
+          context.strokeStyle = "rgba(230, 177, 104, .56)";
+          context.lineWidth = Math.max(.7, cellSize * .026);
+          context.beginPath();
+          context.moveTo(
+            startX - edge.dx * cellSize * .055,
+            startY - edge.dy * cellSize * .055,
+          );
+          context.lineTo(
+            endX - edge.dx * cellSize * .055,
+            endY - edge.dy * cellSize * .055,
+          );
+          context.stroke();
+
+          if ((x + y) % 2 === 0) {
+            context.fillStyle = "#70472d";
+            context.strokeStyle = "#291d18";
+            context.lineWidth = Math.max(.65, cellSize * .024);
+            context.beginPath();
+            context.arc(
+              (startX + endX) / 2,
+              (startY + endY) / 2,
+              cellSize * .075,
+              0,
+              Math.PI * 2,
+            );
+            context.fill();
+            context.stroke();
+          }
+        }
+        continue;
+      }
       context.fillStyle = style.wallHighlight;
       context.fillRect(
         left + cellSize * .08,
@@ -1433,6 +1560,157 @@ function drawInteriorArchitecture(
   context.restore();
 }
 
+type SailingShipDeckFacing = NonNullable<
+  Grid[number][number]["deckFeatureFacing"]
+>;
+
+function sailingShipDeckFacingAngle(facing: SailingShipDeckFacing) {
+  if (facing === "north") return -Math.PI / 2;
+  if (facing === "south") return Math.PI / 2;
+  if (facing === "west") return Math.PI;
+  return 0;
+}
+
+function sailingShipDeckFloorElevation(grid: Grid, x: number, y: number) {
+  const tile = grid[y]?.[x];
+  if (!tile || !isSailingShipDeckFloor(grid, x, y)) return undefined;
+  return tile.elevation ?? 1;
+}
+
+function drawSailingShipDeckElevation(
+  grid: Grid,
+  cellSize: number,
+  context: CanvasRenderingContext2D,
+) {
+  context.save();
+  context.lineCap = "butt";
+  context.lineJoin = "round";
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      const elevation = sailingShipDeckFloorElevation(grid, x, y);
+      if (elevation === undefined || elevation <= 1) continue;
+      const left = x * cellSize;
+      const top = y * cellSize;
+
+      context.fillStyle = "rgba(246, 215, 162, .13)";
+      context.fillRect(left, top, cellSize, cellSize);
+
+      for (const edge of cardinalCellEdges) {
+        const neighbourElevation = sailingShipDeckFloorElevation(
+          grid,
+          x + edge.dx,
+          y + edge.dy,
+        );
+        if (
+          neighbourElevation === undefined ||
+          neighbourElevation >= elevation
+        ) {
+          continue;
+        }
+
+        const startX = left + edge.startX * cellSize;
+        const startY = top + edge.startY * cellSize;
+        const endX = left + edge.endX * cellSize;
+        const endY = top + edge.endY * cellSize;
+        const shadowOffset = cellSize * .075;
+        context.strokeStyle = "rgba(35, 22, 16, .31)";
+        context.lineWidth = Math.max(1.5, cellSize * .12);
+        context.beginPath();
+        context.moveTo(
+          startX + edge.dx * shadowOffset,
+          startY + edge.dy * shadowOffset,
+        );
+        context.lineTo(
+          endX + edge.dx * shadowOffset,
+          endY + edge.dy * shadowOffset,
+        );
+        context.stroke();
+
+        context.strokeStyle = "rgba(67, 42, 28, .9)";
+        context.lineWidth = Math.max(1.15, cellSize * .07);
+        context.beginPath();
+        context.moveTo(startX, startY);
+        context.lineTo(endX, endY);
+        context.stroke();
+
+        const highlightOffset = cellSize * .055;
+        context.strokeStyle = "rgba(250, 222, 173, .42)";
+        context.lineWidth = Math.max(.75, cellSize * .027);
+        context.beginPath();
+        context.moveTo(
+          startX - edge.dx * highlightOffset,
+          startY - edge.dy * highlightOffset,
+        );
+        context.lineTo(
+          endX - edge.dx * highlightOffset,
+          endY - edge.dy * highlightOffset,
+        );
+        context.stroke();
+      }
+    }
+  }
+  context.restore();
+}
+
+function drawSailingShipMastRigging(
+  grid: Grid,
+  x: number,
+  y: number,
+  cellSize: number,
+  context: CanvasRenderingContext2D,
+) {
+  const isHullMaterial = (cellY: number) => {
+    const terrain = grid[cellY]?.[x]?.terrain;
+    return terrain === Terrain.Ground ||
+      terrain === Terrain.Wall ||
+      terrain === Terrain.Door;
+  };
+  let top = y;
+  let bottom = y;
+  while (top > 0 && isHullMaterial(top - 1)) top -= 1;
+  while (bottom < grid.length - 1 && isHullMaterial(bottom + 1)) bottom += 1;
+  if (top === bottom) return;
+
+  const centerX = (x + .5) * cellSize;
+  const centerY = (y + .5) * cellSize;
+  const maximumX = grid[0].length * cellSize - cellSize * .25;
+  const clampX = (value: number) =>
+    Math.max(cellSize * .25, Math.min(maximumX, value));
+  const anchors = [
+    {
+      x: clampX(centerX - cellSize * .72),
+      y: (top + .62) * cellSize,
+    },
+    {
+      x: clampX(centerX + cellSize * .72),
+      y: (top + .62) * cellSize,
+    },
+    {
+      x: clampX(centerX - cellSize * .72),
+      y: (bottom + .38) * cellSize,
+    },
+    {
+      x: clampX(centerX + cellSize * .72),
+      y: (bottom + .38) * cellSize,
+    },
+  ];
+
+  context.save();
+  context.strokeStyle = "rgba(48, 35, 27, .27)";
+  context.lineWidth = Math.max(.65, cellSize * .024);
+  context.setLineDash([
+    Math.max(2, cellSize * .18),
+    Math.max(1.5, cellSize * .12),
+  ]);
+  for (const anchor of anchors) {
+    context.beginPath();
+    context.moveTo(centerX, centerY);
+    context.lineTo(anchor.x, anchor.y);
+    context.stroke();
+  }
+  context.restore();
+}
+
 function drawSailingShipDeckFeatures(
   grid: Grid,
   cellSize: number,
@@ -1440,58 +1718,367 @@ function drawSailingShipDeckFeatures(
 ) {
   context.save();
   context.lineCap = "round";
+  context.lineJoin = "round";
   for (let y = 0; y < grid.length; y += 1) {
     for (let x = 0; x < grid[y].length; x += 1) {
-      const feature = grid[y][x].deckFeature;
+      const tile = grid[y][x];
+      const feature = tile.deckFeature;
       if (!feature) continue;
+      const facing = tile.deckFeatureFacing ?? "east";
       const centerX = (x + .5) * cellSize;
       const centerY = (y + .5) * cellSize;
-      context.strokeStyle = "#3b2a21";
-      context.fillStyle = "#6f492f";
-      context.lineWidth = Math.max(1.2, cellSize * .055);
+
       if (feature === "mast") {
-        context.strokeStyle = "rgba(55,38,28,.55)";
-        context.lineWidth = Math.max(1, cellSize * .035);
+        drawSailingShipMastRigging(grid, x, y, cellSize, context);
+        context.save();
+        context.translate(centerX, centerY);
+        applyPropContactShadow(cellSize, context);
+        context.fillStyle = "#3d2b21";
         context.beginPath();
-        context.moveTo(centerX, centerY - cellSize * 3.6);
-        context.lineTo(centerX, centerY + cellSize * 3.6);
-        context.stroke();
-        context.fillStyle = "#65442d";
-        context.strokeStyle = "#30231c";
-        context.lineWidth = Math.max(1.5, cellSize * .07);
+        context.arc(0, 0, cellSize * .46, 0, Math.PI * 2);
+        context.fill();
+        context.restore();
+
+        context.save();
+        context.translate(centerX, centerY);
+        context.fillStyle = "#8a5c38";
+        context.strokeStyle = "#30221b";
+        context.lineWidth = Math.max(1.5, cellSize * .075);
         context.beginPath();
-        context.arc(centerX, centerY, cellSize * .31, 0, Math.PI * 2);
+        context.arc(0, 0, cellSize * .37, 0, Math.PI * 2);
         context.fill();
         context.stroke();
-      } else if (feature === "hatch") {
-        const width = cellSize * 1.45;
+        context.strokeStyle = "rgba(230, 183, 119, .62)";
+        context.lineWidth = Math.max(.75, cellSize * .03);
+        context.beginPath();
+        context.arc(
+          -cellSize * .035,
+          -cellSize * .035,
+          cellSize * .245,
+          Math.PI * 1.05,
+          Math.PI * 1.7,
+        );
+        context.stroke();
+        context.strokeStyle = "#b68a52";
+        context.lineWidth = Math.max(1, cellSize * .045);
+        context.beginPath();
+        context.arc(0, 0, cellSize * .29, 0, Math.PI * 2);
+        context.stroke();
+        context.restore();
+        continue;
+      }
+
+      context.save();
+      context.translate(centerX, centerY);
+      context.rotate(sailingShipDeckFacingAngle(facing));
+
+      if (feature === "hatch") {
+        const width = cellSize * 1.16;
         const height = cellSize * .72;
-        context.fillStyle = "#4d3528";
-        context.fillRect(centerX - width / 2, centerY - height / 2, width, height);
-        context.strokeRect(centerX - width / 2, centerY - height / 2, width, height);
-        context.strokeStyle = "#a57848";
-        for (const offset of [-.24, 0, .24]) {
+        context.save();
+        applyPropContactShadow(cellSize, context);
+        context.fillStyle = "#34251e";
+        context.fillRect(-width * .53, -height * .57, width * 1.06, height * 1.14);
+        context.restore();
+        context.fillStyle = "#765036";
+        context.strokeStyle = "#30221b";
+        context.lineWidth = Math.max(1.1, cellSize * .055);
+        context.fillRect(-width / 2, -height / 2, width, height);
+        context.strokeRect(-width / 2, -height / 2, width, height);
+        context.fillStyle = "#392820";
+        context.fillRect(-width * .39, -height * .31, width * .78, height * .62);
+        context.strokeStyle = "#ad7b49";
+        context.lineWidth = Math.max(.75, cellSize * .027);
+        for (const offset of [-.26, -.087, .087, .26]) {
           context.beginPath();
-          context.moveTo(centerX + width * offset, centerY - height * .42);
-          context.lineTo(centerX + width * offset, centerY + height * .42);
+          context.moveTo(width * offset, -height * .29);
+          context.lineTo(width * offset, height * .29);
           context.stroke();
         }
-      } else {
-        const radius = cellSize * (feature === "wheel" ? .38 : .3);
+        context.fillStyle = "#c19a62";
+        for (const offset of [-.37, .37]) {
+          context.beginPath();
+          context.arc(width * offset, 0, Math.max(1, cellSize * .04), 0, Math.PI * 2);
+          context.fill();
+        }
+      } else if (feature === "wheel") {
+        context.fillStyle = "#4a3022";
+        context.fillRect(-cellSize * .27, -cellSize * .37, cellSize * .12, cellSize * .74);
+        context.fillRect(cellSize * .15, -cellSize * .37, cellSize * .12, cellSize * .74);
+        context.save();
+        applyPropContactShadow(cellSize, context);
+        context.strokeStyle = "#33231b";
+        context.lineWidth = Math.max(2, cellSize * .13);
         context.beginPath();
-        context.arc(centerX, centerY, radius, 0, Math.PI * 2);
+        context.arc(0, 0, cellSize * .34, 0, Math.PI * 2);
+        context.stroke();
+        context.restore();
+        context.strokeStyle = "#a66e3d";
+        context.lineWidth = Math.max(1.2, cellSize * .075);
+        context.beginPath();
+        context.arc(0, 0, cellSize * .34, 0, Math.PI * 2);
+        context.stroke();
+        context.strokeStyle = "#c79658";
+        context.lineWidth = Math.max(.75, cellSize * .032);
+        for (let spoke = 0; spoke < 8; spoke += 1) {
+          const angle = spoke * Math.PI / 4;
+          const innerRadius = cellSize * .075;
+          const outerRadius = cellSize * .45;
+          context.beginPath();
+          context.moveTo(
+            Math.cos(angle) * innerRadius,
+            Math.sin(angle) * innerRadius,
+          );
+          context.lineTo(
+            Math.cos(angle) * outerRadius,
+            Math.sin(angle) * outerRadius,
+          );
+          context.stroke();
+          context.fillStyle = "#d0a061";
+          context.beginPath();
+          context.arc(
+            Math.cos(angle) * outerRadius,
+            Math.sin(angle) * outerRadius,
+            Math.max(.8, cellSize * .035),
+            0,
+            Math.PI * 2,
+          );
+          context.fill();
+        }
+        context.fillStyle = "#6c442b";
+        context.strokeStyle = "#2f211b";
+        context.lineWidth = Math.max(.75, cellSize * .03);
+        context.beginPath();
+        context.arc(0, 0, cellSize * .105, 0, Math.PI * 2);
         context.fill();
         context.stroke();
-        context.strokeStyle = "#c49a61";
-        for (let spoke = 0; spoke < (feature === "wheel" ? 8 : 4); spoke += 1) {
-          const angle = spoke * Math.PI / (feature === "wheel" ? 4 : 2);
+      } else if (feature === "capstan") {
+        context.save();
+        applyPropContactShadow(cellSize, context);
+        context.fillStyle = "#3c2a20";
+        context.beginPath();
+        context.arc(0, 0, cellSize * .36, 0, Math.PI * 2);
+        context.fill();
+        context.restore();
+        context.strokeStyle = "#b7844a";
+        context.lineWidth = Math.max(1.1, cellSize * .06);
+        for (let bar = 0; bar < 4; bar += 1) {
+          const angle = bar * Math.PI / 4;
           context.beginPath();
-          context.moveTo(centerX, centerY);
-          context.lineTo(centerX + Math.cos(angle) * radius * 1.25,
-            centerY + Math.sin(angle) * radius * 1.25);
+          context.moveTo(
+            -Math.cos(angle) * cellSize * .43,
+            -Math.sin(angle) * cellSize * .43,
+          );
+          context.lineTo(
+            Math.cos(angle) * cellSize * .43,
+            Math.sin(angle) * cellSize * .43,
+          );
+          context.stroke();
+        }
+        context.fillStyle = "#765035";
+        context.strokeStyle = "#30221b";
+        context.lineWidth = Math.max(1, cellSize * .05);
+        context.beginPath();
+        context.arc(0, 0, cellSize * .25, 0, Math.PI * 2);
+        context.fill();
+        context.stroke();
+        context.strokeStyle = "#d0a064";
+        context.lineWidth = Math.max(.75, cellSize * .028);
+        context.beginPath();
+        context.arc(0, 0, cellSize * .17, 0, Math.PI * 2);
+        context.stroke();
+        context.fillStyle = "#3b2a21";
+        context.beginPath();
+        context.arc(0, 0, cellSize * .075, 0, Math.PI * 2);
+        context.fill();
+      } else if (feature === "cannon") {
+        context.save();
+        applyPropContactShadow(cellSize, context);
+        context.fillStyle = "#69442d";
+        context.fillRect(
+          -cellSize * .5,
+          -cellSize * .24,
+          cellSize * .62,
+          cellSize * .48,
+        );
+        context.restore();
+        context.fillStyle = "#744a2f";
+        context.strokeStyle = "#34231b";
+        context.lineWidth = Math.max(.9, cellSize * .04);
+        context.fillRect(
+          -cellSize * .5,
+          -cellSize * .22,
+          cellSize * .62,
+          cellSize * .44,
+        );
+        context.strokeRect(
+          -cellSize * .5,
+          -cellSize * .22,
+          cellSize * .62,
+          cellSize * .44,
+        );
+        context.fillStyle = "#302a27";
+        for (const wheelX of [-.36, -.02]) {
+          for (const wheelY of [-.29, .29]) {
+            context.beginPath();
+            context.arc(
+              cellSize * wheelX,
+              cellSize * wheelY,
+              cellSize * .1,
+              0,
+              Math.PI * 2,
+            );
+            context.fill();
+          }
+        }
+        context.fillStyle = "#353739";
+        context.strokeStyle = "#181b1d";
+        context.lineWidth = Math.max(.85, cellSize * .037);
+        context.beginPath();
+        context.moveTo(-cellSize * .43, -cellSize * .125);
+        context.lineTo(cellSize * .68, -cellSize * .075);
+        context.lineTo(cellSize * .79, -cellSize * .125);
+        context.lineTo(cellSize * .79, cellSize * .125);
+        context.lineTo(cellSize * .68, cellSize * .075);
+        context.lineTo(-cellSize * .43, cellSize * .125);
+        context.closePath();
+        context.fill();
+        context.stroke();
+        context.strokeStyle = "rgba(214, 217, 210, .38)";
+        context.lineWidth = Math.max(.65, cellSize * .02);
+        context.beginPath();
+        context.moveTo(-cellSize * .34, -cellSize * .055);
+        context.lineTo(cellSize * .68, -cellSize * .035);
+        context.stroke();
+        context.fillStyle = "#252729";
+        context.beginPath();
+        context.arc(-cellSize * .49, 0, cellSize * .105, 0, Math.PI * 2);
+        context.fill();
+      } else if (feature === "stairs") {
+        const gradient = context.createLinearGradient(
+          -cellSize * .43,
+          0,
+          cellSize * .43,
+          0,
+        );
+        gradient.addColorStop(0, "#5d3d2a");
+        gradient.addColorStop(1, "#b27c48");
+        context.save();
+        applyPropContactShadow(cellSize, context);
+        context.fillStyle = "#39271f";
+        context.fillRect(
+          -cellSize * .46,
+          -cellSize * .4,
+          cellSize * .92,
+          cellSize * .8,
+        );
+        context.restore();
+        context.fillStyle = gradient;
+        context.strokeStyle = "#3b281f";
+        context.lineWidth = Math.max(1, cellSize * .045);
+        context.fillRect(
+          -cellSize * .43,
+          -cellSize * .36,
+          cellSize * .86,
+          cellSize * .72,
+        );
+        context.strokeRect(
+          -cellSize * .43,
+          -cellSize * .36,
+          cellSize * .86,
+          cellSize * .72,
+        );
+        context.strokeStyle = "rgba(242, 201, 136, .58)";
+        context.lineWidth = Math.max(.7, cellSize * .025);
+        for (const offset of [-.3, -.15, 0, .15, .3]) {
+          context.beginPath();
+          context.moveTo(cellSize * offset, -cellSize * .34);
+          context.lineTo(cellSize * offset, cellSize * .34);
+          context.stroke();
+        }
+        context.strokeStyle = "#513421";
+        context.lineWidth = Math.max(1, cellSize * .055);
+        for (const side of [-.37, .37]) {
+          context.beginPath();
+          context.moveTo(-cellSize * .45, cellSize * side);
+          context.lineTo(cellSize * .45, cellSize * side);
+          context.stroke();
+        }
+      } else if (feature === "railing") {
+        const railX = -cellSize * .38;
+        context.save();
+        applyPropContactShadow(cellSize, context);
+        context.strokeStyle = "#33231c";
+        context.lineWidth = Math.max(1.7, cellSize * .12);
+        context.beginPath();
+        context.moveTo(railX, -cellSize * .52);
+        context.lineTo(railX, cellSize * .52);
+        context.stroke();
+        context.restore();
+        context.strokeStyle = "#8c5a34";
+        context.lineWidth = Math.max(1.2, cellSize * .075);
+        context.beginPath();
+        context.moveTo(railX, -cellSize * .52);
+        context.lineTo(railX, cellSize * .52);
+        context.stroke();
+        context.strokeStyle = "rgba(231, 181, 112, .55)";
+        context.lineWidth = Math.max(.65, cellSize * .022);
+        context.beginPath();
+        context.moveTo(railX - cellSize * .04, -cellSize * .5);
+        context.lineTo(railX - cellSize * .04, cellSize * .5);
+        context.stroke();
+        context.fillStyle = "#5e3c28";
+        context.strokeStyle = "#2e211a";
+        context.lineWidth = Math.max(.65, cellSize * .025);
+        for (const offset of [-.43, 0, .43]) {
+          context.beginPath();
+          context.arc(
+            railX,
+            cellSize * offset,
+            cellSize * .08,
+            0,
+            Math.PI * 2,
+          );
+          context.fill();
+          context.stroke();
+        }
+      } else if (feature === "gangway") {
+        const start = -cellSize * .65;
+        const width = cellSize * 1.9;
+        const halfHeight = cellSize * .3;
+        context.save();
+        applyPropContactShadow(cellSize, context);
+        context.fillStyle = "#3b2920";
+        context.fillRect(
+          start,
+          -halfHeight,
+          width,
+          halfHeight * 2,
+        );
+        context.restore();
+        context.fillStyle = "#8d603a";
+        context.strokeStyle = "#35241c";
+        context.lineWidth = Math.max(1, cellSize * .045);
+        context.fillRect(start, -halfHeight, width, halfHeight * 2);
+        context.strokeRect(start, -halfHeight, width, halfHeight * 2);
+        context.strokeStyle = "rgba(236, 195, 126, .5)";
+        context.lineWidth = Math.max(.65, cellSize * .023);
+        for (const offset of [-.5, -.25, 0, .25, .5, .75, 1, 1.2]) {
+          context.beginPath();
+          context.moveTo(cellSize * offset, -halfHeight * .92);
+          context.lineTo(cellSize * offset, halfHeight * .92);
+          context.stroke();
+        }
+        context.strokeStyle = "#4b3021";
+        context.lineWidth = Math.max(.9, cellSize * .04);
+        for (const side of [-1, 1]) {
+          context.beginPath();
+          context.moveTo(start, side * halfHeight * .84);
+          context.lineTo(start + width, side * halfHeight * .84);
           context.stroke();
         }
       }
+      context.restore();
     }
   }
   context.restore();
@@ -1507,7 +2094,13 @@ function drawInteriorProps(
   const renderedProps = new Set<number>();
   for (let y = 0; y < grid.length; y += 1) {
     for (let x = 0; x < grid[y].length; x += 1) {
-      const { interiorProp: prop, interiorPropId, propOrientation, propFacing } = grid[y][x];
+      const {
+        interiorProp: prop,
+        interiorPropId,
+        propOrientation,
+        propFacing,
+        roomRole: propRoomRole = "",
+      } = grid[y][x];
       if (!prop) continue;
       if (interiorPropId !== undefined && renderedProps.has(interiorPropId)) continue;
       if (interiorPropId !== undefined) renderedProps.add(interiorPropId);
@@ -1579,10 +2172,12 @@ function drawInteriorProps(
       } else if (prop === "bench") {
         const width = spanWidth * (vertical ? .38 : .94);
         const height = spanHeight * (vertical ? .94 : .38);
-        context.fillStyle = "#735037";
+        const upholstered = /Living room|Bedroom|Guest room|cabin|Royal chamber/i
+          .test(propRoomRole);
+        context.fillStyle = upholstered ? "#66766b" : "#735037";
         context.fillRect(centerX - width / 2, centerY - height / 2, width, height);
         context.strokeRect(centerX - width / 2, centerY - height / 2, width, height);
-        context.strokeStyle = "#a7794e";
+        context.strokeStyle = upholstered ? "#a9b2a4" : "#a7794e";
         context.beginPath();
         if (vertical) {
           context.moveTo(centerX, centerY - height * .42);
@@ -1592,6 +2187,16 @@ function drawInteriorProps(
           context.lineTo(centerX + width * .42, centerY);
         }
         context.stroke();
+        if (upholstered) {
+          context.fillStyle = "rgba(224,218,193,.2)";
+          for (const cell of propCells) {
+            const cushionX = (cell.x + .5) * cellSize;
+            const cushionY = (cell.y + .5) * cellSize;
+            context.beginPath();
+            context.arc(cushionX, cushionY, cellSize * .08, 0, Math.PI * 2);
+            context.fill();
+          }
+        }
         context.strokeStyle = "#38271f";
         context.lineWidth = Math.max(1.2, cellSize * .055);
         context.beginPath();
@@ -1609,6 +2214,49 @@ function drawInteriorProps(
           context.lineTo(centerX + width * .62, centerY + height * .44);
         }
         context.stroke();
+      } else if (prop === "hearth") {
+        const width = spanWidth * (vertical ? .68 : .94);
+        const height = spanHeight * (vertical ? .94 : .68);
+        context.fillStyle = "#827768";
+        context.strokeStyle = "#403a35";
+        context.beginPath();
+        context.roundRect(centerX - width / 2, centerY - height / 2,
+          width, height, cellSize * .08);
+        context.fill();
+        context.stroke();
+        const fireWidth = width * (vertical ? .5 : .68);
+        const fireHeight = height * (vertical ? .68 : .5);
+        context.fillStyle = "#322923";
+        context.beginPath();
+        context.roundRect(centerX - fireWidth / 2, centerY - fireHeight / 2,
+          fireWidth, fireHeight, cellSize * .06);
+        context.fill();
+        context.fillStyle = "#d77934";
+        context.beginPath();
+        context.ellipse(centerX, centerY, fireWidth * .27, fireHeight * .28,
+          0, 0, Math.PI * 2);
+        context.fill();
+        context.fillStyle = "#efb653";
+        context.beginPath();
+        context.ellipse(centerX, centerY, fireWidth * .12, fireHeight * .19,
+          0, 0, Math.PI * 2);
+        context.fill();
+        context.strokeStyle = "rgba(224,213,190,.35)";
+        context.lineWidth = Math.max(.7, cellSize * .025);
+        const divisions = Math.max(2, propCells.length * 2);
+        for (let division = 1; division < divisions; division += 1) {
+          context.beginPath();
+          if (vertical) {
+            const lineY = centerY - height / 2 + height * division / divisions;
+            context.moveTo(centerX - width / 2, lineY);
+            context.lineTo(centerX - fireWidth / 2, lineY);
+          } else {
+            const lineX = centerX - width / 2 + width * division / divisions;
+            context.moveTo(lineX, centerY - height / 2);
+            context.lineTo(lineX, centerY - fireHeight / 2);
+          }
+          context.stroke();
+        }
       } else if (prop === "altar" || prop === "tomb") {
         const width = spanWidth * (vertical ? .68 : .92);
         const height = spanHeight * (vertical ? .92 : .68);
@@ -1627,6 +2275,40 @@ function drawInteriorProps(
           context.lineTo(centerX, centerY + height * .22);
         }
         context.stroke();
+      } else if (prop === "cabinet") {
+        const width = spanWidth * (vertical ? .52 : .92);
+        const height = spanHeight * (vertical ? .92 : .52);
+        const kitchenStorage = /Kitchen|Galley/i.test(propRoomRole);
+        context.fillStyle = kitchenStorage ? "#74543b" : "#6b4a35";
+        context.fillRect(centerX - width / 2, centerY - height / 2, width, height);
+        context.strokeRect(centerX - width / 2, centerY - height / 2, width, height);
+        context.fillStyle = kitchenStorage ? "#aa845b" : "#8c6849";
+        if (vertical) {
+          context.fillRect(centerX - width * .47, centerY - height * .46,
+            width * .16, height * .92);
+        } else {
+          context.fillRect(centerX - width * .46, centerY - height * .47,
+            width * .92, height * .16);
+        }
+        context.strokeStyle = "rgba(232,194,139,.34)";
+        context.lineWidth = Math.max(.7, cellSize * .025);
+        for (const cell of propCells) {
+          const cellCenterX = (cell.x + .5) * cellSize;
+          const cellCenterY = (cell.y + .5) * cellSize;
+          context.beginPath();
+          if (vertical) {
+            context.moveTo(centerX - width * .32, cellCenterY);
+            context.lineTo(centerX + width * .32, cellCenterY);
+          } else {
+            context.moveTo(cellCenterX, centerY - height * .32);
+            context.lineTo(cellCenterX, centerY + height * .32);
+          }
+          context.stroke();
+          context.fillStyle = "#d0a36b";
+          context.beginPath();
+          context.arc(cellCenterX, cellCenterY, Math.max(.8, cellSize * .035), 0, Math.PI * 2);
+          context.fill();
+        }
       } else if (prop === "crate") {
         for (const cell of propCells) {
           const crateX = (cell.x + .5) * cellSize;
@@ -3058,10 +3740,10 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   drawGlobalTexture(width, height, context);
   if (isInteriorMode(mode)) {
     drawInteriorArchitecture(grid, cellSize, mode, context);
-    drawInteriorProps(grid, cellSize, context);
     if (mode === "ship-deck") {
-      drawSailingShipDeckFeatures(grid, cellSize, context);
+      drawSailingShipDeckElevation(grid, cellSize, context);
     }
+    drawInteriorProps(grid, cellSize, context);
   }
   drawReliefBevels(
     grid,
@@ -3148,7 +3830,20 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
       ) {
         drawTerrainDetail(grid, x, y, cellSize, context);
       }
-      if (showGrid) {
+    }
+  }
+  context.globalAlpha = 1;
+
+  if (mode === "ship-deck") {
+    drawSailingShipDeckFeatures(grid, cellSize, context);
+  }
+
+  if (showGrid) {
+    context.save();
+    for (let y = 0; y < rows; y += 1) {
+      for (let x = 0; x < columns; x += 1) {
+        const tile = grid[y][x];
+        context.globalAlpha = hiddenItems.has(tile.terrain) ? hiddenOpacity : 1;
         context.strokeStyle = "rgba(239, 235, 218, 0.14)";
         context.lineWidth = 1;
         context.strokeRect(
@@ -3159,6 +3854,7 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
         );
       }
     }
+    context.restore();
   }
   context.globalAlpha = 1;
 
