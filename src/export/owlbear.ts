@@ -570,9 +570,15 @@ function interiorPropSpriteItems(
       height: maximumY - minimumY + 1,
     };
   })();
+  const horizontalBed = prop.facing === "east" || prop.facing === "west";
   const assetName = prop.kind === "bed"
     ? prop.points.length === 4 && rectangle.width === 2 && rectangle.height === 2
-      ? "bed_2x2.png" : prop.points.length === 2 ? "bed_1x2.png" : undefined
+      ? horizontalBed ? "bed_2x2_horizontal.png"
+        : prop.facing === "south" ? "bed_2x2_south.png" : "bed_2x2.png"
+      : prop.points.length === 2
+        ? horizontalBed ? "bed_2x1.png"
+          : prop.facing === "south" ? "bed_1x2_south.png" : "bed_1x2.png"
+        : undefined
     : prop.kind === "chair" ? "stool_1x1.png"
       : prop.kind === "crate" ? "crate_1x1.png"
         : prop.kind === "barrel" ? "barrel_1x1.png"
@@ -588,12 +594,11 @@ function interiorPropSpriteItems(
   if (!assetName) return [];
   const tall = prop.kind === "drawers" || prop.kind === "shelf" || prop.kind === "statue";
   const perCell = prop.kind === "crate";
-  const assetWidth = assetName.includes("2x2") ? 64 : 32;
-  const assetHeight = assetName.includes("1x2") || tall ? 64 : assetWidth;
-  const rotation = prop.kind === "bed"
-    ? prop.facing === "east" ? 90 : prop.facing === "south" ? 180
-      : prop.facing === "west" ? 270 : 0
-    : 0;
+  const assetWidth = assetName.includes("2x2") || assetName.includes("2x1") ? 64 : 32;
+  const assetHeight = assetName.includes("1x2") || tall ? 64
+    : assetName.includes("2x1") ? 32 : assetWidth;
+  const rotation = 0;
+  const flipHorizontal = prop.kind === "bed" && horizontalBed && prop.facing === "east";
   const placements = perCell
     ? prop.points.map((point) => ({
       centerX: point.x + .5,
@@ -628,7 +633,7 @@ function interiorPropSpriteItems(
     zIndex + index,
     false,
     {
-      x: placement.widthCells * PROP_IMAGE_DPI / assetWidth,
+      x: (flipHorizontal ? -1 : 1) * placement.widthCells * PROP_IMAGE_DPI / assetWidth,
       y: placement.heightCells * PROP_IMAGE_DPI / assetHeight,
     },
     rotation,

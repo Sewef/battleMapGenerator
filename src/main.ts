@@ -89,7 +89,11 @@ const tilesetProps = {
   bucket1x1: new Image(),
   stool1x1: new Image(),
   bed1x2: new Image(),
+  bed1x2South: new Image(),
+  bed2x1: new Image(),
   bed2x2: new Image(),
+  bed2x2South: new Image(),
+  bed2x2Horizontal: new Image(),
   table1x1: new Image(),
   table2x2: new Image(),
   indoorTerrain: new Image(),
@@ -107,7 +111,11 @@ tilesetProps.barrel1x1.src = "/assets/tilesets/barrel_1x1.png";
 tilesetProps.bucket1x1.src = "/assets/tilesets/bucket_1x1.png";
 tilesetProps.stool1x1.src = "/assets/tilesets/stool_1x1.png";
 tilesetProps.bed1x2.src = "/assets/tilesets/bed_1x2.png";
+tilesetProps.bed1x2South.src = "/assets/tilesets/bed_1x2_south.png";
+tilesetProps.bed2x1.src = "/assets/tilesets/bed_2x1.png";
 tilesetProps.bed2x2.src = "/assets/tilesets/bed_2x2.png";
+tilesetProps.bed2x2South.src = "/assets/tilesets/bed_2x2_south.png";
+tilesetProps.bed2x2Horizontal.src = "/assets/tilesets/bed_2x2_horizontal.png";
 tilesetProps.table1x1.src = "/assets/tilesets/table_1x1.png";
 tilesetProps.table2x2.src = "/assets/tilesets/table_2x2.png";
 tilesetProps.indoorTerrain.src = "/assets/tilesets/terrain_indoor.png";

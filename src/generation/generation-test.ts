@@ -164,6 +164,10 @@ function assertInterior(grid: Grid, expectedRooms: number, label: string, expect
         `${label}: bed ${propId} must occupy a 1x2 or 2x2 footprint`);
       const facing = cells[0].tile.propFacing;
       assert(facing, `${label}: bed ${propId} has no wall-facing direction`);
+      const expectedOrientation = facing === "east" || facing === "west"
+        ? "horizontal" : "vertical";
+      assert(cells.every(({ tile }) => tile.propOrientation === expectedOrientation),
+        `${label}: bed ${propId} orientation disagrees with its pillow direction`);
       const headCoordinate = facing === "north" ? Math.min(...cells.map(({ y }) => y))
         : facing === "south" ? Math.max(...cells.map(({ y }) => y))
           : facing === "west" ? Math.min(...cells.map(({ x }) => x))
@@ -1969,7 +1973,7 @@ assert(
   "house export: interior prop drawings must exist without dynamic fog",
 );
 
-const spriteGrid: Grid = Array.from({ length: 3 }, () => Array.from({ length: 4 }, () => ({
+const spriteGrid: Grid = Array.from({ length: 6 }, () => Array.from({ length: 6 }, () => ({
   terrain: Terrain.Ground,
   obstacle: Obstacle.None,
 })));
@@ -1995,6 +1999,24 @@ Object.assign(spriteGrid[2][2], {
   interiorProp: "chair", interiorPropId: 4,
   propOrientation: "horizontal", propFacing: "north",
 });
+for (const [x, y] of [[0, 3], [1, 3]] as const) {
+  Object.assign(spriteGrid[y][x], {
+    interiorProp: "bed", interiorPropId: 5,
+    propOrientation: "horizontal", propFacing: "east",
+  });
+}
+for (const [x, y] of [[2, 4], [2, 5]] as const) {
+  Object.assign(spriteGrid[y][x], {
+    interiorProp: "bed", interiorPropId: 6,
+    propOrientation: "vertical", propFacing: "south",
+  });
+}
+for (const [x, y] of [[4, 4], [5, 4], [4, 5], [5, 5]] as const) {
+  Object.assign(spriteGrid[y][x], {
+    interiorProp: "bed", interiorPropId: 7,
+    propOrientation: "vertical", propFacing: "south",
+  });
+}
 const spriteExport = await createOwlbearSceneJson(spriteGrid, "interior-sprite-export", new Set(), {
   useTileset: true,
   mapImage: {
@@ -2007,17 +2029,29 @@ const spriteExport = await createOwlbearSceneJson(spriteGrid, "interior-sprite-e
 const spriteItems = Object.values((JSON.parse(spriteExport.json) as {
   items: { shared: Record<string, {
     type: string;
+    rotation?: number;
+    scale?: { x?: number; y?: number };
     image?: { url?: string };
     metadata?: Record<string, unknown>;
   }> };
 }).items.shared).filter((item) => item.metadata?.[interiorPropMetadataKey] !== undefined);
-assert(spriteItems.length === 5 && spriteItems.every(({ type }) => type === "IMAGE"),
+assert(spriteItems.length === 8 && spriteItems.every(({ type }) => type === "IMAGE"),
   "interior tileset export: beds, crates and stools must be movable image props");
 assert(spriteItems.some(({ image }) => image?.url?.endsWith("bed_1x2.png")) &&
   spriteItems.some(({ image }) => image?.url?.endsWith("bed_2x2.png")) &&
+  spriteItems.some(({ image }) => image?.url?.endsWith("bed_1x2_south.png")) &&
+  spriteItems.some(({ image }) => image?.url?.endsWith("bed_2x2_south.png")) &&
+  spriteItems.some(({ image }) => image?.url?.endsWith("bed_2x1.png")) &&
   spriteItems.filter(({ image }) => image?.url?.endsWith("crate_1x1.png")).length === 2 &&
   spriteItems.some(({ image }) => image?.url?.endsWith("stool_1x1.png")),
 "interior tileset export: expected sprite assets are missing");
+const eastFacingBed = spriteItems.find(({ image }) => image?.url?.endsWith("bed_2x1.png"));
+assert(eastFacingBed?.rotation === 0 && (eastFacingBed.scale?.x ?? 0) < 0,
+  "interior tileset export: east-facing horizontal bed must use an X mirror");
+const southFacingBeds = spriteItems.filter(({ image }) => image?.url?.includes("_south.png"));
+assert(southFacingBeds.length === 2 && southFacingBeds.every(({ rotation, scale }) =>
+  rotation === 0 && (scale?.x ?? 0) > 0),
+"interior tileset export: south-facing beds must use dedicated unrotated sprites");
 
 const lightSourceGrid: Grid = [[
   {

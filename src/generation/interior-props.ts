@@ -602,7 +602,9 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
       roomRemainsConnected(room, points))
       .sort((first, second) => second.score - first.score);
     for (const candidate of candidates) {
-      if (!place(room, "bed", candidate.points, "vertical", candidate.facing)) continue;
+      const orientation = candidate.facing === "east" || candidate.facing === "west"
+        ? "horizontal" : "vertical";
+      if (!place(room, "bed", candidate.points, orientation, candidate.facing)) continue;
       candidate.feet.forEach((point) => reserved.add(key(point)));
       return true;
     }
