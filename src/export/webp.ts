@@ -15,6 +15,7 @@ export interface WebpRenderOptions {
   tilesetProps?: TilesetPropImages;
   customProps?: CustomPropImages;
   stylizedLighting?: boolean;
+  hideInteriorProps?: boolean;
   cellSize?: number;
 }
 
@@ -72,6 +73,7 @@ export function renderExportCanvas(
     tilesetProps: options.tilesetProps,
     customProps: options.customProps,
     stylizedLighting: options.stylizedLighting ?? false,
+    hideInteriorProps: options.hideInteriorProps ?? false,
   });
   return canvas;
 }

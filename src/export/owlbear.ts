@@ -1,11 +1,17 @@
 import {
+  INTERIOR_PROP_RULES,
   Obstacle,
   Terrain,
   type Grid,
   type ObstacleKind,
   type TerrainKind,
+  type Tile,
 } from "../domain/map";
 import type { UploadedMapImage } from "./map-image";
+import {
+  collectMapLightSources,
+  type MapLightSource,
+} from "../rendering/lighting";
 
 const OWLBEAR_SCENE_DPI = 150;
 const MAP_IMAGE_DPI = 48;
@@ -123,6 +129,28 @@ function collectObstacles(grid: Grid): ExportedObstacle[] {
     }
   }
   return [...obstacles.values()];
+}
+
+function collectInteriorProps(grid: Grid): ExportedInteriorProp[] {
+  const props = new Map<string, ExportedInteriorProp>();
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      const tile = grid[y][x];
+      if (!tile.interiorProp || tile.interiorPropId === undefined) continue;
+      const key = `${tile.interiorProp}:${tile.interiorPropId}`;
+      const prop = props.get(key) ?? {
+        kind: tile.interiorProp,
+        id: tile.interiorPropId,
+        points: [],
+        orientation: tile.propOrientation,
+        facing: tile.propFacing,
+        roomRole: tile.roomRole,
+      };
+      prop.points.push({ x, y });
+      props.set(key, prop);
+    }
+  }
+  return [...props.values()].sort((first, second) => first.id - second.id);
 }
 
 function propPlacements(points: Array<{ x: number; y: number }>): PropPlacement[] {
@@ -403,8 +431,6 @@ function fogDoorItem(
   };
 }
 
-<<<<<<< Updated upstream
-=======
 const LIGHT_SOURCE_NAMES: Record<MapLightSource["kind"], string> = {
   hearth: "Hearth",
   console: "Console",
@@ -437,12 +463,6 @@ const INTERIOR_PROP_DRAWING_STYLES: Record<
   console: { fillColor: "#54727a", strokeColor: "#213b43", shapeType: "RECTANGLE" },
   tomb: { fillColor: "#858681", strokeColor: "#41433f", shapeType: "RECTANGLE" },
   hearth: { fillColor: "#a95332", strokeColor: "#472b24", shapeType: "RECTANGLE" },
-  drawers: { fillColor: "#765139", strokeColor: "#39281f", shapeType: "RECTANGLE" },
-  shelf: { fillColor: "#765139", strokeColor: "#39281f", shapeType: "RECTANGLE" },
-  statue: { fillColor: "#8e918b", strokeColor: "#484c49", shapeType: "RECTANGLE" },
-  barrel: { fillColor: "#805238", strokeColor: "#3b281f", shapeType: "CIRCLE" },
-  bucket: { fillColor: "#555d5d", strokeColor: "#252d2d", shapeType: "CIRCLE" },
-  flower_pot: { fillColor: "#9a634b", strokeColor: "#4b3028", shapeType: "CIRCLE" },
 };
 
 function dynamicFogLightMetadata(source: MapLightSource) {
@@ -564,7 +584,6 @@ function lightItem(
   };
 }
 
->>>>>>> Stashed changes
 function imageDimensions(url: string): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
     const image = new Image();
@@ -690,9 +709,11 @@ export async function createOwlbearSceneJson(
     owlBearPropAssets(options.rockUrl, "rock", options.useTileset ?? false),
   ]);
   type ExportedSceneItem = (
-    ReturnType<typeof imageItem> |
+      ReturnType<typeof imageItem> |
+      ReturnType<typeof interiorPropItem> |
       ReturnType<typeof fogItem> |
-      ReturnType<typeof fogDoorItem>
+      ReturnType<typeof fogDoorItem> |
+      ReturnType<typeof lightItem>
   ) & {
     attachedTo?: string;
     disableAttachmentBehavior?: Array<
@@ -764,6 +785,22 @@ export async function createOwlbearSceneJson(
       );
       nextPropZIndex += 1;
     });
+  });
+
+  const mapLightSources = collectMapLightSources(grid);
+  const lightSourceByInteriorPropId = new Map(
+    mapLightSources.flatMap((source) => source.interiorPropId === undefined
+      ? [] : [[source.interiorPropId, source] as const]),
+  );
+  collectInteriorProps(grid).forEach((prop) => {
+    const id = crypto.randomUUID();
+    shared[id] = interiorPropItem(
+      id,
+      prop,
+      nextPropZIndex,
+      options.dynamicFog ? lightSourceByInteriorPropId.get(prop.id) : undefined,
+    );
+    nextPropZIndex += 1;
   });
 
   if (options.dynamicFog) {
@@ -855,6 +892,15 @@ export async function createOwlbearSceneJson(
         false,
       );
     }
+
+    mapLightSources
+      .filter((source) => source.interiorPropId === undefined)
+      .filter((source) => source.kind !== "lava" || !hiddenItems.has(Terrain.Lava))
+      .forEach((source, sourceIndex) => {
+        const id = crypto.randomUUID();
+        shared[id] = lightItem(id, source, sourceIndex, nextPropZIndex);
+        nextPropZIndex += 1;
+      });
   }
 
   const width = grid[0].length * OWLBEAR_SCENE_DPI;

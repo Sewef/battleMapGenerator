@@ -457,7 +457,11 @@ export function validateAndRepairGrid(
       // Connectivity repair is a terrain operation, not a request for a new
       // road. Only span genuinely impassable water/ravines; ordinary ground
       // remains a natural gap instead of creating decorative road fragments.
-      if (tile.terrain === Terrain.Water || tile.terrain === Terrain.Ravine) {
+      // Water is already traversable and therefore belongs to the passable
+      // component we are joining. Marking the final water cell as a bridge
+      // produced isolated one-cell culverts with no road approaches. Ravines
+      // are genuinely blocked and still require an explicit span.
+      if (tile.terrain === Terrain.Ravine) {
         setTileSurface(tile, Terrain.Bridge);
       }
       mainTargets.add(`${point.x},${point.y}`);

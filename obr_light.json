@@ -1,0 +1,90 @@
+{
+    "items": {
+        "shared": {
+            "553e57dc-010b-4660-961d-3dd22046a9b1": {
+                "type": "IMAGE",
+                "id": "553e57dc-010b-4660-961d-3dd22046a9b1",
+                "name": "Rough Terrain",
+                "position": {
+                    "x": -2475,
+                    "y": -8325
+                },
+                "rotation": 0,
+                "scale": {
+                    "x": 1,
+                    "y": 1
+                },
+                "visible": true,
+                "locked": false,
+                "createdUserId": "b93771d1-1d8c-4ade-ac08-c487bbe3be1d",
+                "zIndex": 1786296391814,
+                "lastModified": "2026-08-09T17:26:31.813Z",
+                "lastModifiedUserId": "b93771d1-1d8c-4ade-ac08-c487bbe3be1d",
+                "metadata": {
+                    "rodeo.owlbear.dynamic-fog/light": {
+                        "attenuationRadius": 900,
+                        "sourceRadius": 25,
+                        "falloff": 0.2,
+                        "lightType": "SECONDARY"
+                    }
+                },
+                "image": {
+                    "width": 1024,
+                    "height": 1024,
+                    "mime": "image/png",
+                    "url": "https://images.owlbear.rodeo/b93771d1-1d8c-4ade-ac08-c487bbe3be1d/items/991e4daf-6efe-4a46-86af-967193b8a233.png"
+                },
+                "grid": {
+                    "offset": {
+                        "x": 512,
+                        "y": 512
+                    },
+                    "dpi": 1024
+                },
+                "text": {
+                    "richText": [
+                        {
+                            "type": "paragraph",
+                            "children": [
+                                {
+                                    "text": ""
+                                }
+                            ]
+                        }
+                    ],
+                    "plainText": "",
+                    "style": {
+                        "padding": 8,
+                        "fontFamily": "Roboto",
+                        "fontSize": 24,
+                        "fontWeight": 400,
+                        "textAlign": "CENTER",
+                        "textAlignVertical": "BOTTOM",
+                        "fillColor": "#ffffff",
+                        "fillOpacity": 1,
+                        "strokeColor": "#ffffff",
+                        "strokeOpacity": 1,
+                        "strokeWidth": 0,
+                        "lineHeight": 1.5
+                    },
+                    "type": "PLAIN",
+                    "width": "AUTO",
+                    "height": "AUTO"
+                },
+                "textItemType": "LABEL",
+                "layer": "PROP"
+            }
+        },
+        "local": {}
+    },
+    "bounds": {
+        "min": {
+            "x": -2550,
+            "y": -8400
+        },
+        "max": {
+            "x": -2400,
+            "y": -8250
+        }
+    }
+}

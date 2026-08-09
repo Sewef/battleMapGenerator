@@ -876,8 +876,16 @@ function hubHouseInterior(
   const hallHalfWidth = randomInteger(random, 1, 2);
   const hallLeft = centerX - hallHalfWidth;
   const hallRight = centerX + hallHalfWidth;
-  const livingHeight = Math.max(4, Math.min(6,
+  const sideRoomCount = roomCount - 2;
+  const largestSideCount = Math.ceil(sideRoomCount / 2);
+  // Each side-room needs at least two floor rows, with a wall between rooms.
+  // On the compact seven-room preset this deliberately contracts the living
+  // room from four rows to three instead of producing one-row bedroom strips.
+  const minimumSideHeight = largestSideCount * 2 + (largestSideCount - 1);
+  const maximumLivingHeight = bottom - top + 1 - minimumSideHeight - 1;
+  const preferredLivingHeight = Math.max(4, Math.min(6,
     Math.round((bottom - top + 1) * (.3 + random() * .08))));
+  const livingHeight = Math.max(3, Math.min(preferredLivingHeight, maximumLivingHeight));
   const livingTop = bottom - livingHeight + 1;
 
   horizontalWall(grid, livingTop - 1, left, right);
@@ -902,9 +910,8 @@ function hubHouseInterior(
   });
   placeDoor(grid, { x: centerX, y: bounds.bottom, orientation: "horizontal" });
 
-  const sideRoomCount = roomCount - 2;
   const sideHeight = livingTop - top - 1;
-  const maximumRoomsPerSide = Math.max(1, Math.floor((sideHeight + 1) / 2));
+  const maximumRoomsPerSide = Math.max(1, Math.floor((sideHeight + 1) / 3));
   const preferredLeftCount = Math.ceil(sideRoomCount / 2) + randomInteger(random, -1, 1);
   const leftCount = Math.max(
     Math.max(1, sideRoomCount - maximumRoomsPerSide),
@@ -1082,17 +1089,22 @@ function cryptInterior(
   );
   const rightCount = burialVaultCount - leftCount;
   const largestSideCount = Math.max(leftCount, rightCount);
-  const maximumSanctumHeight = availableHeight - largestSideCount * 2;
+  // Reserve two floor rows per vault plus the partition walls between them.
+  // The former `2 * count` allowance occasionally left a final 11x1 burial
+  // niche on shells with large top/bottom margins.
+  const maximumSanctumHeight = availableHeight - largestSideCount * 3;
   const sanctumHeight = Math.max(2, Math.min(5, maximumSanctumHeight));
   const sanctumTop = entranceAtBottom ? top : bottom - sanctumHeight + 1;
   const sanctumBottom = entranceAtBottom ? top + sanctumHeight - 1 : bottom;
   const sanctumWallY = entranceAtBottom ? sanctumBottom + 1 : sanctumTop - 1;
   const passageTop = entranceAtBottom ? sanctumWallY + 1 : top;
   const passageBottom = entranceAtBottom ? bottom : sanctumWallY - 1;
+  const passageLeft = leftCount ? corridorLeft : left;
+  const passageRight = rightCount ? corridorRight : right;
 
   horizontalWall(grid, sanctumWallY, left, right);
-  verticalWall(grid, corridorLeft - 1, passageTop, passageBottom);
-  verticalWall(grid, corridorRight + 1, passageTop, passageBottom);
+  if (leftCount) verticalWall(grid, corridorLeft - 1, passageTop, passageBottom);
+  if (rightCount) verticalWall(grid, corridorRight + 1, passageTop, passageBottom);
   assignRoom(grid, {
     x: left,
     y: sanctumTop,
@@ -1100,13 +1112,13 @@ function cryptInterior(
     height: sanctumBottom - sanctumTop + 1,
   }, 1, "Inner sanctum");
   assignRoom(grid, {
-    x: corridorLeft,
+    x: passageLeft,
     y: passageTop,
-    width: corridorRight - corridorLeft + 1,
+    width: passageRight - passageLeft + 1,
     height: passageBottom - passageTop + 1,
   }, 0, "Processional passage");
   placeDoor(grid, {
-    x: Math.floor((corridorLeft + corridorRight) / 2),
+    x: Math.floor((passageLeft + passageRight) / 2),
     y: sanctumWallY,
     orientation: "horizontal",
   });
@@ -1153,7 +1165,7 @@ function cryptInterior(
     corridorRight + 1,
   );
   placeDoor(grid, {
-    x: Math.floor((corridorLeft + corridorRight) / 2),
+    x: Math.floor((passageLeft + passageRight) / 2),
     y: entranceAtBottom ? bounds.bottom : bounds.top,
     orientation: "horizontal",
   });

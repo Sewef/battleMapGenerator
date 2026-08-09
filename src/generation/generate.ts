@@ -351,6 +351,138 @@ function pathAcrossMap(
   return shortestRegionPath(map, start, end, random, allowed, preference);
 }
 
+function connectedWaterComponents(grid: Grid) {
+  const visited = new Set<string>();
+  const components: Point[][] = [];
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[0].length; x += 1) {
+      const startKey = `${x},${y}`;
+      if (visited.has(startKey) || grid[y][x].terrain !== Terrain.Water) continue;
+      const queue = [{ x, y }];
+      const component: Point[] = [];
+      visited.add(startKey);
+      for (let index = 0; index < queue.length; index += 1) {
+        const point = queue[index];
+        component.push(point);
+        for (const [offsetX, offsetY] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const next = { x: point.x + offsetX, y: point.y + offsetY };
+          const key = `${next.x},${next.y}`;
+          if (
+            visited.has(key) ||
+            grid[next.y]?.[next.x]?.terrain !== Terrain.Water
+          ) {
+            continue;
+          }
+          visited.add(key);
+          queue.push(next);
+        }
+      }
+      components.push(component);
+    }
+  }
+  return components.sort((a, b) => b.length - a.length);
+}
+
+function coastalEdgeConnector(
+  grid: Grid,
+  first: readonly Point[],
+  second: readonly Point[],
+) {
+  const width = grid[0].length;
+  const height = grid.length;
+  const sides = [
+    { includes: ({ y }: Point) => y === 0, coordinate: ({ x }: Point) => x,
+      point: (coordinate: number) => ({ x: coordinate, y: 0 }) },
+    { includes: ({ x }: Point) => x === width - 1, coordinate: ({ y }: Point) => y,
+      point: (coordinate: number) => ({ x: width - 1, y: coordinate }) },
+    { includes: ({ y }: Point) => y === height - 1, coordinate: ({ x }: Point) => x,
+      point: (coordinate: number) => ({ x: coordinate, y: height - 1 }) },
+    { includes: ({ x }: Point) => x === 0, coordinate: ({ y }: Point) => y,
+      point: (coordinate: number) => ({ x: 0, y: coordinate }) },
+  ];
+  let best: { distance: number; start: number; end: number; side: typeof sides[number] } |
+    undefined;
+  for (const side of sides) {
+    const firstCoordinates = first.filter(side.includes).map(side.coordinate);
+    const secondCoordinates = second.filter(side.includes).map(side.coordinate);
+    for (const start of firstCoordinates) {
+      for (const end of secondCoordinates) {
+        const distance = Math.abs(start - end);
+        if (!best || distance < best.distance) best = { distance, start, end, side };
+      }
+    }
+  }
+  if (!best) return undefined;
+  const step = Math.sign(best.end - best.start);
+  return Array.from({ length: best.distance + 1 }, (_, index) =>
+    best!.side.point(best!.start + step * index));
+}
+
+function inlandCoastalConnector(
+  grid: Grid,
+  first: readonly Point[],
+  second: readonly Point[],
+) {
+  let nearest: { distance: number; first: Point; second: Point } | undefined;
+  for (const firstPoint of first) {
+    for (const secondPoint of second) {
+      const distance = Math.abs(firstPoint.x - secondPoint.x) +
+        Math.abs(firstPoint.y - secondPoint.y);
+      if (!nearest || distance < nearest.distance) {
+        nearest = { distance, first: firstPoint, second: secondPoint };
+      }
+    }
+  }
+  if (!nearest) return [];
+  const makePath = (horizontalFirst: boolean) => {
+    const corner = horizontalFirst
+      ? { x: nearest!.second.x, y: nearest!.first.y }
+      : { x: nearest!.first.x, y: nearest!.second.y };
+    const result: Point[] = [];
+    for (const [from, to] of [[nearest!.first, corner], [corner, nearest!.second]]) {
+      const stepX = Math.sign(to.x - from.x);
+      const stepY = Math.sign(to.y - from.y);
+      const distance = Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y));
+      for (let step = 0; step <= distance; step += 1) {
+        result.push({ x: from.x + stepX * step, y: from.y + stepY * step });
+      }
+    }
+    return result;
+  };
+  const candidates = [makePath(true), makePath(false)];
+  const edgeDistance = ({ x, y }: Point) => Math.min(
+    x,
+    y,
+    grid[0].length - 1 - x,
+    grid.length - 1 - y,
+  );
+  return candidates.sort((a, b) =>
+    a.reduce((sum, point) => sum + edgeDistance(point), 0) -
+    b.reduce((sum, point) => sum + edgeDistance(point), 0)
+  )[0];
+}
+
+function ensureSingleCoastalSea(grid: Grid) {
+  for (let guard = 0; guard < grid.length * grid[0].length; guard += 1) {
+    const components = connectedWaterComponents(grid);
+    if (components.length <= 1) return;
+    const main = components[0];
+    const secondary = components[1];
+    const edgeConnector = coastalEdgeConnector(grid, main, secondary);
+    if (edgeConnector) {
+      for (const point of edgeConnector) grid[point.y][point.x].terrain = Terrain.Water;
+      continue;
+    }
+    if (secondary.length <= Math.max(18, main.length * .12)) {
+      for (const point of secondary) grid[point.y][point.x].terrain = Terrain.Ground;
+      continue;
+    }
+    for (const point of inlandCoastalConnector(grid, main, secondary)) {
+      grid[point.y][point.x].terrain = Terrain.Water;
+    }
+  }
+}
+
 function paintShore(grid: Grid, random: Random, maxDepth: number) {
   const waterDistance = cellDistancesFromWater(grid);
   const beach: Point[] = [];
@@ -938,6 +1070,7 @@ export function generateTerrain(options: TerrainOptions): Grid {
       preferLowland,
     );
     paintRegions(grid, map, sea, Terrain.Water);
+    ensureSingleCoastalSea(grid);
     paintShore(grid, seededRandom(`${seed}:coast-shore`), 3);
     drawCoastalRoad(grid, seededRandom(`${seed}:coastal-road`));
   }
@@ -1040,7 +1173,10 @@ export function generateTerrain(options: TerrainOptions): Grid {
 
   if (options.mode === "farmland") {
     generateFarmland(
-      grid, seededRandom(`${seed}:farmland`), options.difficultWeight,
+      grid,
+      seededRandom(`${seed}:farmland`),
+      options.difficultWeight,
+      options.waterWeight,
     );
   }
 

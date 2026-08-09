@@ -30,6 +30,7 @@ export interface RenderOptions {
   tilesetProps?: TilesetPropImages;
   customProps?: CustomPropImages;
   stylizedLighting?: boolean;
+  hideInteriorProps?: boolean;
 }
 
 export interface TilesetPropImages {
@@ -37,14 +38,6 @@ export interface TilesetPropImages {
   tree2x2: CanvasImageSource;
   rock1x1: CanvasImageSource;
   rock2x2: CanvasImageSource;
-  crate1x1: CanvasImageSource;
-  barrel1x1: CanvasImageSource;
-  bucket1x1: CanvasImageSource;
-  stool1x1: CanvasImageSource;
-  drawers1x1: readonly CanvasImageSource[];
-  shelves1x1: readonly CanvasImageSource[];
-  statue1x1: CanvasImageSource;
-  flowerPots1x1: readonly CanvasImageSource[];
 }
 
 export interface CustomPropImages {
@@ -769,9 +762,11 @@ function drawDifficultTerrainContour(
 function drawRavineUpperEdges(
   grid: Grid,
   cellSize: number,
+  mode: LandscapeMode,
   opacity: number,
   context: CanvasRenderingContext2D,
 ) {
+  const battlefieldTrench = mode === "ruined-battlefield";
   const segmentCount = 5;
   const effect = document.createElement("canvas");
   effect.width = grid[0].length * cellSize;
@@ -799,7 +794,7 @@ function drawRavineUpperEdges(
               y * 4,
               733,
             ) - .5
-          ) * cellSize * .16;
+          ) * cellSize * (battlefieldTrench ? .045 : .16);
         points.push({
           x: (x + index / segmentCount) * cellSize,
           y: y * cellSize + edgeNoise,
@@ -815,13 +810,19 @@ function drawRavineUpperEdges(
         effectContext.stroke();
       };
 
-      effectContext.strokeStyle = "rgba(17, 18, 16, .3)";
+      effectContext.strokeStyle = battlefieldTrench
+        ? "rgba(48, 31, 22, .4)"
+        : "rgba(17, 18, 16, .3)";
       effectContext.lineWidth = Math.max(4, cellSize * .34);
       strokeEdge(cellSize * .17);
-      effectContext.strokeStyle = "rgba(17, 18, 16, .62)";
+      effectContext.strokeStyle = battlefieldTrench
+        ? "rgba(54, 34, 23, .72)"
+        : "rgba(17, 18, 16, .62)";
       effectContext.lineWidth = Math.max(2.5, cellSize * .18);
       strokeEdge(cellSize * .09);
-      effectContext.strokeStyle = "rgba(232, 215, 182, .48)";
+      effectContext.strokeStyle = battlefieldTrench
+        ? "rgba(178, 144, 96, .5)"
+        : "rgba(232, 215, 182, .48)";
       effectContext.lineWidth = Math.max(1, cellSize * .035);
       strokeEdge(0);
     }
@@ -843,24 +844,6 @@ function drawRavineUpperEdges(
   context.drawImage(effect, 0, 0);
   context.restore();
 
-}
-
-<<<<<<< Updated upstream
-=======
-function imageSourceSize(image: CanvasImageSource) {
-  const source = image as CanvasImageSource & {
-    naturalWidth?: number;
-    naturalHeight?: number;
-    videoWidth?: number;
-    videoHeight?: number;
-    width?: number;
-    height?: number;
-  };
-  const width = source.naturalWidth ?? source.videoWidth ?? Number(source.width);
-  const height = source.naturalHeight ?? source.videoHeight ?? Number(source.height);
-  return Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0
-    ? { width, height }
-    : undefined;
 }
 
 function drawBattlefieldTrenchDetails(
@@ -1011,11 +994,11 @@ function drawBattlefieldTrenchDetails(
   context.restore();
 }
 
->>>>>>> Stashed changes
 function drawLiquidUpperEdges(
   grid: Grid,
   cellSize: number,
   terrain: typeof Terrain.Water | typeof Terrain.Lava,
+  mode: LandscapeMode,
   opacity: number,
   context: CanvasRenderingContext2D,
 ) {
@@ -1033,6 +1016,7 @@ function drawLiquidUpperEdges(
       underlyingTerrain(grid, x, y) === terrain
     );
   const lava = terrain === Terrain.Lava;
+  const sewerWater = terrain === Terrain.Water && mode === "sewer";
 
   for (let y = 0; y < grid.length; y += 1) {
     for (let x = 0; x < grid[y].length; x += 1) {
@@ -1048,7 +1032,7 @@ function drawLiquidUpperEdges(
               y * 4,
               lava ? 1031 : 947,
             ) - .5
-          ) * cellSize * .07;
+          ) * cellSize * (sewerWater ? .014 : .07);
         points.push({
           x: (x + index / segmentCount) * cellSize,
           y: y * cellSize + edgeNoise,
@@ -1067,19 +1051,25 @@ function drawLiquidUpperEdges(
       effectContext.filter = `blur(${Math.max(1, cellSize * .06)}px)`;
       effectContext.strokeStyle = lava
         ? "rgba(91, 29, 20, .16)"
-        : "rgba(30, 65, 68, .13)";
+        : sewerWater
+          ? "rgba(28, 43, 35, .14)"
+          : "rgba(30, 65, 68, .13)";
       effectContext.lineWidth = Math.max(5, cellSize * .38);
       strokeEdge(cellSize * .19);
       effectContext.filter = `blur(${Math.max(.75, cellSize * .035)}px)`;
       effectContext.strokeStyle = lava
         ? "rgba(105, 31, 20, .27)"
-        : "rgba(35, 72, 75, .23)";
+        : sewerWater
+          ? "rgba(48, 63, 48, .24)"
+          : "rgba(35, 72, 75, .23)";
       effectContext.lineWidth = Math.max(3, cellSize * .2);
       strokeEdge(cellSize * .1);
       effectContext.filter = "none";
       effectContext.strokeStyle = lava
         ? "rgba(255, 190, 91, .25)"
-        : "rgba(151, 184, 177, .14)";
+        : sewerWater
+          ? "rgba(183, 193, 151, .16)"
+          : "rgba(151, 184, 177, .14)";
       effectContext.lineWidth = Math.max(.75, cellSize * .025);
       strokeEdge(0);
     }
@@ -2263,11 +2253,12 @@ function drawSailingShipDeckFeatures(
 function drawInteriorProps(
   grid: Grid,
   cellSize: number,
+  mode: LandscapeMode,
   context: CanvasRenderingContext2D,
-  tilesetProps?: TilesetPropImages,
 ) {
   context.save();
   context.lineJoin = "round";
+  const spaceshipFurniture = mode === "spaceship";
   const renderedProps = new Set<number>();
   for (let y = 0; y < grid.length; y += 1) {
     for (let x = 0; x < grid[y].length; x += 1) {
@@ -2295,63 +2286,14 @@ function drawInteriorProps(
       const spanWidth = propRight - propLeft;
       const spanHeight = propBottom - propTop;
       const vertical = propOrientation === "vertical";
-<<<<<<< Updated upstream
-      context.fillStyle = prop === "bar" ? "#69432c" : "#795137";
-      context.strokeStyle = "#39281f";
-=======
       const syntheticSeat = spaceshipFurniture &&
         (prop === "table" || prop === "chair");
-
-      const variantIndex = Math.abs(interiorPropId ?? x * 31 + y * 17);
-      const tileImage = prop === "chair" ? tilesetProps?.stool1x1
-        : prop === "crate" ? tilesetProps?.crate1x1
-        : prop === "barrel" ? tilesetProps?.barrel1x1
-          : prop === "bucket" ? tilesetProps?.bucket1x1
-            : prop === "drawers" && tilesetProps?.drawers1x1.length
-              ? tilesetProps.drawers1x1[variantIndex % tilesetProps.drawers1x1.length]
-              : prop === "shelf" && tilesetProps?.shelves1x1.length
-                ? tilesetProps.shelves1x1[variantIndex % tilesetProps.shelves1x1.length]
-                : prop === "statue" ? tilesetProps?.statue1x1
-                  : prop === "flower_pot" && tilesetProps?.flowerPots1x1.length
-                    ? tilesetProps.flowerPots1x1[variantIndex % tilesetProps.flowerPots1x1.length]
-                    : undefined;
-      if (tileImage) {
-        const tall = prop === "drawers" || prop === "shelf" || prop === "statue";
-        const sourceSize = imageSourceSize(tileImage);
-        const availableWidth = cellSize;
-        const availableHeight = cellSize * (tall ? 2 : 1);
-        const scale = sourceSize
-          ? Math.min(
-            availableWidth / sourceSize.width,
-            availableHeight / sourceSize.height,
-          )
-          : 1;
-        const drawWidth = sourceSize ? sourceSize.width * scale : availableWidth;
-        const drawHeight = sourceSize ? sourceSize.height * scale : availableHeight;
-        context.save();
-        // Integer pixel-art scales stay crisp. Fractional preview scales use
-        // interpolation so columns of source pixels are not unevenly dropped.
-        context.imageSmoothingEnabled = Math.abs(scale - Math.round(scale)) > .001;
-        context.imageSmoothingQuality = "high";
-        for (const cell of propCells) {
-          context.drawImage(
-            tileImage,
-            (cell.x + .5) * cellSize - drawWidth / 2,
-            (cell.y + 1) * cellSize - drawHeight,
-            drawWidth,
-            drawHeight,
-          );
-        }
-        context.restore();
-        continue;
-      }
       context.fillStyle = syntheticSeat
         ? "#596b70"
         : prop === "bar"
           ? "#69432c"
           : "#795137";
       context.strokeStyle = syntheticSeat ? "#23363d" : "#39281f";
->>>>>>> Stashed changes
       context.lineWidth = Math.max(1, cellSize * .045);
       if (prop === "table") {
         const square = propCells.length === 1;
@@ -2362,7 +2304,9 @@ function drawInteriorProps(
           width, height, cellSize * .08);
         context.fill();
         context.stroke();
-        context.strokeStyle = "rgba(236,190,126,.34)";
+        context.strokeStyle = spaceshipFurniture
+          ? "rgba(158, 209, 216, .42)"
+          : "rgba(236,190,126,.34)";
         context.beginPath();
         context.moveTo(centerX - width * .32, centerY);
         context.lineTo(centerX + width * .32, centerY);
@@ -2390,31 +2334,183 @@ function drawInteriorProps(
       } else if (prop === "bed") {
         const width = spanWidth * (vertical ? .72 : .94);
         const height = spanHeight * (vertical ? .94 : .72);
-        context.fillStyle = "#8d795f";
-        context.fillRect(centerX - width / 2, centerY - height / 2, width, height);
-        context.strokeRect(centerX - width / 2, centerY - height / 2, width, height);
-        context.fillStyle = "#d2c5a8";
-        if (vertical) {
-          const pillowY = propFacing === "south" ? centerY + height * .14 : centerY - height * .38;
-          context.fillRect(centerX - width * .38, pillowY, width * .76, height * .24);
+        const escapePod = spaceshipFurniture && /Escape pods/i.test(propRoomRole);
+        if (escapePod) {
+          const left = centerX - width / 2;
+          const top = centerY - height / 2;
+          const inset = Math.max(1.8, cellSize * .09);
+          const capsuleRadius = Math.min(width, height) * .38;
+          context.fillStyle = "#263b42";
+          context.strokeStyle = "#14272e";
+          context.lineWidth = Math.max(1.2, cellSize * .055);
+          context.beginPath();
+          context.roundRect(left, top, width, height, capsuleRadius);
+          context.fill();
+          context.stroke();
+
+          context.fillStyle = "#607980";
+          context.strokeStyle = "rgba(179, 218, 222, .48)";
+          context.lineWidth = Math.max(.75, cellSize * .025);
+          context.beginPath();
+          context.roundRect(
+            left + inset,
+            top + inset,
+            width - inset * 2,
+            height - inset * 2,
+            Math.max(cellSize * .1, capsuleRadius - inset),
+          );
+          context.fill();
+          context.stroke();
+
+          const viewportWidth = vertical
+            ? width * .5
+            : Math.min(width * .2, cellSize * .32);
+          const viewportHeight = vertical
+            ? Math.min(height * .2, cellSize * .32)
+            : height * .5;
+          const viewportX = vertical
+            ? centerX
+            : propFacing === "east"
+              ? left + width * .72
+              : left + width * .28;
+          const viewportY = vertical
+            ? propFacing === "south"
+              ? top + height * .72
+              : top + height * .28
+            : centerY;
+          context.fillStyle = "#20363e";
+          context.strokeStyle = "#8bb9bf";
+          context.lineWidth = Math.max(.65, cellSize * .02);
+          context.beginPath();
+          context.roundRect(
+            viewportX - viewportWidth / 2,
+            viewportY - viewportHeight / 2,
+            viewportWidth,
+            viewportHeight,
+            Math.min(viewportWidth, viewportHeight) * .4,
+          );
+          context.fill();
+          context.stroke();
+
+          context.strokeStyle = "rgba(25, 45, 52, .74)";
+          context.lineWidth = Math.max(.7, cellSize * .026);
+          context.beginPath();
+          if (vertical) {
+            context.moveTo(left + width * .16, centerY);
+            context.lineTo(left + width * .84, centerY);
+          } else {
+            context.moveTo(centerX, top + height * .16);
+            context.lineTo(centerX, top + height * .84);
+          }
+          context.stroke();
+
+          const indicatorX = vertical
+            ? left + width * .78
+            : propFacing === "east"
+              ? left + width * .22
+              : left + width * .78;
+          const indicatorY = vertical
+            ? propFacing === "south"
+              ? top + height * .22
+              : top + height * .78
+            : top + height * .22;
+          context.fillStyle = "#d58b42";
+          context.beginPath();
+          context.arc(
+            indicatorX,
+            indicatorY,
+            Math.max(.9, cellSize * .04),
+            0,
+            Math.PI * 2,
+          );
+          context.fill();
+        } else if (spaceshipFurniture) {
+          const inset = Math.max(1.5, cellSize * .075);
+          context.fillStyle = "#34474e";
+          context.strokeStyle = "#1d3037";
+          context.fillRect(
+            centerX - width / 2,
+            centerY - height / 2,
+            width,
+            height,
+          );
+          context.strokeRect(
+            centerX - width / 2,
+            centerY - height / 2,
+            width,
+            height,
+          );
+          context.fillStyle = "#82969a";
+          context.strokeStyle = "rgba(190, 222, 225, .36)";
+          context.beginPath();
+          context.roundRect(
+            centerX - width / 2 + inset,
+            centerY - height / 2 + inset,
+            width - inset * 2,
+            height - inset * 2,
+            cellSize * .045,
+          );
+          context.fill();
+          context.stroke();
+          context.fillStyle = "#c1cdcc";
         } else {
-          const pillowX = propFacing === "east" ? centerX + width * .14 : centerX - width * .38;
-          context.fillRect(pillowX, centerY - height * .38, width * .24, height * .76);
+          context.fillStyle = "#8d795f";
+          context.fillRect(
+            centerX - width / 2,
+            centerY - height / 2,
+            width,
+            height,
+          );
+          context.strokeRect(
+            centerX - width / 2,
+            centerY - height / 2,
+            width,
+            height,
+          );
+          context.fillStyle = "#d2c5a8";
+        }
+        if (!escapePod) {
+          if (vertical) {
+            const pillowY = propFacing === "south"
+              ? centerY + height * .14
+              : centerY - height * .38;
+            context.fillRect(
+              centerX - width * .38,
+              pillowY,
+              width * .76,
+              height * .24,
+            );
+          } else {
+            const pillowX = propFacing === "east"
+              ? centerX + width * .14
+              : centerX - width * .38;
+            context.fillRect(
+              pillowX,
+              centerY - height * .38,
+              width * .24,
+              height * .76,
+            );
+          }
         }
       } else if (prop === "bench") {
-        const upholstered = /Living room|Bedroom|Guest room|cabin|Royal chamber/i
-          .test(propRoomRole);
-        const furnitureDepth = upholstered ? .7 : .38;
+        const spaceshipBench = spaceshipFurniture;
+        const upholstered = spaceshipBench ||
+          /Living room|Bedroom|Guest room|cabin|Royal chamber/i.test(propRoomRole);
+        const furnitureDepth = spaceshipBench ? .58 : upholstered ? .7 : .38;
         const width = spanWidth * (vertical ? furnitureDepth : .94);
         const height = spanHeight * (vertical ? .94 : furnitureDepth);
         const left = centerX - width / 2;
         const top = centerY - height / 2;
-        const wood = upholstered ? "#7b5032" : "#735037";
-        const woodLight = upholstered ? "#b37a4c" : "#a7794e";
-        const woodEdge = "#38251b";
-        const textile = "#a96049";
-        const textileLight = "#e3a27a";
-        const textileEdge = "#673b31";
+        const wood = spaceshipBench
+          ? "#40555c"
+          : upholstered ? "#7b5032" : "#735037";
+        const woodLight = spaceshipBench
+          ? "#71868b"
+          : upholstered ? "#b37a4c" : "#a7794e";
+        const woodEdge = spaceshipBench ? "#1c3037" : "#38251b";
+        const textile = spaceshipBench ? "#5d7c83" : "#a96049";
+        const textileLight = spaceshipBench ? "#a4c5c8" : "#e3a27a";
+        const textileEdge = spaceshipBench ? "#294751" : "#673b31";
         const cornerRadius = Math.min(cellSize * .1, width * .18, height * .18);
 
         context.fillStyle = wood;
@@ -2445,7 +2541,9 @@ function drawInteriorProps(
         context.stroke();
 
         if (upholstered) {
-          context.strokeStyle = "rgba(112, 72, 43, .34)";
+          context.strokeStyle = spaceshipBench
+            ? "rgba(31, 59, 67, .46)"
+            : "rgba(112, 72, 43, .34)";
           context.lineWidth = Math.max(.65, cellSize * .018);
           context.beginPath();
           const orderedCells = [...propCells].sort((first, second) =>
@@ -2464,7 +2562,9 @@ function drawInteriorProps(
           }
           context.stroke();
 
-          context.strokeStyle = "rgba(255, 218, 183, .5)";
+          context.strokeStyle = spaceshipBench
+            ? "rgba(189, 225, 228, .46)"
+            : "rgba(255, 218, 183, .5)";
           context.beginPath();
           if (vertical) {
             context.moveTo(seatLeft + seatWidth * .22, seatTop + seatHeight * .08);
@@ -2523,7 +2623,7 @@ function drawInteriorProps(
 
         if (upholstered) {
           const backInset = Math.max(.8, cellSize * .035);
-          context.fillStyle = "#914d3d";
+          context.fillStyle = spaceshipBench ? "#4f7078" : "#914d3d";
           context.strokeStyle = textileLight;
           context.lineWidth = Math.max(.55, cellSize * .016);
           context.beginPath();
@@ -2649,10 +2749,19 @@ function drawInteriorProps(
         const width = spanWidth * (vertical ? .52 : .92);
         const height = spanHeight * (vertical ? .92 : .52);
         const kitchenStorage = /Kitchen|Galley/i.test(propRoomRole);
-        context.fillStyle = kitchenStorage ? "#74543b" : "#6b4a35";
+        context.fillStyle = spaceshipFurniture
+          ? "#4d6066"
+          : kitchenStorage
+            ? "#74543b"
+            : "#6b4a35";
+        context.strokeStyle = spaceshipFurniture ? "#203239" : "#39281f";
         context.fillRect(centerX - width / 2, centerY - height / 2, width, height);
         context.strokeRect(centerX - width / 2, centerY - height / 2, width, height);
-        context.fillStyle = kitchenStorage ? "#aa845b" : "#8c6849";
+        context.fillStyle = spaceshipFurniture
+          ? "#74878b"
+          : kitchenStorage
+            ? "#aa845b"
+            : "#8c6849";
         if (vertical) {
           context.fillRect(centerX - width * .47, centerY - height * .46,
             width * .16, height * .92);
@@ -2660,7 +2769,9 @@ function drawInteriorProps(
           context.fillRect(centerX - width * .46, centerY - height * .47,
             width * .92, height * .16);
         }
-        context.strokeStyle = "rgba(232,194,139,.34)";
+        context.strokeStyle = spaceshipFurniture
+          ? "rgba(175, 213, 216, .35)"
+          : "rgba(232,194,139,.34)";
         context.lineWidth = Math.max(.7, cellSize * .025);
         for (const cell of propCells) {
           const cellCenterX = (cell.x + .5) * cellSize;
@@ -2674,7 +2785,7 @@ function drawInteriorProps(
             context.lineTo(cellCenterX, centerY + height * .32);
           }
           context.stroke();
-          context.fillStyle = "#d0a36b";
+          context.fillStyle = spaceshipFurniture ? "#d4934c" : "#d0a36b";
           context.beginPath();
           context.arc(cellCenterX, cellCenterY, Math.max(.8, cellSize * .035), 0, Math.PI * 2);
           context.fill();
@@ -2684,42 +2795,18 @@ function drawInteriorProps(
           const crateX = (cell.x + .5) * cellSize;
           const crateY = (cell.y + .5) * cellSize;
           const size = cellSize * .7;
-          context.fillStyle = "#806040";
+          context.fillStyle = spaceshipFurniture ? "#56686d" : "#806040";
+          context.strokeStyle = spaceshipFurniture ? "#24373d" : "#39281f";
           context.fillRect(crateX - size / 2, crateY - size / 2, size, size);
           context.strokeRect(crateX - size / 2, crateY - size / 2, size, size);
+          context.strokeStyle = spaceshipFurniture
+            ? "rgba(153, 181, 185, .58)"
+            : "#39281f";
           context.beginPath();
           context.moveTo(crateX - size * .4, crateY - size * .4);
           context.lineTo(crateX + size * .4, crateY + size * .4);
           context.moveTo(crateX + size * .4, crateY - size * .4);
           context.lineTo(crateX - size * .4, crateY + size * .4);
-          context.stroke();
-        }
-      } else if (prop === "barrel" || prop === "bucket" || prop === "flower_pot") {
-        const size = prop === "bucket" ? cellSize * .52 : cellSize * .68;
-        context.fillStyle = prop === "flower_pot" ? "#9a634b"
-          : prop === "bucket" ? "#555d5d" : "#805238";
-        context.strokeStyle = prop === "bucket" ? "#252d2d" : "#3b281f";
-        context.beginPath();
-        context.ellipse(centerX, centerY, size / 2, size * .43, 0, 0, Math.PI * 2);
-        context.fill();
-        context.stroke();
-        if (prop === "flower_pot") {
-          context.fillStyle = "#557044";
-          context.beginPath();
-          context.arc(centerX, centerY - size * .22, size * .22, 0, Math.PI * 2);
-          context.fill();
-        }
-      } else if (prop === "drawers" || prop === "shelf" || prop === "statue") {
-        const width = cellSize * .72;
-        const height = cellSize * .82;
-        context.fillStyle = prop === "statue" ? "#8e918b" : "#765139";
-        context.strokeStyle = prop === "statue" ? "#484c49" : "#39281f";
-        context.fillRect(centerX - width / 2, centerY - height / 2, width, height);
-        context.strokeRect(centerX - width / 2, centerY - height / 2, width, height);
-        if (prop !== "statue") {
-          context.beginPath();
-          context.moveTo(centerX - width * .38, centerY);
-          context.lineTo(centerX + width * .38, centerY);
           context.stroke();
         }
       } else if (prop === "console") {
@@ -2766,6 +2853,123 @@ function drawInteriorProps(
         context.stroke();
       }
     }
+  }
+  context.restore();
+}
+
+function drawSewerMasonry(
+  grid: Grid,
+  cellSize: number,
+  context: CanvasRenderingContext2D,
+) {
+  const cliffStyle = getTerrainStyle(Terrain.Cliff, "sewer");
+  const isCliff = (x: number, y: number) =>
+    grid[y]?.[x]?.terrain === Terrain.Cliff;
+
+  context.save();
+  context.lineCap = "butt";
+  context.lineJoin = "miter";
+
+  // Sewer walls are cut masonry rather than exposed rock. Repainting their
+  // square top planes also removes the rounded cave silhouette underneath.
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      if (!isCliff(x, y)) continue;
+      const left = x * cellSize;
+      const top = y * cellSize;
+      context.fillStyle = cliffStyle.color;
+      context.fillRect(left, top, cellSize, cellSize);
+      if ((x + y) % 2 === 0) {
+        context.fillStyle = "rgba(29, 36, 34, .055)";
+        context.fillRect(left, top, cellSize, cellSize);
+      }
+
+      context.strokeStyle = "rgba(37, 43, 41, .46)";
+      context.lineWidth = Math.max(.65, cellSize * .022);
+      context.beginPath();
+      for (let course = 1; course <= 2; course += 1) {
+        const courseY = top + cellSize * course / 3;
+        context.moveTo(left, courseY);
+        context.lineTo(left + cellSize, courseY);
+      }
+      for (let course = 0; course < 3; course += 1) {
+        const jointX = left + cellSize * (
+          (x + y + course) % 2 === 0 ? .34 : .68
+        );
+        context.moveTo(jointX, top + cellSize * course / 3);
+        context.lineTo(jointX, top + cellSize * (course + 1) / 3);
+      }
+      context.stroke();
+    }
+  }
+
+  // Broad staggered slabs keep the walkable corridors visually quieter than
+  // the brickwork while still reading as built infrastructure.
+  context.strokeStyle = "rgba(43, 49, 46, .24)";
+  context.lineWidth = Math.max(.55, cellSize * .018);
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      if (underlyingTerrain(grid, x, y) !== Terrain.Ground) continue;
+      const left = x * cellSize;
+      const top = y * cellSize;
+      context.beginPath();
+      context.moveTo(left, top + cellSize * .5);
+      context.lineTo(left + cellSize, top + cellSize * .5);
+      const jointX = left + cellSize * ((x + y) % 2 === 0 ? .35 : .68);
+      if (y % 2 === 0) {
+        context.moveTo(jointX, top);
+        context.lineTo(jointX, top + cellSize * .5);
+      } else {
+        context.moveTo(jointX, top + cellSize * .5);
+        context.lineTo(jointX, top + cellSize);
+      }
+      context.stroke();
+    }
+  }
+
+  const drawWallEdge = (
+    left: number,
+    top: number,
+    side: 0 | 1 | 2 | 3,
+    inset: number,
+  ) => {
+    if (side === 0) {
+      context.moveTo(left, top + inset);
+      context.lineTo(left + cellSize, top + inset);
+    } else if (side === 1) {
+      context.moveTo(left + cellSize - inset, top);
+      context.lineTo(left + cellSize - inset, top + cellSize);
+    } else if (side === 2) {
+      context.moveTo(left + cellSize, top + cellSize - inset);
+      context.lineTo(left, top + cellSize - inset);
+    } else {
+      context.moveTo(left + inset, top + cellSize);
+      context.lineTo(left + inset, top);
+    }
+  };
+  for (const [strokeStyle, lineWidth, inset] of [
+    ["rgba(27, 33, 31, .82)", Math.max(2, cellSize * .105), 0],
+    ["rgba(176, 181, 164, .38)", Math.max(.7, cellSize * .026), cellSize * .055],
+  ] as const) {
+    context.strokeStyle = strokeStyle;
+    context.lineWidth = lineWidth;
+    context.beginPath();
+    for (let y = 0; y < grid.length; y += 1) {
+      for (let x = 0; x < grid[y].length; x += 1) {
+        if (!isCliff(x, y)) continue;
+        const left = x * cellSize;
+        const top = y * cellSize;
+        if (y > 0 && !isCliff(x, y - 1)) drawWallEdge(left, top, 0, inset);
+        if (x < grid[y].length - 1 && !isCliff(x + 1, y)) {
+          drawWallEdge(left, top, 1, inset);
+        }
+        if (y < grid.length - 1 && !isCliff(x, y + 1)) {
+          drawWallEdge(left, top, 2, inset);
+        }
+        if (x > 0 && !isCliff(x - 1, y)) drawWallEdge(left, top, 3, inset);
+      }
+    }
+    context.stroke();
   }
   context.restore();
 }
@@ -3025,6 +3229,7 @@ function createCliffRockFace(
 function drawReliefBevels(
   grid: Grid,
   cellSize: number,
+  mode: LandscapeMode,
   hiddenItems: ReadonlySet<string>,
   hiddenOpacity: number,
   width: number,
@@ -3045,6 +3250,8 @@ function drawReliefBevels(
       false,
     );
     const raised = terrain === Terrain.Cliff;
+    const battlefieldTrench = mode === "ruined-battlefield" &&
+      terrain === Terrain.Ravine;
     const depth = raised
       ? Math.max(2, cellSize * .16)
       : Math.max(1.5, cellSize * .1);
@@ -3058,7 +3265,9 @@ function drawReliefBevels(
       blur,
       raised
         ? "rgba(248, 242, 220, .5)"
-        : "rgba(235, 202, 151, .62)",
+        : battlefieldTrench
+          ? "rgba(167, 130, 84, .58)"
+          : "rgba(235, 202, 151, .62)",
     );
     const bottomRight = createMaskEdge(
       mask,
@@ -3067,7 +3276,9 @@ function drawReliefBevels(
       blur,
       raised
         ? "rgba(20, 23, 21, .68)"
-        : "rgba(224, 185, 132, .55)",
+        : battlefieldTrench
+          ? "rgba(67, 43, 29, .7)"
+          : "rgba(224, 185, 132, .55)",
     );
     const wash = document.createElement("canvas");
     wash.width = width;
@@ -3075,7 +3286,11 @@ function drawReliefBevels(
     const washContext = wash.getContext("2d")!;
     washContext.drawImage(mask, 0, 0);
     washContext.globalCompositeOperation = "source-in";
-    washContext.fillStyle = raised ? "#f1ead5" : "#211f1b";
+    washContext.fillStyle = raised
+      ? "#f1ead5"
+      : battlefieldTrench
+        ? "#30221a"
+        : "#211f1b";
     washContext.fillRect(0, 0, width, height);
 
     context.save();
@@ -3085,7 +3300,7 @@ function drawReliefBevels(
 
     // A restrained inner wash makes cliffs feel solid and ravines feel deep
     // while preserving the palette underneath.
-    context.globalAlpha *= raised ? .06 : .5;
+    context.globalAlpha *= raised ? .06 : battlefieldTrench ? .38 : .5;
     context.drawImage(wash, 0, 0);
     context.restore();
 
@@ -3644,9 +3859,44 @@ function drawWaterMaterial(
   width: number,
   height: number,
   cellSize: number,
+  mode: LandscapeMode,
 ) {
   context.lineCap = "round";
   context.lineJoin = "round";
+  if (mode === "sewer") {
+    const spacing = cellSize * 1.55;
+    const bandCount = Math.ceil(height / spacing) + 3;
+    for (let band = -1; band < bandCount; band += 1) {
+      const baseY = band * spacing + spacing * .5;
+      const path = new Path2D();
+      const step = Math.max(6, cellSize * .7);
+      for (
+        let x = -cellSize, index = 0;
+        x <= width + cellSize;
+        x += step, index += 1
+      ) {
+        const ripple = Math.sin(
+          x / (cellSize * 2.8) + band * 1.7,
+        ) * cellSize * .018;
+        const jitter = (
+          terrainVariation(index, band, 2887) - .5
+        ) * cellSize * .012;
+        if (index === 0) path.moveTo(x, baseY + ripple + jitter);
+        else path.lineTo(x, baseY + ripple + jitter);
+      }
+      context.strokeStyle = "rgba(31, 48, 40, .2)";
+      context.lineWidth = Math.max(1.1, cellSize * .052);
+      context.setLineDash([]);
+      context.stroke(path);
+      context.strokeStyle = "rgba(182, 194, 151, .14)";
+      context.lineWidth = Math.max(.65, cellSize * .018);
+      context.setLineDash([cellSize * .95, cellSize * .72]);
+      context.lineDashOffset = -terrainVariation(band, 2, 2899) * cellSize;
+      context.stroke(path);
+    }
+    context.setLineDash([]);
+    return;
+  }
   const spacing = cellSize * .82;
   const bandCount = Math.ceil(height / spacing) + 4;
   for (let band = -2; band < bandCount; band += 1) {
@@ -3803,6 +4053,7 @@ function drawIceMaterial(
 function drawContinuousLiquidMaterials(
   grid: Grid,
   cellSize: number,
+  mode: LandscapeMode,
   hiddenItems: ReadonlySet<string>,
   hiddenOpacity: number,
   context: CanvasRenderingContext2D,
@@ -3823,7 +4074,7 @@ function drawContinuousLiquidMaterials(
     effect.height = height;
     const effectContext = effect.getContext("2d")!;
     if (terrain === Terrain.Water) {
-      drawWaterMaterial(effectContext, width, height, cellSize);
+      drawWaterMaterial(effectContext, width, height, cellSize, mode);
     } else if (terrain === Terrain.Ice) {
       drawIceMaterial(effectContext, width, height, cellSize);
     } else {
@@ -4329,36 +4580,27 @@ function drawRockFormation(
     context.fill();
     return;
   }
-  const cells = new Set(points.map(({ x, y }) => `${x},${y}`));
+  const minimumX = Math.min(...points.map(({ x }) => x));
+  const maximumX = Math.max(...points.map(({ x }) => x));
+  const minimumY = Math.min(...points.map(({ y }) => y));
+  const maximumY = Math.max(...points.map(({ y }) => y));
+  const variation = terrainVariation(minimumX, minimumY, 4337);
+  const left = minimumX * size + size * (.07 + variation * .025);
+  const right = (maximumX + 1) * size - size * (.08 + variation * .02);
+  const top = minimumY * size + size * (.06 + variation * .025);
+  const bottom = (maximumY + 1) * size - size * (.08 + variation * .02);
+  const width = right - left;
+  const height = bottom - top;
   const formation = new Path2D();
-
-  for (const { x, y } of points) {
-    const variation = terrainVariation(x, y, 4337);
-    const otherVariation = terrainVariation(x, y, 4363);
-    const left = x * size + (
-      cells.has(`${x - 1},${y}`) ? -size * .035 : size * (.075 + variation * .025)
-    );
-    const right = (x + 1) * size - (
-      cells.has(`${x + 1},${y}`) ? -size * .035 : size * (.07 + otherVariation * .025)
-    );
-    const top = y * size + (
-      cells.has(`${x},${y - 1}`) ? -size * .035 : size * (.07 + otherVariation * .03)
-    );
-    const bottom = (y + 1) * size - (
-      cells.has(`${x},${y + 1}`) ? -size * .035 : size * (.08 + variation * .025)
-    );
-    const width = right - left;
-    const height = bottom - top;
-    formation.moveTo(left, top + height * (.31 + variation * .08));
-    formation.lineTo(left + width * (.25 + otherVariation * .08), top);
-    formation.lineTo(right - width * (.2 + variation * .08), top + height * .02);
-    formation.lineTo(right, top + height * (.28 + otherVariation * .08));
-    formation.lineTo(right - width * .02, bottom - height * (.2 + variation * .05));
-    formation.lineTo(right - width * (.25 + otherVariation * .08), bottom);
-    formation.lineTo(left + width * (.2 + variation * .06), bottom - height * .015);
-    formation.lineTo(left + width * .01, bottom - height * (.24 + otherVariation * .06));
-    formation.closePath();
-  }
+  formation.moveTo(left + width * .02, top + height * .68);
+  formation.lineTo(left + width * .13, top + height * .31);
+  formation.lineTo(left + width * .34, top + height * .07);
+  formation.lineTo(left + width * .65, top + height * .02);
+  formation.lineTo(left + width * .88, top + height * .23);
+  formation.lineTo(left + width * .98, top + height * .61);
+  formation.lineTo(left + width * .78, top + height * .9);
+  formation.lineTo(left + width * .36, top + height * .97);
+  formation.closePath();
 
   context.save();
   applyPropContactShadow(size, context);
@@ -4367,48 +4609,55 @@ function drawRockFormation(
   context.restore();
 
   context.strokeStyle = colors.stroke;
-  context.lineWidth = Math.max(1, size * .035);
+  context.lineWidth = Math.max(1, size * .055);
   context.lineCap = "round";
   context.lineJoin = "round";
-  context.beginPath();
-  for (const { x, y } of points) {
-    const left = x * size;
-    const top = y * size;
-    const right = left + size;
-    const bottom = top + size;
-    if (!cells.has(`${x},${y - 1}`)) {
-      context.moveTo(left + size * .22, top + size * .08);
-      context.lineTo(right - size * .2, top + size * .08);
-    }
-    if (!cells.has(`${x + 1},${y}`)) {
-      context.moveTo(right - size * .08, top + size * .27);
-      context.lineTo(right - size * .08, bottom - size * .22);
-    }
-    if (!cells.has(`${x},${y + 1}`)) {
-      context.moveTo(right - size * .25, bottom - size * .08);
-      context.lineTo(left + size * .2, bottom - size * .08);
-    }
-    if (!cells.has(`${x - 1},${y}`)) {
-      context.moveTo(left + size * .08, bottom - size * .24);
-      context.lineTo(left + size * .08, top + size * .3);
-    }
-  }
-  context.stroke();
+  context.stroke(formation);
 
-  for (const { x, y } of points) {
-    const left = x * size;
-    const top = y * size;
-    const variation = terrainVariation(x, y, 4397);
-    context.fillStyle = colors.highlight;
-    context.globalAlpha = .72 + variation * .18;
-    context.beginPath();
-    context.moveTo(left + size * (.18 + variation * .05), top + size * .36);
-    context.lineTo(left + size * (.56 + variation * .1), top + size * .12);
-    context.lineTo(left + size * (.47 + variation * .08), top + size * .52);
-    context.closePath();
-    context.fill();
-  }
+  context.fillStyle = colors.highlight;
+  context.globalAlpha = .82;
+  context.beginPath();
+  context.moveTo(left + width * .13, top + height * .31);
+  context.lineTo(left + width * .34, top + height * .07);
+  context.lineTo(left + width * .46, top + height * .48);
+  context.lineTo(left + width * .24, top + height * .56);
+  context.closePath();
+  context.fill();
+  context.globalAlpha = .52;
+  context.beginPath();
+  context.moveTo(left + width * .34, top + height * .07);
+  context.lineTo(left + width * .65, top + height * .02);
+  context.lineTo(left + width * .72, top + height * .32);
+  context.lineTo(left + width * .46, top + height * .48);
+  context.closePath();
+  context.fill();
   context.globalAlpha = 1;
+
+  context.strokeStyle = colors.stroke;
+  context.lineWidth = Math.max(.8, size * .025);
+  context.beginPath();
+  context.moveTo(left + width * .46, top + height * .48);
+  context.lineTo(left + width * .57, top + height * .61);
+  context.lineTo(left + width * .52, top + height * .76);
+  context.stroke();
+}
+
+function completeTwoByTwoOrigin(
+  points: Array<{ x: number; y: number }>,
+) {
+  if (points.length !== 4) return undefined;
+  const minimumX = Math.min(...points.map(({ x }) => x));
+  const minimumY = Math.min(...points.map(({ y }) => y));
+  const pointKeys = new Set(points.map(({ x, y }) => `${x},${y}`));
+  const completeBlock = [
+    `${minimumX},${minimumY}`,
+    `${minimumX + 1},${minimumY}`,
+    `${minimumX},${minimumY + 1}`,
+    `${minimumX + 1},${minimumY + 1}`,
+  ];
+  return completeBlock.every((key) => pointKeys.has(key))
+    ? { x: minimumX, y: minimumY }
+    : undefined;
 }
 
 function drawDifficultTerrainDetail(
@@ -4430,9 +4679,37 @@ function drawDifficultTerrainDetail(
   context.lineJoin = "round";
 
   if (style.kind === "crop") {
-    const fieldColumn = x < grid[0].length / 2 ? 0 : 1;
-    const fieldRow = y < grid.length / 2 ? 0 : 1;
-    const horizontal = (fieldColumn + fieldRow) % 2 === 0;
+    const cropAxisSupport = (dx: number, dy: number) => {
+      let support = 0;
+      for (const direction of [-1, 1]) {
+        let consecutiveGaps = 0;
+        for (let distance = 1; distance <= 5; distance += 1) {
+          const sampleX = x + dx * distance * direction;
+          const sampleY = y + dy * distance * direction;
+          const sample = grid[sampleY]?.[sampleX];
+          if (!sample) break;
+          const terrain = underlyingTerrain(grid, sampleX, sampleY);
+          if (
+            terrain === Terrain.Road ||
+            terrain === Terrain.Water ||
+            terrain === Terrain.Cliff ||
+            terrain === Terrain.Wall ||
+            terrain === Terrain.Ravine
+          ) {
+            break;
+          }
+          if (terrain === Terrain.Difficult) {
+            support += 6 - distance;
+            consecutiveGaps = 0;
+          } else {
+            consecutiveGaps += 1;
+            if (consecutiveGaps >= 2) break;
+          }
+        }
+      }
+      return support;
+    };
+    const horizontal = cropAxisSupport(1, 0) >= cropAxisSupport(0, 1);
     context.strokeStyle = style.dark;
     context.lineWidth = Math.max(.8, cellSize * .035);
     for (const offset of [.2, .5, .8]) {
@@ -4451,11 +4728,11 @@ function drawDifficultTerrainDetail(
     const highlightOffset = .2 + secondaryVariation * .6;
     context.beginPath();
     if (horizontal) {
-      context.moveTo(left + cellSize * highlightOffset, top + cellSize * .12);
-      context.lineTo(left + cellSize * highlightOffset, top + cellSize * .88);
-    } else {
       context.moveTo(left + cellSize * .12, top + cellSize * highlightOffset);
       context.lineTo(left + cellSize * .88, top + cellSize * highlightOffset);
+    } else {
+      context.moveTo(left + cellSize * highlightOffset, top + cellSize * .12);
+      context.lineTo(left + cellSize * highlightOffset, top + cellSize * .88);
     }
     context.stroke();
   } else if (style.kind === "snow") {
@@ -4788,29 +5065,21 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     options.useTileset ? options.tilesetImage : undefined,
     context,
   );
+  if (mode === "sewer") drawSewerMasonry(grid, cellSize, context);
   drawGlobalTexture(width, height, context);
   if (isInteriorMode(mode)) {
     drawInteriorArchitecture(grid, cellSize, mode, context);
     if (mode === "ship-deck") {
       drawSailingShipDeckElevation(grid, cellSize, context);
     }
-<<<<<<< Updated upstream
-    drawInteriorProps(grid, cellSize, context);
-=======
     if (!options.hideInteriorProps) {
-      drawInteriorProps(
-        grid,
-        cellSize,
-        mode,
-        context,
-        options.useTileset ? options.tilesetProps : undefined,
-      );
+      drawInteriorProps(grid, cellSize, mode, context);
     }
->>>>>>> Stashed changes
   }
   drawReliefBevels(
     grid,
     cellSize,
+    mode,
     hiddenItems,
     hiddenOpacity,
     width,
@@ -4820,6 +5089,7 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   drawContinuousLiquidMaterials(
     grid,
     cellSize,
+    mode,
     hiddenItems,
     hiddenOpacity,
     context,
@@ -4827,13 +5097,23 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   drawRavineUpperEdges(
     grid,
     cellSize,
+    mode,
     hiddenItems.has(Terrain.Ravine) ? hiddenOpacity : 1,
     context,
   );
+  if (mode === "ruined-battlefield") {
+    drawBattlefieldTrenchDetails(
+      grid,
+      cellSize,
+      hiddenItems.has(Terrain.Ravine) ? hiddenOpacity : 1,
+      context,
+    );
+  }
   drawLiquidUpperEdges(
     grid,
     cellSize,
     Terrain.Water,
+    mode,
     hiddenItems.has(Terrain.Water) ? hiddenOpacity : 1,
     context,
   );
@@ -4841,6 +5121,7 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     grid,
     cellSize,
     Terrain.Lava,
+    mode,
     hiddenItems.has(Terrain.Lava) ? hiddenOpacity : 1,
     context,
   );
@@ -4861,18 +5142,6 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     options.useTileset ? options.tilesetImage : undefined,
     context,
   );
-  if (options.stylizedLighting) {
-    drawStylizedLighting(
-      grid,
-      mode,
-      cellSize,
-      width,
-      height,
-      hiddenItems,
-      hiddenOpacity,
-      context,
-    );
-  }
   drawLavaRockEdges(
     grid,
     cellSize,
@@ -4900,26 +5169,6 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   if (mode === "ship-deck") {
     drawSailingShipDeckFeatures(grid, cellSize, context);
   }
-
-  if (showGrid) {
-    context.save();
-    for (let y = 0; y < rows; y += 1) {
-      for (let x = 0; x < columns; x += 1) {
-        const tile = grid[y][x];
-        context.globalAlpha = hiddenItems.has(tile.terrain) ? hiddenOpacity : 1;
-        context.strokeStyle = "rgba(239, 235, 218, 0.14)";
-        context.lineWidth = 1;
-        context.strokeRect(
-          x * cellSize + .5,
-          y * cellSize + .5,
-          cellSize - 1,
-          cellSize - 1,
-        );
-      }
-    }
-    context.restore();
-  }
-  context.globalAlpha = 1;
 
   const treeGroups = new Map<number, Array<{ x: number; y: number }>>();
   const buildingGroups = new Map<number, Array<{ x: number; y: number }>>();
@@ -4954,9 +5203,34 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     hiddenItems.has(Obstacle.Rock) ? hiddenOpacity : 1;
   const objectStyle = getBiomeObjectStyle(mode);
   for (const points of rockGroups.values()) {
-    // `obstacleId` still makes the generator produce coherent scree clusters,
-    // but every occupied cell is rendered as its own rock. This keeps the new
-    // spatial distribution without visually welding adjacent rocks together.
+    const largeRockOrigin = completeTwoByTwoOrigin(points);
+    if (largeRockOrigin) {
+      if (useImageProps && options.customProps?.rock) {
+        drawCustomProp(
+          options.customProps.rock,
+          largeRockOrigin.x,
+          largeRockOrigin.y,
+          2,
+          cellSize,
+          context,
+        );
+      } else if (useImageProps && options.tilesetProps) {
+        drawTilesetProp(
+          options.tilesetProps.rock2x2,
+          largeRockOrigin.x,
+          largeRockOrigin.y,
+          2,
+          cellSize,
+          context,
+          objectStyle.rock.fill,
+          .58,
+        );
+      } else {
+        drawRockFormation(points, cellSize, mode, context);
+      }
+      continue;
+    }
+    // Non-square scree groups retain the new loose, individual-rock rendering.
     for (const point of points) {
       if (useImageProps && options.customProps?.rock) {
         drawCustomProp(
@@ -4999,41 +5273,31 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   context.globalAlpha = 1;
   context.globalAlpha = hiddenItems.has(Obstacle.Tree) ? hiddenOpacity : 1;
   for (const points of treeGroups.values()) {
-    if (useImageProps && points.length === 4) {
-      const minimumX = Math.min(...points.map(({ x }) => x));
-      const minimumY = Math.min(...points.map(({ y }) => y));
-      const completeBlock = [
-        `${minimumX},${minimumY}`,
-        `${minimumX + 1},${minimumY}`,
-        `${minimumX},${minimumY + 1}`,
-        `${minimumX + 1},${minimumY + 1}`,
-      ];
-      const pointKeys = new Set(points.map(({ x, y }) => `${x},${y}`));
-      if (completeBlock.every((key) => pointKeys.has(key))) {
-        if (useImageProps && options.customProps?.tree) {
-          drawCustomProp(
-            options.customProps.tree,
-            minimumX,
-            minimumY,
-            2,
-            cellSize,
-            context,
-          );
-          continue;
-        }
-        if (options.tilesetProps) {
-          drawTilesetProp(
-            options.tilesetProps.tree2x2,
-            minimumX,
-            minimumY,
-            2,
-            cellSize,
-            context,
-            objectStyle.tree.light,
-            .48,
-          );
-          continue;
-        }
+    const largeTreeOrigin = completeTwoByTwoOrigin(points);
+    if (largeTreeOrigin) {
+      if (useImageProps && options.customProps?.tree) {
+        drawCustomProp(
+          options.customProps.tree,
+          largeTreeOrigin.x,
+          largeTreeOrigin.y,
+          2,
+          cellSize,
+          context,
+        );
+        continue;
+      }
+      if (useImageProps && options.tilesetProps) {
+        drawTilesetProp(
+          options.tilesetProps.tree2x2,
+          largeTreeOrigin.x,
+          largeTreeOrigin.y,
+          2,
+          cellSize,
+          context,
+          objectStyle.tree.light,
+          .48,
+        );
+        continue;
       }
     }
     if (useImageProps && options.customProps?.tree) {
@@ -5063,6 +5327,40 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     } else {
       drawTree(points, cellSize, mode, context);
     }
+  }
+  context.globalAlpha = 1;
+
+  if (options.stylizedLighting) {
+    drawStylizedLighting(
+      grid,
+      mode,
+      cellSize,
+      width,
+      height,
+      hiddenItems,
+      hiddenOpacity,
+      context,
+      !options.hideInteriorProps,
+    );
+  }
+
+  if (showGrid) {
+    context.save();
+    for (let y = 0; y < rows; y += 1) {
+      for (let x = 0; x < columns; x += 1) {
+        const tile = grid[y][x];
+        context.globalAlpha = hiddenItems.has(tile.terrain) ? hiddenOpacity : 1;
+        context.strokeStyle = "rgba(239, 235, 218, 0.14)";
+        context.lineWidth = 1;
+        context.strokeRect(
+          x * cellSize + .5,
+          y * cellSize + .5,
+          cellSize - 1,
+          cellSize - 1,
+        );
+      }
+    }
+    context.restore();
   }
   context.globalAlpha = 1;
 
