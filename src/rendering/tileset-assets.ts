@@ -38,6 +38,18 @@ const bailey = (name: string) => `${TILESET_ROOT}/bailey/${name}`;
 const generated = (name: string) => `${TILESET_ROOT}/ai/${name}`;
 const lpc = (name: string) => `${TILESET_ROOT}/lpc/${name}`;
 
+export type FurnitureFacing = "north" | "east" | "south" | "west";
+
+const CASUAL_SOFA_COLORS = [
+  "black", "blue", "brown", "green", "grey", "red", "white", "yellow",
+] as const;
+
+export function casualSofaAssetNames(facing: FurnitureFacing) {
+  const variants = facing === "south" ? [0, 1, 2, 3, 4, 5] : [1, 2, 3, 4, 5];
+  return CASUAL_SOFA_COLORS.flatMap((color) => variants.map((variant) =>
+    `${color}_${variant}_${facing}.png`));
+}
+
 const image = (source: string) => {
   const result = new Image();
   result.src = source;
@@ -48,6 +60,18 @@ const numberedImages = (
   source: (index: number) => string,
   count: number,
 ) => Array.from({ length: count }, (_, index) => image(source(index + 1)));
+
+const casualSofaImages = (facing: FurnitureFacing) =>
+  casualSofaAssetNames(facing).map((name) => image(lpc(`casual_sofa/${name}`)));
+
+export function collectTilesetImages(value: unknown): HTMLImageElement[] {
+  if (value instanceof HTMLImageElement) return [value];
+  if (Array.isArray(value)) return value.flatMap(collectTilesetImages);
+  if (value && typeof value === "object") {
+    return Object.values(value).flatMap(collectTilesetImages);
+  }
+  return [];
+}
 
 export function createTilesetAssets() {
   const terrain = image(bailey("terrain.png"));
@@ -83,6 +107,17 @@ export function createTilesetAssets() {
     benchHorizontalLeft: image(lpc("bench_horizontal_left_1x1.png")),
     benchHorizontalMiddle: image(lpc("bench_horizontal_middle_1x1.png")),
     benchHorizontalRight: image(lpc("bench_horizontal_right_1x1.png")),
+    benchVerticalTop: image(lpc("bench_vertical_top.png")),
+    benchVerticalMiddle: image(lpc("bench_vertical_middle.png")),
+    benchVerticalDown: image(lpc("bench_vertical_down.png")),
+    cannonNorth: image(lpc("cannon_north_1x2.png")),
+    cannonSouth: image(lpc("cannon_south_1x2.png")),
+    casualSofas: {
+      north: casualSofaImages("north"),
+      east: casualSofaImages("east"),
+      south: casualSofaImages("south"),
+      west: casualSofaImages("west"),
+    },
 
     // Generated multi-cell and directional variants.
     bed1x2South: image(generated("bed_1x2_south.png")),
@@ -103,18 +138,13 @@ export function createTilesetAssets() {
     altar2x1: image(generated("altar_2x1.png")),
     altar1x3: image(generated("altar_1x3.png")),
     altar3x1: image(generated("altar_3x1.png")),
-    benchNorth: image(generated("bench_north.png")),
-    benchSouth: image(generated("bench_south.png")),
-    banquetteNorth: image(generated("banquette_north.png")),
-    banquetteSouth: image(generated("banquette_south.png")),
     coffin1x2: image(generated("coffin_1x2.png")),
     coffin2x1: image(generated("coffin_2x1.png")),
   } satisfies TilesetPropImages;
 
   const terrainReady = () => terrain.complete && terrain.naturalWidth > 0;
-  const propsReady = () => Object.values(props).every((value) => Array.isArray(value)
-    ? value.every((entry) => entry.complete && entry.naturalWidth > 0)
-    : value.complete && value.naturalWidth > 0);
+  const propsReady = () => collectTilesetImages(props)
+    .every((entry) => entry.complete && entry.naturalWidth > 0);
 
   return { terrain, props, terrainReady, propsReady };
 }

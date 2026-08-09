@@ -14,7 +14,7 @@ import {
   drawGrid,
   type CustomPropImages,
 } from "./rendering/canvas";
-import { createTilesetAssets } from "./rendering/tileset-assets";
+import { collectTilesetImages, createTilesetAssets } from "./rendering/tileset-assets";
 import {
   BIOME_PARAMETER_PROFILES,
   PARAMETER_FIELDS,
@@ -544,10 +544,9 @@ stylizedLightingInput.addEventListener("change", () => renderMap(currentGrid));
 tilesetImage.addEventListener("load", () => {
   if (useTilesetInput.checked) renderMap(currentGrid);
 });
-Object.values(tilesetProps).flatMap((value) => Array.isArray(value) ? value : [value])
-  .forEach((image) => {
+collectTilesetImages(tilesetProps).forEach((image) => {
   image.addEventListener("load", () => {
-    if (useTilesetInput.checked) renderMap(currentGrid);
+    if (useTilesetInput.checked && tilesetPropsReady()) renderMap(currentGrid);
   });
 });
 document.querySelector("#legend")!.addEventListener("click", (event) => {

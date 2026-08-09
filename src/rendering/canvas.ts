@@ -69,13 +69,15 @@ export interface TilesetPropImages {
   altar2x1: CanvasImageSource;
   altar1x3: CanvasImageSource;
   altar3x1: CanvasImageSource;
-  benchNorth: CanvasImageSource;
-  benchSouth: CanvasImageSource;
   benchHorizontalLeft: CanvasImageSource;
   benchHorizontalMiddle: CanvasImageSource;
   benchHorizontalRight: CanvasImageSource;
-  banquetteNorth: CanvasImageSource;
-  banquetteSouth: CanvasImageSource;
+  benchVerticalTop: CanvasImageSource;
+  benchVerticalMiddle: CanvasImageSource;
+  benchVerticalDown: CanvasImageSource;
+  cannonNorth: CanvasImageSource;
+  cannonSouth: CanvasImageSource;
+  casualSofas: Record<"north" | "east" | "south" | "west", readonly CanvasImageSource[]>;
   coffin1x2: CanvasImageSource;
   coffin2x1: CanvasImageSource;
   table1x1: CanvasImageSource;
@@ -1962,6 +1964,7 @@ function drawSailingShipDeckFeatures(
   grid: Grid,
   cellSize: number,
   context: CanvasRenderingContext2D,
+  tilesetProps?: TilesetPropImages,
 ) {
   context.save();
   context.lineCap = "round";
@@ -2011,6 +2014,20 @@ function drawSailingShipDeckFeatures(
         context.beginPath();
         context.arc(0, 0, cellSize * .29, 0, Math.PI * 2);
         context.stroke();
+        context.restore();
+        continue;
+      }
+
+      const cannonImage = feature === "cannon"
+        ? facing === "north" ? tilesetProps?.cannonNorth
+          : facing === "south" ? tilesetProps?.cannonSouth
+            : undefined
+        : undefined;
+      if (cannonImage) {
+        const drawTop = facing === "north" ? (y - 1) * cellSize : y * cellSize;
+        context.save();
+        context.imageSmoothingEnabled = false;
+        context.drawImage(cannonImage, x * cellSize, drawTop, cellSize, cellSize * 2);
         context.restore();
         continue;
       }
@@ -2468,6 +2485,19 @@ function drawInteriorProps(
         }
       }
       const upholsteredBench = /Living room|Common room|Bedroom|Guest room|cabin/i.test(propRoomRole);
+      const casualSofaImages = upholsteredBench
+        ? tilesetProps?.casualSofas[propFacing ?? "north"]
+        : undefined;
+      const casualSofaImage = casualSofaImages?.length
+        ? casualSofaImages[variantIndex % casualSofaImages.length]
+        : undefined;
+      if (prop === "bench" && casualSofaImage) {
+        context.save();
+        context.imageSmoothingEnabled = false;
+        context.drawImage(casualSofaImage, propLeft, propTop, spanWidth, spanHeight);
+        context.restore();
+        continue;
+      }
       const modularBenchImages = tilesetProps
         ? [
           tilesetProps.benchHorizontalLeft,
@@ -2494,20 +2524,25 @@ function drawInteriorProps(
         context.restore();
         continue;
       }
-      const benchImage = prop === "bench"
-        ? propFacing === "south" || propFacing === "west"
-          ? upholsteredBench ? tilesetProps?.banquetteSouth : tilesetProps?.benchSouth
-          : upholsteredBench ? tilesetProps?.banquetteNorth : tilesetProps?.benchNorth
+      const modularVerticalBenchImages = tilesetProps
+        ? [
+          tilesetProps.benchVerticalTop,
+          tilesetProps.benchVerticalMiddle,
+          tilesetProps.benchVerticalDown,
+        ] as const
         : undefined;
-      if (benchImage) {
-        const rotation = propFacing === "east" || propFacing === "west" ? Math.PI / 2 : 0;
-        const drawWidth = propCells.length * cellSize;
-        const drawHeight = cellSize;
+      if (prop === "bench" && !upholsteredBench && vertical && modularVerticalBenchImages) {
+        const orderedCells = [...propCells].sort((first, second) => first.y - second.y);
         context.save();
-        context.translate(centerX, centerY);
-        context.rotate(rotation);
         context.imageSmoothingEnabled = false;
-        context.drawImage(benchImage, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+        for (let index = 0; index < orderedCells.length; index += 1) {
+          const image = index === 0 ? modularVerticalBenchImages[0]
+            : index === orderedCells.length - 1 ? modularVerticalBenchImages[2]
+            : modularVerticalBenchImages[1];
+          const cell = orderedCells[index];
+          context.drawImage(image, cell.x * cellSize, cell.y * cellSize,
+            cellSize, cellSize);
+        }
         context.restore();
         continue;
       }
@@ -5525,7 +5560,8 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   context.globalAlpha = 1;
 
   if (mode === "ship-deck") {
-    drawSailingShipDeckFeatures(grid, cellSize, context);
+    drawSailingShipDeckFeatures(grid, cellSize, context,
+      options.useTileset ? options.tilesetProps : undefined);
   }
 
   const treeGroups = new Map<number, Array<{ x: number; y: number }>>();

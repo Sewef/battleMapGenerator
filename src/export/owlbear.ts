@@ -12,7 +12,11 @@ import {
   collectMapLightSources,
   type MapLightSource,
 } from "../rendering/lighting";
-import { interiorAssetSpriteLayout } from "../rendering/tileset-assets";
+import {
+  casualSofaAssetNames,
+  interiorAssetSpriteLayout,
+  type FurnitureFacing,
+} from "../rendering/tileset-assets";
 
 const OWLBEAR_SCENE_DPI = 150;
 const MAP_IMAGE_DPI = 48;
@@ -584,11 +588,17 @@ function interiorPropSpriteItems(
     /Living room|Common room|Bedroom|Guest room|cabin/i.test(prop.roomRole ?? "");
   const woodenHorizontalBench = prop.kind === "bench" && !upholsteredBench &&
     rectangle.width > rectangle.height;
+  const woodenVerticalBench = prop.kind === "bench" && !upholsteredBench &&
+    rectangle.height > rectangle.width;
+  const modularWoodenBench = woodenHorizontalBench || woodenVerticalBench;
   const modularHorizontalTable = prop.kind === "table" && prop.points.length > 1 &&
     rectangle.height === 1;
   const modularVerticalTable = prop.kind === "table" && prop.points.length > 1 &&
     rectangle.width === 1;
   const modularTable = modularHorizontalTable || modularVerticalTable;
+  const casualSofaNames = upholsteredBench
+    ? casualSofaAssetNames((prop.facing ?? "north") as FurnitureFacing)
+    : [];
   const assetName = prop.kind === "bed"
     ? prop.points.length === 4 && rectangle.width === 2 && rectangle.height === 2
       ? horizontalBed ? "bed_2x2_horizontal.png"
@@ -612,7 +622,9 @@ function interiorPropSpriteItems(
         ? `altar_${prop.points.length}x1.png`
         : `altar_1x${prop.points.length}.png`
     : prop.kind === "bench"
-      ? `${upholsteredBench ? "banquette" : "bench"}_${prop.facing === "south" || prop.facing === "west"
+      ? woodenVerticalBench ? "bench_vertical_middle.png"
+        : upholsteredBench ? casualSofaNames[variant % casualSofaNames.length]
+        : `bench_${prop.facing === "south" || prop.facing === "west"
           ? "south" : "north"}.png`
     : prop.kind === "chair" ? "stool_1x1.png"
       : prop.kind === "crate" ? "crate_1x1.png"
@@ -630,10 +642,11 @@ function interiorPropSpriteItems(
                         : undefined;
   if (!assetName) return [];
   const spriteLayout = interiorAssetSpriteLayout(assetName);
-  const lpcAsset = woodenHorizontalBench || modularTable;
-  const assetFolder = lpcAsset ? "lpc/"
+  const lpcAsset = modularWoodenBench || modularTable || upholsteredBench;
+  const assetFolder = upholsteredBench ? "lpc/casual_sofa/"
+    : lpcAsset ? "lpc/"
     : BAILEY_INTERIOR_ASSETS.has(assetName) ? "bailey/" : "ai/";
-  const perCell = prop.kind === "crate" || woodenHorizontalBench || modularTable;
+  const perCell = prop.kind === "crate" || modularWoodenBench || modularTable;
   const fittedLength = prop.kind === "hearth" || prop.kind === "cabinet" ||
     prop.kind === "tomb" || prop.kind === "altar" ||
     prop.kind === "table" && !modularTable &&
@@ -642,12 +655,15 @@ function interiorPropSpriteItems(
   const cabinetOverhang = prop.kind === "cabinet" &&
     (rectangle.height > rectangle.width || prop.facing === "south") ? 1 : 0;
   const benchAsset = prop.kind === "bench";
-  const verticalBench = benchAsset && (prop.facing === "east" || prop.facing === "west");
-  const assetWidth = woodenHorizontalBench || modularTable ? 32
-    : benchAsset ? upholsteredBench ? 64 : 160 : fittedLength
+  const verticalBench = false;
+  const assetWidth = modularWoodenBench || modularTable ? 32
+    : upholsteredBench ? prop.facing === "east" || prop.facing === "west" ? 32 : 64
+    : benchAsset ? 160 : fittedLength
     ? rectangle.width * 32
     : assetName.includes("2x2") || assetName.includes("2x1") ? 64 : 32;
-  const assetHeight = benchAsset ? 32 : fittedLength
+  const assetHeight = upholsteredBench
+    ? prop.facing === "east" || prop.facing === "west" ? 64 : 32
+    : benchAsset ? 32 : fittedLength
     ? (rectangle.height + cabinetOverhang) * 32
     : assetName.includes("1x2") ? 64
       : assetName.includes("2x1") ? 32 : assetWidth;
@@ -659,8 +675,8 @@ function interiorPropSpriteItems(
     ? spriteLayout.renderHeightCells * 32 : assetHeight;
   const rotation = verticalBench ? 90 : 0;
   const flipHorizontal = prop.kind === "bed" && horizontalBed && prop.facing === "east";
-  const orderedBenchPoints = woodenHorizontalBench || modularTable
-    ? [...prop.points].sort((first, second) => modularVerticalTable
+  const orderedBenchPoints = modularWoodenBench || modularTable
+    ? [...prop.points].sort((first, second) => woodenVerticalBench || modularVerticalTable
       ? first.y - second.y : first.x - second.x)
     : prop.points;
   const placements = perCell
@@ -672,12 +688,13 @@ function interiorPropSpriteItems(
       widthCells: spriteLayout.renderWidthCells,
       heightCells: spriteLayout.renderHeightCells,
       footprint: [point],
-      assetName: woodenHorizontalBench || modularTable
+      assetName: modularWoodenBench || modularTable
         ? `${woodenHorizontalBench ? "bench_horizontal"
+          : woodenVerticalBench ? "bench_vertical"
           : modularVerticalTable ? "table_vertical" : "table_horizontal"}_${
-          index === 0 ? modularVerticalTable ? "top" : "left"
+          index === 0 ? woodenVerticalBench || modularVerticalTable ? "top" : "left"
             : index === orderedBenchPoints.length - 1
-              ? modularVerticalTable ? "down" : "right" : "middle"
+              ? woodenVerticalBench || modularVerticalTable ? "down" : "right" : "middle"
         }${woodenHorizontalBench ? "_1x1" : ""}.png`
         : assetName,
     }))
@@ -688,8 +705,10 @@ function interiorPropSpriteItems(
         : spriteLayout.anchor === "bottom"
           ? rectangle.minimumY + rectangle.height - layoutAssetHeight / 64
           : rectangle.minimumY + rectangle.height / 2,
-      widthCells: benchAsset ? prop.points.length : layoutAssetWidth / 32,
-      heightCells: benchAsset ? 1 : layoutAssetHeight / 32,
+      widthCells: upholsteredBench ? rectangle.width
+        : benchAsset ? prop.points.length : layoutAssetWidth / 32,
+      heightCells: upholsteredBench ? rectangle.height
+        : benchAsset ? 1 : layoutAssetHeight / 32,
       footprint: prop.points,
       assetName,
     }];
