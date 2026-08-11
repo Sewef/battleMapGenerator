@@ -703,16 +703,16 @@ function interiorPropSpriteItems(
     : [{
       centerX: rectangle.minimumX + rectangle.width / 2,
       centerY: bedAsset
-        ? rectangle.minimumY + rectangle.height - layoutAssetHeight / 64
+        ? rectangle.minimumY + rectangle.height / 2
         : prop.kind === "cabinet"
         ? rectangle.minimumY + rectangle.height - layoutAssetHeight / 64
         : spriteLayout.anchor === "bottom"
           ? rectangle.minimumY + rectangle.height - layoutAssetHeight / 64
           : rectangle.minimumY + rectangle.height / 2,
-      widthCells: bedAsset ? layoutAssetWidth / 32
+      widthCells: bedAsset ? layoutAssetWidth * bedAsset.scale / 32
         : upholsteredBench ? rectangle.width
         : benchAsset ? prop.points.length : layoutAssetWidth / 32,
-      heightCells: bedAsset ? layoutAssetHeight / 32
+      heightCells: bedAsset ? layoutAssetHeight * bedAsset.scale / 32
         : upholsteredBench ? rectangle.height
         : benchAsset ? 1 : layoutAssetHeight / 32,
       footprint: prop.points,
@@ -733,7 +733,9 @@ function interiorPropSpriteItems(
       y: placement.centerY * OWLBEAR_SCENE_DPI,
     },
     PROP_IMAGE_DPI,
-    { x: layoutAssetWidth / 2, y: layoutAssetHeight / 2 },
+    bedAsset
+      ? { x: bedAsset.anchorX, y: bedAsset.anchorY }
+      : { x: layoutAssetWidth / 2, y: layoutAssetHeight / 2 },
     zIndex + index,
     false,
     {

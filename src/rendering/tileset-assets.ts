@@ -45,10 +45,36 @@ export interface BedAssetDefinition {
   name: string;
   width: number;
   height: number;
+  // Point in the trimmed image aligned with the center of the occupied cells.
+  anchorX: number;
+  anchorY: number;
+  scale: number;
 }
 
 const BED_COLORS = ["blue", "brown", "green", "purple", "red", "white", "yellow"] as const;
 const CHILD_BED_COLORS = [...BED_COLORS, "grey"] as const;
+
+function wallAlignedBedLayout(
+  width: number,
+  height: number,
+  scale: number,
+  facing: FurnitureFacing,
+) {
+  // Every bed is two cells deep. Move the image anchor from its visual center
+  // to the wall-facing edge of that 64 px footprint.
+  const wallDistanceFromCenter = 32 / scale;
+  return {
+    width,
+    height,
+    scale,
+    anchorX: facing === "west" ? wallDistanceFromCenter
+      : facing === "east" ? width - wallDistanceFromCenter
+      : width / 2,
+    anchorY: facing === "north" ? wallDistanceFromCenter
+      : facing === "south" ? height - wallDistanceFromCenter
+      : height / 2,
+  };
+}
 
 export function bedAssetDefinitions(
   doubleBed: boolean,
@@ -59,21 +85,34 @@ export function bedAssetDefinitions(
     return BED_COLORS.flatMap((color) => ["plain", "patterned"].map((style) => ({
       folder: "bed_double" as const,
       name: `${color}_${style}_${facing}.png`,
-      width: horizontal ? 96 : 64,
-      height: horizontal ? 64 : 96,
+      ...wallAlignedBedLayout(
+        horizontal ? 74 : 62,
+        horizontal ? style === "patterned" ? 64 : 63
+          : facing === "north" ? 72 : 71,
+        .85,
+        facing,
+      ),
     })));
   }
   const singleBeds = BED_COLORS.map((color) => ({
     folder: "bed_single" as const,
     name: `${color}_${facing}.png`,
-    width: horizontal ? 96 : 64,
-    height: horizontal ? 64 : 96,
+    ...wallAlignedBedLayout(
+      horizontal ? 74 : 46,
+      horizontal ? 52 : facing === "north" ? 73 : 71,
+      .72,
+      facing,
+    ),
   }));
   const childBeds = CHILD_BED_COLORS.map((color) => ({
     folder: "bed_children" as const,
     name: `${color}_${facing}.png`,
-    width: horizontal ? 64 : 32,
-    height: horizontal ? 64 : 96,
+    ...wallAlignedBedLayout(
+      horizontal ? 56 : 32,
+      horizontal ? 38 : facing === "north" ? 59 : 57,
+      .8,
+      facing,
+    ),
   }));
   return [...singleBeds, ...childBeds];
 }
