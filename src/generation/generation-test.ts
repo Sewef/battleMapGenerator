@@ -160,7 +160,8 @@ function assertInterior(grid: Grid, expectedRooms: number, label: string, expect
     }
     assert(reached.size === cells.length, `${label}: prop ${propId} has a broken footprint`);
     if (kind === "cabinet") {
-      assert(cells.length <= 3,
+      const orientation = cells[0].tile.propOrientation;
+      assert(cells.length <= (orientation === "horizontal" ? 2 : 3),
         `${label}: cabinet module ${propId} exceeds the available furniture assets`);
     }
     if (kind === "bed") {
@@ -2144,7 +2145,7 @@ for (const asset of counterAssets) {
 
 const compositeFurnitureGrid: Grid = Array.from(
   { length: 7 },
-  () => Array.from({ length: 8 }, () => ({ terrain: Terrain.Ground, obstacle: Obstacle.None })),
+  () => Array.from({ length: 10 }, () => ({ terrain: Terrain.Ground, obstacle: Obstacle.None })),
 );
 for (const [id, kind, orientation, points] of [
   [1, "table", "horizontal", [[0, 0], [1, 0]]],
@@ -2166,6 +2167,27 @@ for (const [id, facing, points] of [
     Object.assign(compositeFurnitureGrid[y][x], {
       interiorProp: "cabinet", interiorPropId: id,
       propOrientation: "horizontal", propFacing: facing,
+    });
+  }
+}
+for (const [id, points] of [
+  [9, [[9, 0], [9, 1]]],
+  [10, [[9, 3], [9, 4], [9, 5]]],
+] as const) {
+  for (const [x, y] of points) {
+    Object.assign(compositeFurnitureGrid[y][x], {
+      interiorProp: "altar", interiorPropId: id, propOrientation: "vertical",
+    });
+  }
+}
+for (const [id, facing, points] of [
+  [7, "east", [[7, 0], [7, 1]]],
+  [8, "west", [[7, 3], [7, 4], [7, 5]]],
+] as const) {
+  for (const [x, y] of points) {
+    Object.assign(compositeFurnitureGrid[y][x], {
+      interiorProp: "cabinet", interiorPropId: id,
+      propOrientation: "vertical", propFacing: facing,
     });
   }
 }
@@ -2197,6 +2219,10 @@ const compositeFurnitureAssets = [
   "bench_vertical_1x2.png",
   "cabinet_north_2x1.png",
   "cabinet_south_2x1.png",
+  "cabinet_vertical_1x2.png",
+  "cabinet_vertical_1x3.png",
+  "altar_vertical_1x2.png",
+  "altar_vertical_1x3.png",
 ];
 assert(compositeFurnitureItems.length === compositeFurnitureAssets.length &&
   compositeFurnitureItems.every(({ type }) => type === "IMAGE"),

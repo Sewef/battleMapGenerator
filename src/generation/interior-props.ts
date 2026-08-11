@@ -288,7 +288,12 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
       }
       if (current.length) usableRuns.push(current);
       for (const usable of usableRuns.sort((a, b) => b.length - a.length)) {
-        for (let length = Math.min(maximum, usable.length); length >= minimum; length -= 1) {
+        const runMaximum = kind === "cabinet" && run.orientation === "horizontal"
+          ? Math.min(2, maximum, usable.length)
+          : Math.min(maximum, usable.length);
+        const runMinimum = kind === "cabinet" && run.orientation === "horizontal" && minimum > 2
+          ? 2 : minimum;
+        for (let length = runMaximum; length >= runMinimum; length -= 1) {
           const starts = Array.from(
             { length: usable.length - length + 1 },
             (_, index) => index,

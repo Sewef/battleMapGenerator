@@ -16,9 +16,7 @@ export const INTERIOR_ASSET_SPRITE_LAYOUTS: Readonly<
   Record<string, InteriorPropSpriteLayout>
 > = {
   // These files occupy one gameplay cell, but their artwork rises one cell north.
-  "altar_1x3.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
   "barrel_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "cabinet_1x2.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
   "cabinet_north_2x1.png": { renderWidthCells: 2, renderHeightCells: 2, anchor: "bottom" },
   "cabinet_south_2x1.png": { renderWidthCells: 2, renderHeightCells: 2, anchor: "bottom" },
   "counter_horizontal_left_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
@@ -42,6 +40,22 @@ export const INTERIOR_ASSET_SPRITE_LAYOUTS: Readonly<
 };
 
 export function interiorAssetSpriteLayout(assetName: string) {
+  const verticalAltar = /^altar_vertical_1x(\d+)\.png$/.exec(assetName);
+  if (verticalAltar) {
+    return {
+      renderWidthCells: 1,
+      renderHeightCells: Number(verticalAltar[1]) + 1,
+      anchor: "bottom" as const,
+    };
+  }
+  const verticalCabinet = /^cabinet_vertical_1x(\d+)\.png$/.exec(assetName);
+  if (verticalCabinet) {
+    return {
+      renderWidthCells: 1,
+      renderHeightCells: Number(verticalCabinet[1]) + 1,
+      anchor: "bottom" as const,
+    };
+  }
   const horizontalComposite = /^(table|counter|bench)_horizontal_(\d+)x1\.png$/.exec(assetName);
   if (horizontalComposite) {
     return {
@@ -248,15 +262,13 @@ export function createTilesetAssets() {
     hearth2x1: image(generated("hearth_2x1.png")),
     hearth1x3: image(generated("hearth_1x3.png")),
     hearth3x1: image(generated("hearth_3x1.png")),
-    cabinet1x2: image(generated("cabinet_1x2.png")),
+    cabinetVertical1x2: image(lpc("cabinet_vertical_1x2.png")),
     cabinet2x1North: image(lpc("cabinet_north_2x1.png")),
-    cabinet1x3: image(generated("cabinet_1x3.png")),
-    cabinet3x1: image(generated("cabinet_3x1.png")),
+    cabinetVertical1x3: image(lpc("cabinet_vertical_1x3.png")),
     cabinet2x1South: image(lpc("cabinet_south_2x1.png")),
-    cabinet3x1South: image(generated("cabinet_3x1_south.png")),
-    altar1x2: image(generated("altar_1x2.png")),
+    altarVertical1x2: image(lpc("altar_vertical_1x2.png")),
     altar2x1: image(generated("altar_2x1.png")),
-    altar1x3: image(generated("altar_1x3.png")),
+    altarVertical1x3: image(lpc("altar_vertical_1x3.png")),
     altar3x1: image(lpc("altar_3x1.png")),
     coffin1x2: image(generated("coffin_1x2.png")),
     coffin2x1: image(generated("coffin_2x1.png")),

@@ -625,14 +625,14 @@ function interiorPropSpriteItems(
       ? rectangle.width > rectangle.height
         ? prop.points.length === 2
           ? `cabinet_${prop.facing === "south" ? "south" : "north"}_2x1.png`
-          : `cabinet_3x1${prop.facing === "south" ? "_south" : ""}.png`
-        : `cabinet_1x${prop.points.length}.png`
+          : undefined
+        : `cabinet_vertical_1x${prop.points.length}.png`
     : prop.kind === "tomb" && prop.points.length === 2
       ? rectangle.width > rectangle.height ? "coffin_2x1.png" : "coffin_1x2.png"
     : prop.kind === "altar" && (prop.points.length === 2 || prop.points.length === 3)
       ? rectangle.width > rectangle.height
         ? `altar_${prop.points.length}x1.png`
-        : `altar_1x${prop.points.length}.png`
+        : `altar_vertical_1x${prop.points.length}.png`
     : compositeAssetName ?? (prop.kind === "bench"
       ? upholsteredBench ? casualSofaNames[variant % casualSofaNames.length]
         : `bench_${prop.facing === "south" || prop.facing === "west"
@@ -652,7 +652,10 @@ function interiorPropSpriteItems(
   if (!assetName) return [];
   const spriteLayout = interiorAssetSpriteLayout(assetName);
   const lpcAsset = modularWoodenBench || modularTable || modularCounter ||
-    upholsteredBench || !!bedAsset || /^cabinet_(north|south)_2x1\.png$/.test(assetName);
+    upholsteredBench || !!bedAsset ||
+    /^cabinet_(north|south)_2x1\.png$/.test(assetName) ||
+    /^cabinet_vertical_1x[23]\.png$/.test(assetName) ||
+    /^altar_vertical_1x[23]\.png$/.test(assetName);
   const assetFolder = bedAsset ? `lpc/${bedAsset.folder}/`
     : upholsteredBench ? "lpc/casual_sofa/"
     : lpcAsset ? "lpc/"

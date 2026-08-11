@@ -49,19 +49,17 @@ export interface TilesetPropImages {
   hearth2x1: CanvasImageSource;
   hearth1x3: CanvasImageSource;
   hearth3x1: CanvasImageSource;
-  cabinet1x2: CanvasImageSource;
+  cabinetVertical1x2: CanvasImageSource;
   cabinet2x1North: CanvasImageSource;
-  cabinet1x3: CanvasImageSource;
-  cabinet3x1: CanvasImageSource;
+  cabinetVertical1x3: CanvasImageSource;
   cabinet2x1South: CanvasImageSource;
-  cabinet3x1South: CanvasImageSource;
   tableHorizontalByLength: Readonly<Record<number, CanvasImageSource>>;
   tableVerticalByLength: Readonly<Record<number, CanvasImageSource>>;
   counterHorizontalByLength: Readonly<Record<number, CanvasImageSource>>;
   counterVerticalByLength: Readonly<Record<number, CanvasImageSource>>;
-  altar1x2: CanvasImageSource;
+  altarVertical1x2: CanvasImageSource;
   altar2x1: CanvasImageSource;
-  altar1x3: CanvasImageSource;
+  altarVertical1x3: CanvasImageSource;
   altar3x1: CanvasImageSource;
   benchHorizontalByLength: Readonly<Record<number, CanvasImageSource>>;
   benchVerticalByLength: Readonly<Record<number, CanvasImageSource>>;
@@ -2448,8 +2446,8 @@ function drawInteriorProps(
       }
       const altarImage = prop === "altar" && (propCells.length === 2 || propCells.length === 3)
         ? propCells.length === 3
-          ? vertical ? tilesetProps?.altar1x3 : tilesetProps?.altar3x1
-          : vertical ? tilesetProps?.altar1x2 : tilesetProps?.altar2x1
+          ? vertical ? tilesetProps?.altarVertical1x3 : tilesetProps?.altar3x1
+          : vertical ? tilesetProps?.altarVertical1x2 : tilesetProps?.altar2x1
         : undefined;
       if (altarImage) {
         const source = imageSourceSize(altarImage);
@@ -2500,9 +2498,8 @@ function drawInteriorProps(
       }
       const wallPropImage = prop === "cabinet" && (propCells.length === 2 || propCells.length === 3)
         ? propCells.length === 3
-          ? vertical ? tilesetProps?.cabinet1x3
-            : propFacing === "south" ? tilesetProps?.cabinet3x1South : tilesetProps?.cabinet3x1
-          : vertical ? tilesetProps?.cabinet1x2
+          ? vertical ? tilesetProps?.cabinetVertical1x3 : undefined
+          : vertical ? tilesetProps?.cabinetVertical1x2
             : propFacing === "south"
               ? tilesetProps?.cabinet2x1South : tilesetProps?.cabinet2x1North
         : prop === "tomb" && propCells.length === 2
