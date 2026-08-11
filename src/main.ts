@@ -78,8 +78,10 @@ const owlbearDownloadButton =
   document.querySelector<HTMLButtonElement>("#download-owlbear")!;
 const {
   terrain: tilesetImage,
+  terrainTiles: tilesetTerrain,
   props: tilesetProps,
   terrainReady: tilesetReady,
+  terrainStatus: tilesetTerrainStatus,
   propsReady: tilesetPropsReady,
   propsStatus: tilesetPropsStatus,
 } = createTilesetAssets();
@@ -109,6 +111,7 @@ let mapRevision = 0;
 let pendingGenerationFrame: number | undefined;
 let pendingSeedGeneration: number | undefined;
 let lastTilesetWarning = "";
+let tilesetTerrainReadyLogged = false;
 let tilesetPropsReadyLogged = false;
 const hiddenLegendItems = new Set<string>();
 let owlbearExportCache: {
@@ -184,7 +187,7 @@ function renderMap(grid: Grid, targetCanvas = previewCanvas, cellSize?: number) 
     const status = tilesetPropsStatus();
     const diagnostic = isInteriorMode(activePreset.mode)
       ? `${activePreset.mode}:${status.loaded}:${status.pending}:${status.failed.join("|")}`
-      : `${activePreset.mode}:terrain:${tilesetImage.complete}:${tilesetImage.naturalWidth}`;
+      : `${activePreset.mode}:terrain:${JSON.stringify(tilesetTerrainStatus())}`;
     if (diagnostic !== lastTilesetWarning) {
       lastTilesetWarning = diagnostic;
       console.warn("[tileset] Rendering without tileset: assets unavailable", {
@@ -206,6 +209,7 @@ function renderMap(grid: Grid, targetCanvas = previewCanvas, cellSize?: number) 
     showGrid: previewGridInput.checked,
     useTileset,
     tilesetImage: tilesetReady() ? tilesetImage : undefined,
+    tilesetTerrain: tilesetReady() ? tilesetTerrain : undefined,
     tilesetProps: tilesetPropsReady() ? tilesetProps : undefined,
     customProps: useTileset ? activeCustomProps() : undefined,
     stylizedLighting: stylizedLightingInput.checked,
@@ -295,6 +299,7 @@ function webpRenderOptions(includeProps: boolean) {
     showGrid: showGridInput.checked,
     useTileset,
     tilesetImage: tilesetReady() ? tilesetImage : undefined,
+    tilesetTerrain: tilesetReady() ? tilesetTerrain : undefined,
     tilesetProps: tilesetPropsReady() ? tilesetProps : undefined,
     customProps: useTileset ? activeCustomProps() : undefined,
     stylizedLighting: stylizedLightingInput.checked,
@@ -568,15 +573,18 @@ useTilesetInput.addEventListener("change", () => {
   renderMap(currentGrid);
 });
 stylizedLightingInput.addEventListener("change", () => renderMap(currentGrid));
-tilesetImage.addEventListener("load", () => {
-  console.info("[tileset] Terrain loaded", {
-    source: tilesetImage.currentSrc || tilesetImage.src,
+collectTilesetImages({ tilesetImage, tilesetTerrain }).forEach((image) => {
+  image.addEventListener("load", () => {
+    if (!tilesetReady() || tilesetTerrainReadyLogged) return;
+    tilesetTerrainReadyLogged = true;
+    console.info("[tileset] All terrain assets loaded", tilesetTerrainStatus());
+    if (useTilesetInput.checked) renderMap(currentGrid);
   });
-  if (useTilesetInput.checked) renderMap(currentGrid);
-});
-tilesetImage.addEventListener("error", () => {
-  console.error("[tileset] Failed to load terrain", {
-    source: tilesetImage.currentSrc || tilesetImage.src,
+  image.addEventListener("error", () => {
+    console.error("[tileset] Failed to load terrain asset", {
+      source: image.currentSrc || image.src,
+      ...tilesetTerrainStatus(),
+    });
   });
 });
 collectTilesetImages(tilesetProps).forEach((image) => {

@@ -1,4 +1,4 @@
-import type { TilesetPropImages } from "./canvas";
+import type { TilesetPropImages, TilesetTerrainImages } from "./canvas";
 
 export interface InteriorPropSpriteLayout {
   renderWidthCells: number;
@@ -230,6 +230,16 @@ export function tilesetLoadStatus(value: unknown): TilesetLoadStatus {
 
 export function createTilesetAssets() {
   const terrain = image(bailey("terrain.png"));
+  const terrainTiles: Record<keyof TilesetTerrainImages, HTMLImageElement> = {
+    beachSand: image(lpc("terrain/beach_sand.png")),
+    coldWater: image(lpc("terrain/cold_water.png")),
+    desertSand: image(lpc("terrain/desert_sand.png")),
+    grass: image(lpc("terrain/grass.png")),
+    ice: image(lpc("terrain/ice.png")),
+    lava: image(lpc("terrain/lava.png")),
+    snow: image(lpc("terrain/snow.png")),
+    water: image(lpc("terrain/water.png")),
+  };
   const props = {
     // Outdoor Bailey tiles.
     tree1x1: image(bailey("tree_1x1.png")),
@@ -303,12 +313,24 @@ export function createTilesetAssets() {
     coffin2x1: image(interior("coffin_2x1.png")),
   } satisfies TilesetPropImages;
 
-  const terrainReady = () => terrain.complete && terrain.naturalWidth > 0;
+  const terrainStatus = () => tilesetLoadStatus({ terrain, terrainTiles });
+  const terrainReady = () => {
+    const status = terrainStatus();
+    return status.loaded === status.total;
+  };
   const propsStatus = () => tilesetLoadStatus(props);
   const propsReady = () => {
     const status = propsStatus();
     return status.loaded === status.total;
   };
 
-  return { terrain, props, terrainReady, propsReady, propsStatus };
+  return {
+    terrain,
+    terrainTiles,
+    props,
+    terrainReady,
+    terrainStatus,
+    propsReady,
+    propsStatus,
+  };
 }
