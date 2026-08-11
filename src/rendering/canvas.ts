@@ -39,9 +39,9 @@ export interface TilesetPropImages {
   tree2x2: CanvasImageSource;
   rock1x1: CanvasImageSource;
   rock2x2: CanvasImageSource;
-  crate1x1: CanvasImageSource;
+  crate1x1: readonly CanvasImageSource[];
   barrel1x1: CanvasImageSource;
-  bucket1x1: CanvasImageSource;
+  bucket1x1: readonly CanvasImageSource[];
   stool1x1: CanvasImageSource;
   bedSingles: Record<"north" | "east" | "south" | "west", readonly CanvasImageSource[]>;
   bedDoubles: Record<"north" | "east" | "south" | "west", readonly CanvasImageSource[]>;
@@ -61,6 +61,12 @@ export interface TilesetPropImages {
   tableVerticalTop: CanvasImageSource;
   tableVerticalMiddle: CanvasImageSource;
   tableVerticalDown: CanvasImageSource;
+  counterHorizontalLeft: CanvasImageSource;
+  counterHorizontalMiddle: CanvasImageSource;
+  counterHorizontalRight: CanvasImageSource;
+  counterVerticalTop: CanvasImageSource;
+  counterVerticalMiddle: CanvasImageSource;
+  counterVerticalDown: CanvasImageSource;
   altar1x2: CanvasImageSource;
   altar2x1: CanvasImageSource;
   altar1x3: CanvasImageSource;
@@ -1289,10 +1295,10 @@ function drawTerrainLayers(
     const maskBlur = terrain === Terrain.Wall || terrain === Terrain.Door
       ? 0
       : terrain === Terrain.Ravine
-      ? Math.max(.75, cellSize * .035)
-      : terrain === Terrain.Cliff
-        ? 0
-        : Math.max(1.5, cellSize * .11);
+        ? Math.max(.75, cellSize * .035)
+        : terrain === Terrain.Cliff
+          ? 0
+          : Math.max(1.5, cellSize * .11);
     layerContext.filter = maskBlur > 0 ? `blur(${maskBlur}px)` : "none";
     layerContext.drawImage(mask, 0, 0);
     layerContext.filter = "none";
@@ -1507,9 +1513,9 @@ function drawInteriorArchitecture(
   const floorTileIndex = mode === "house" || mode === "tavern" || mode === "ship" ||
     mode === "ship-deck" ? 0
     : mode === "crypt" ? 2
-    : mode === "castle" ? 2
-    : mode === "cathedral" ? 3
-    : 3;
+      : mode === "castle" ? 2
+        : mode === "cathedral" ? 3
+          : 3;
   const drawFloorTile = (left: number, top: number) => {
     if (!tilesetProps?.indoorTerrain) return false;
     context.save();
@@ -2388,6 +2394,36 @@ function drawInteriorProps(
         spanHeight === cellSize;
       const modularVerticalTable = prop === "table" && propCells.length > 1 &&
         spanWidth === cellSize;
+      const counterImages = prop === "bar" && tilesetProps
+        ? vertical
+          ? [
+            tilesetProps.counterVerticalTop,
+            tilesetProps.counterVerticalMiddle,
+            tilesetProps.counterVerticalDown,
+          ] as const
+          : [
+            tilesetProps.counterHorizontalLeft,
+            tilesetProps.counterHorizontalMiddle,
+            tilesetProps.counterHorizontalRight,
+          ] as const
+        : undefined;
+      if (counterImages) {
+        const orderedCells = [...propCells].sort((first, second) => vertical
+          ? first.y - second.y : first.x - second.x);
+        context.save();
+        context.imageSmoothingEnabled = false;
+        for (let index = 0; index < orderedCells.length; index += 1) {
+          const image = index === 0 ? counterImages[0]
+            : index === orderedCells.length - 1 ? counterImages[2]
+              : counterImages[1];
+          const cell = orderedCells[index];
+          context.drawImage(image, cell.x * cellSize,
+            vertical ? cell.y * cellSize : (cell.y - 1) * cellSize,
+            cellSize, vertical ? cellSize : cellSize * 2);
+        }
+        context.restore();
+        continue;
+      }
       const modularTableImages = tilesetProps
         ? [
           tilesetProps.tableHorizontalLeft,
@@ -2402,7 +2438,7 @@ function drawInteriorProps(
         for (let index = 0; index < orderedCells.length; index += 1) {
           const image = index === 0 ? modularTableImages[0]
             : index === orderedCells.length - 1 ? modularTableImages[2]
-            : modularTableImages[1];
+              : modularTableImages[1];
           const cell = orderedCells[index];
           context.drawImage(image, cell.x * cellSize, (cell.y - 1) * cellSize,
             cellSize, cellSize * 2);
@@ -2424,7 +2460,7 @@ function drawInteriorProps(
         for (let index = 0; index < orderedCells.length; index += 1) {
           const image = index === 0 ? modularVerticalTableImages[0]
             : index === orderedCells.length - 1 ? modularVerticalTableImages[2]
-            : modularVerticalTableImages[1];
+              : modularVerticalTableImages[1];
           const cell = orderedCells[index];
           context.drawImage(image, cell.x * cellSize, cell.y * cellSize,
             cellSize, cellSize);
@@ -2508,7 +2544,7 @@ function drawInteriorProps(
         for (let index = 0; index < orderedCells.length; index += 1) {
           const image = index === 0 ? modularBenchImages[0]
             : index === orderedCells.length - 1 ? modularBenchImages[2]
-            : modularBenchImages[1];
+              : modularBenchImages[1];
           const cell = orderedCells[index];
           const cellCenterX = (cell.x + .5) * cellSize;
           const cellCenterY = (cell.y + .5) * cellSize;
@@ -2534,7 +2570,7 @@ function drawInteriorProps(
         for (let index = 0; index < orderedCells.length; index += 1) {
           const image = index === 0 ? modularVerticalBenchImages[0]
             : index === orderedCells.length - 1 ? modularVerticalBenchImages[2]
-            : modularVerticalBenchImages[1];
+              : modularVerticalBenchImages[1];
           const cell = orderedCells[index];
           context.drawImage(image, cell.x * cellSize, cell.y * cellSize,
             cellSize, cellSize);
@@ -2587,7 +2623,7 @@ function drawInteriorProps(
       }
       const bedImages = prop === "bed" && !spaceshipFurniture
         ? (propCells.length === 4 ? tilesetProps?.bedDoubles : tilesetProps?.bedSingles)
-          ?.[propFacing ?? "north"]
+        ?.[propFacing ?? "north"]
         : undefined;
       const bedIndex = bedImages?.length ? variantIndex % bedImages.length : 0;
       const bedImage = bedImages?.[bedIndex];
@@ -2595,7 +2631,7 @@ function drawInteriorProps(
         const source = imageSourceSize(bedImage) ?? { width: spanWidth, height: spanHeight };
         const bedAsset = bedAssetDefinitions(propCells.length === 4,
           propFacing ?? "north")[bedIndex];
-        const scale = cellSize / 32 * (bedAsset?.scale ?? 1);
+        const scale = cellSize / 32;
         context.save();
         context.imageSmoothingEnabled = Math.abs(scale - Math.round(scale)) > .001;
         context.imageSmoothingQuality = "high";
@@ -2615,9 +2651,11 @@ function drawInteriorProps(
                     : prop === "flower_pot" ? `flower_pot_${variantIndex % 3 + 1}_1x1.png`
                       : undefined;
       const tileImage = prop === "chair" ? tilesetProps?.stool1x1
-        : prop === "crate" ? tilesetProps?.crate1x1
+        : prop === "crate" && tilesetProps?.crate1x1.length
+          ? tilesetProps?.crate1x1[variantIndex % tilesetProps.crate1x1.length]
           : prop === "barrel" ? tilesetProps?.barrel1x1
-            : prop === "bucket" ? tilesetProps?.bucket1x1
+            : prop === "bucket" && tilesetProps?.bucket1x1.length
+              ? tilesetProps.bucket1x1[variantIndex % tilesetProps.bucket1x1.length]
               : prop === "drawers" && tilesetProps?.drawers1x1.length
                 ? tilesetProps.drawers1x1[variantIndex % tilesetProps.drawers1x1.length]
                 : prop === "shelf" && tilesetProps?.shelves1x1.length
@@ -3923,7 +3961,7 @@ function drawRoadNetwork(
     const positiveHeight = endpointHeight(1);
     const storedDirection = component.reduce((score, { x, y }) =>
       score + (grid[y][x].transitionNormalX ?? 0) * axisX +
-        (grid[y][x].transitionNormalY ?? 0) * axisY, 0);
+      (grid[y][x].transitionNormalY ?? 0) * axisY, 0);
     const highSide = negativeHeight !== undefined && positiveHeight !== undefined
       ? Math.sign(positiveHeight - negativeHeight)
       : Math.sign(storedDirection);
@@ -5752,11 +5790,11 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
 
   if (!updateInterface) return;
   const terrainItems = Object.values(Terrain).map((kind) => ({
-      key: kind,
-      label: getTerrainStyle(kind, mode).label,
-      className: kind,
-      color: getTerrainStyle(kind, mode).color,
-    })).filter(({ key }) => (counts.get(key) ?? 0) > 0);
+    key: kind,
+    label: getTerrainStyle(kind, mode).label,
+    className: kind,
+    color: getTerrainStyle(kind, mode).color,
+  })).filter(({ key }) => (counts.get(key) ?? 0) > 0);
   const obstacleItems = [
     { key: Obstacle.Tree, label: "Tree", className: "tree", color: "" },
     {
@@ -5793,8 +5831,8 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
         </div>
         <div class="legend-items">
           ${items.map(({ key, label: itemLabel, className, color }) =>
-            `<button type="button" data-legend-item="${key}" class="legend-item ${hiddenItems.has(key) ? "is-hidden" : ""}" aria-pressed="${hiddenItems.has(key)}"><i class="swatch ${className}"${color ? ` style="background:${color}"` : ""}></i><span>${itemLabel}</span><small>${counts.get(key)}</small></button>`
-          ).join("")}
+      `<button type="button" data-legend-item="${key}" class="legend-item ${hiddenItems.has(key) ? "is-hidden" : ""}" aria-pressed="${hiddenItems.has(key)}"><i class="swatch ${className}"${color ? ` style="background:${color}"` : ""}></i><span>${itemLabel}</span><small>${counts.get(key)}</small></button>`
+    ).join("")}
         </div>
       </section>`;
   };

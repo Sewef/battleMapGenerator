@@ -16,11 +16,21 @@ export const INTERIOR_ASSET_SPRITE_LAYOUTS: Readonly<
   Record<string, InteriorPropSpriteLayout>
 > = {
   // These files occupy one gameplay cell, but their artwork rises one cell north.
+  "barrel_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
+  "cabinet_1x2.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
+  "counter_horizontal_left_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
+  "counter_horizontal_middle_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
+  "counter_horizontal_right_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
   "drawer_1_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
   "drawer_2_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
   "drawer_3_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "shelf_1_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "shelf_2_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
+  "shelf_1_1x1.png": { renderWidthCells: 1, renderHeightCells: 3, anchor: "bottom" },
+  "shelf_2_1x1.png": { renderWidthCells: 1, renderHeightCells: 3, anchor: "bottom" },
+  "shelf_3_1x1.png": { renderWidthCells: 1, renderHeightCells: 3, anchor: "bottom" },
+  "shelf_4_1x1.png": { renderWidthCells: 1, renderHeightCells: 3, anchor: "bottom" },
+  "shelf_5_1x1.png": { renderWidthCells: 1, renderHeightCells: 3, anchor: "bottom" },
+  "shelf_6_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
+  "shelf_7_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
   "statue_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
   "table_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
   "table_horizontal_left.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
@@ -48,31 +58,19 @@ export interface BedAssetDefinition {
   // Point in the trimmed image aligned with the center of the occupied cells.
   anchorX: number;
   anchorY: number;
-  scale: number;
 }
 
 const BED_COLORS = ["blue", "brown", "green", "purple", "red", "white", "yellow"] as const;
 const CHILD_BED_COLORS = [...BED_COLORS, "grey"] as const;
 
-function wallAlignedBedLayout(
-  width: number,
-  height: number,
-  scale: number,
-  facing: FurnitureFacing,
-) {
-  // Every bed is two cells deep. Move the image anchor from its visual center
-  // to the wall-facing edge of that 64 px footprint.
-  const wallDistanceFromCenter = 32 / scale;
+function gridAlignedBedLayout(doubleBed: boolean, horizontal: boolean) {
+  const width = doubleBed || horizontal ? 64 : 32;
+  const height = doubleBed || !horizontal ? 64 : 32;
   return {
     width,
     height,
-    scale,
-    anchorX: facing === "west" ? wallDistanceFromCenter
-      : facing === "east" ? width - wallDistanceFromCenter
-      : width / 2,
-    anchorY: facing === "north" ? wallDistanceFromCenter
-      : facing === "south" ? height - wallDistanceFromCenter
-      : height / 2,
+    anchorX: width / 2,
+    anchorY: height / 2,
   };
 }
 
@@ -85,34 +83,18 @@ export function bedAssetDefinitions(
     return BED_COLORS.flatMap((color) => ["plain", "patterned"].map((style) => ({
       folder: "bed_double" as const,
       name: `${color}_${style}_${facing}.png`,
-      ...wallAlignedBedLayout(
-        horizontal ? 74 : 62,
-        horizontal ? style === "patterned" ? 64 : 63
-          : facing === "north" ? 72 : 71,
-        .85,
-        facing,
-      ),
+      ...gridAlignedBedLayout(true, horizontal),
     })));
   }
   const singleBeds = BED_COLORS.map((color) => ({
     folder: "bed_single" as const,
     name: `${color}_${facing}.png`,
-    ...wallAlignedBedLayout(
-      horizontal ? 74 : 46,
-      horizontal ? 52 : facing === "north" ? 73 : 71,
-      .72,
-      facing,
-    ),
+    ...gridAlignedBedLayout(false, horizontal),
   }));
   const childBeds = CHILD_BED_COLORS.map((color) => ({
     folder: "bed_children" as const,
     name: `${color}_${facing}.png`,
-    ...wallAlignedBedLayout(
-      horizontal ? 56 : 32,
-      horizontal ? 38 : facing === "north" ? 59 : 57,
-      .8,
-      facing,
-    ),
+    ...gridAlignedBedLayout(false, horizontal),
   }));
   return [...singleBeds, ...childBeds];
 }
@@ -163,10 +145,10 @@ export function createTilesetAssets() {
     rock1x1: image(bailey("rock_1x1.png")),
     rock2x2: image(bailey("rock_2x2.png")),
 
-    // Small Bailey interior props.
-    crate1x1: image(bailey("crate_1x1.png")),
-    barrel1x1: image(bailey("barrel_1x1.png")),
-    bucket1x1: image(bailey("bucket_1x1.png")),
+    crate1x1: numberedImages((index) => lpc(`crate_${index}_1x1.png`), 4),
+    barrel1x1: image(lpc("barrel_1x1.png")),
+    bucket1x1: numberedImages((index) => lpc(`bucket_${index}_1x1.png`), 2),
+
     bedSingles: {
       north: bedImages(false, "north"),
       east: bedImages(false, "east"),
@@ -182,7 +164,7 @@ export function createTilesetAssets() {
     table2x2: image(bailey("table_2x2.png")),
     indoorTerrain: image(bailey("terrain_indoor.png")),
     drawers1x1: numberedImages((index) => bailey(`drawer_${index}_1x1.png`), 3),
-    shelves1x1: numberedImages((index) => bailey(`shelf_${index}_1x1.png`), 2),
+    shelves1x1: numberedImages((index) => lpc(`shelf_${index}_1x1.png`), 7),
     statue1x1: image(bailey("statue_1x1.png")),
     flowerPots1x1: numberedImages((index) => bailey(`flower_pot_${index}_1x1.png`), 3),
 
@@ -195,6 +177,12 @@ export function createTilesetAssets() {
     tableVerticalTop: image(lpc("table_vertical_top.png")),
     tableVerticalMiddle: image(lpc("table_vertical_middle.png")),
     tableVerticalDown: image(lpc("table_vertical_down.png")),
+    counterHorizontalLeft: image(lpc("counter_horizontal_left_1x1.png")),
+    counterHorizontalMiddle: image(lpc("counter_horizontal_middle_1x1.png")),
+    counterHorizontalRight: image(lpc("counter_horizontal_right_1x1.png")),
+    counterVerticalTop: image(lpc("counter_vertical_top_1x1.png")),
+    counterVerticalMiddle: image(lpc("counter_vertical_middle_1x1.png")),
+    counterVerticalDown: image(lpc("counter_vertical_down_1x1.png")),
     benchHorizontalLeft: image(lpc("bench_horizontal_left_1x1.png")),
     benchHorizontalMiddle: image(lpc("bench_horizontal_middle_1x1.png")),
     benchHorizontalRight: image(lpc("bench_horizontal_right_1x1.png")),
@@ -216,10 +204,10 @@ export function createTilesetAssets() {
     hearth1x3: image(generated("hearth_1x3.png")),
     hearth3x1: image(generated("hearth_3x1.png")),
     cabinet1x2: image(generated("cabinet_1x2.png")),
-    cabinet2x1: image(generated("cabinet_2x1.png")),
+    cabinet2x1: image(lpc("cabinet_2x1.png")),
     cabinet1x3: image(generated("cabinet_1x3.png")),
     cabinet3x1: image(generated("cabinet_3x1.png")),
-    cabinet2x1South: image(generated("cabinet_2x1_south.png")),
+    cabinet2x1South: image(lpc("cabinet_2x1.png")),
     cabinet3x1South: image(generated("cabinet_3x1_south.png")),
     altar1x2: image(generated("altar_1x2.png")),
     altar2x1: image(generated("altar_2x1.png")),

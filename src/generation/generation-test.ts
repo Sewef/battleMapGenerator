@@ -2093,6 +2093,55 @@ for (const asset of ["hearth_2x1.png", "hearth_1x2.png", "hearth_3x1.png", "hear
   assert(hearthSpriteItems.some(({ image }) => image?.url?.endsWith(asset)),
     `interior tileset export: missing ${asset}`);
 
+const counterSpriteGrid: Grid = Array.from({ length: 4 }, () =>
+  Array.from({ length: 4 }, () => ({ terrain: Terrain.Ground, obstacle: Obstacle.None })));
+for (const [id, orientation, points] of [
+  [1, "horizontal", [[0, 0], [1, 0], [2, 0]]],
+  [2, "vertical", [[3, 1], [3, 2], [3, 3]]],
+] as const) {
+  for (const [x, y] of points) {
+    Object.assign(counterSpriteGrid[y][x], {
+      interiorProp: "bar", interiorPropId: id, propOrientation: orientation,
+    });
+  }
+}
+const counterSpriteExport = await createOwlbearSceneJson(
+  counterSpriteGrid,
+  "counter-sprite-export",
+  new Set(),
+  {
+    useTileset: true,
+    mapImage: {
+      url: "https://example.com/counter-sprites.webp",
+      mime: "image/webp",
+      width: counterSpriteGrid[0].length * 48,
+      height: counterSpriteGrid.length * 48,
+    },
+  },
+);
+const counterSpriteItems = Object.values((JSON.parse(counterSpriteExport.json) as {
+  items: { shared: Record<string, {
+    type: string;
+    image?: { url?: string };
+    metadata?: Record<string, unknown>;
+  }> };
+}).items.shared).filter((item) => item.metadata?.[interiorPropMetadataKey] !== undefined);
+const counterAssets = [
+  "counter_horizontal_left_1x1.png",
+  "counter_horizontal_middle_1x1.png",
+  "counter_horizontal_right_1x1.png",
+  "counter_vertical_top_1x1.png",
+  "counter_vertical_middle_1x1.png",
+  "counter_vertical_down_1x1.png",
+];
+assert(counterSpriteItems.length === counterAssets.length &&
+  counterSpriteItems.every(({ type }) => type === "IMAGE"),
+"interior tileset export: counters must be movable image props");
+for (const asset of counterAssets) {
+  assert(counterSpriteItems.some(({ image }) => image?.url?.endsWith(asset)),
+    `interior tileset export: missing ${asset}`);
+}
+
 const lightSourceGrid: Grid = [[
   {
     terrain: Terrain.Ground,

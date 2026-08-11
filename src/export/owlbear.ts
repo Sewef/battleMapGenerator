@@ -596,6 +596,9 @@ function interiorPropSpriteItems(
   const modularVerticalTable = prop.kind === "table" && prop.points.length > 1 &&
     rectangle.width === 1;
   const modularTable = modularHorizontalTable || modularVerticalTable;
+  const modularHorizontalCounter = prop.kind === "bar" && rectangle.height === 1;
+  const modularVerticalCounter = prop.kind === "bar" && rectangle.width === 1;
+  const modularCounter = modularHorizontalCounter || modularVerticalCounter;
   const casualSofaNames = upholsteredBench
     ? casualSofaAssetNames((prop.facing ?? "north") as FurnitureFacing)
     : [];
@@ -633,6 +636,8 @@ function interiorPropSpriteItems(
               : prop.kind === "shelf" ? `shelf_${variant % 2 + 1}_1x1.png`
                 : prop.kind === "statue" ? "statue_1x1.png"
                   : prop.kind === "flower_pot" ? `flower_pot_${variant % 3 + 1}_1x1.png`
+                    : modularHorizontalCounter ? "counter_horizontal_middle_1x1.png"
+                    : modularVerticalCounter ? "counter_vertical_middle_1x1.png"
                     : modularHorizontalTable ? "table_horizontal_middle.png"
                     : modularVerticalTable ? "table_vertical_middle.png"
                     : prop.kind === "table" && prop.points.length === 1 ? "table_1x1.png"
@@ -641,12 +646,13 @@ function interiorPropSpriteItems(
                         : undefined;
   if (!assetName) return [];
   const spriteLayout = interiorAssetSpriteLayout(assetName);
-  const lpcAsset = modularWoodenBench || modularTable || upholsteredBench || !!bedAsset;
+  const lpcAsset = modularWoodenBench || modularTable || modularCounter ||
+    upholsteredBench || !!bedAsset;
   const assetFolder = bedAsset ? `lpc/${bedAsset.folder}/`
     : upholsteredBench ? "lpc/casual_sofa/"
     : lpcAsset ? "lpc/"
     : BAILEY_INTERIOR_ASSETS.has(assetName) ? "bailey/" : "ai/";
-  const perCell = prop.kind === "crate" || modularWoodenBench || modularTable;
+  const perCell = prop.kind === "crate" || modularWoodenBench || modularTable || modularCounter;
   const fittedLength = prop.kind === "hearth" || prop.kind === "cabinet" ||
     prop.kind === "tomb" || prop.kind === "altar" ||
     prop.kind === "table" && !modularTable &&
@@ -657,7 +663,7 @@ function interiorPropSpriteItems(
   const benchAsset = prop.kind === "bench";
   const verticalBench = false;
   const assetWidth = bedAsset ? bedAsset.width
-    : modularWoodenBench || modularTable ? 32
+    : modularWoodenBench || modularTable || modularCounter ? 32
     : upholsteredBench ? prop.facing === "east" || prop.facing === "west" ? 32 : 64
     : benchAsset ? 160 : fittedLength
     ? rectangle.width * 32
@@ -677,12 +683,13 @@ function interiorPropSpriteItems(
     ? spriteLayout.renderHeightCells * 32 : assetHeight;
   const rotation = verticalBench ? 90 : 0;
   const flipHorizontal = false;
-  const orderedBenchPoints = modularWoodenBench || modularTable
+  const orderedModulePoints = modularWoodenBench || modularTable || modularCounter
     ? [...prop.points].sort((first, second) => woodenVerticalBench || modularVerticalTable
+      || modularVerticalCounter
       ? first.y - second.y : first.x - second.x)
     : prop.points;
   const placements = perCell
-    ? orderedBenchPoints.map((point, index) => ({
+    ? orderedModulePoints.map((point, index) => ({
       centerX: point.x + .5,
       centerY: spriteLayout.anchor === "bottom"
         ? point.y + 1 - spriteLayout.renderHeightCells / 2
@@ -690,14 +697,18 @@ function interiorPropSpriteItems(
       widthCells: spriteLayout.renderWidthCells,
       heightCells: spriteLayout.renderHeightCells,
       footprint: [point],
-      assetName: modularWoodenBench || modularTable
+      assetName: modularWoodenBench || modularTable || modularCounter
         ? `${woodenHorizontalBench ? "bench_horizontal"
           : woodenVerticalBench ? "bench_vertical"
+          : modularHorizontalCounter ? "counter_horizontal"
+          : modularVerticalCounter ? "counter_vertical"
           : modularVerticalTable ? "table_vertical" : "table_horizontal"}_${
-          index === 0 ? woodenVerticalBench || modularVerticalTable ? "top" : "left"
-            : index === orderedBenchPoints.length - 1
-              ? woodenVerticalBench || modularVerticalTable ? "down" : "right" : "middle"
-        }${woodenHorizontalBench ? "_1x1" : ""}.png`
+          index === 0 ? woodenVerticalBench || modularVerticalTable || modularVerticalCounter
+            ? "top" : "left"
+            : index === orderedModulePoints.length - 1
+              ? woodenVerticalBench || modularVerticalTable || modularVerticalCounter
+                ? "down" : "right" : "middle"
+        }${woodenHorizontalBench || modularCounter ? "_1x1" : ""}.png`
         : assetName,
     }))
     : [{
@@ -709,10 +720,10 @@ function interiorPropSpriteItems(
         : spriteLayout.anchor === "bottom"
           ? rectangle.minimumY + rectangle.height - layoutAssetHeight / 64
           : rectangle.minimumY + rectangle.height / 2,
-      widthCells: bedAsset ? layoutAssetWidth * bedAsset.scale / 32
+      widthCells: bedAsset ? layoutAssetWidth / 32
         : upholsteredBench ? rectangle.width
         : benchAsset ? prop.points.length : layoutAssetWidth / 32,
-      heightCells: bedAsset ? layoutAssetHeight * bedAsset.scale / 32
+      heightCells: bedAsset ? layoutAssetHeight / 32
         : upholsteredBench ? rectangle.height
         : benchAsset ? 1 : layoutAssetHeight / 32,
       footprint: prop.points,
