@@ -118,7 +118,8 @@ export interface Tile {
   deckFeatureFacing?: "north" | "east" | "south" | "west";
   interiorProp?: "table" | "chair" | "bar" | "cabinet" | "bed" |
     "bench" | "altar" | "crate" | "console" | "tomb" | "hearth" |
-    "drawers" | "shelf" | "statue" | "barrel" | "bucket" | "flower_pot";
+    "drawers" | "shelf" | "statue" | "barrel" | "bucket" | "flower_pot" |
+    "bones" | "wall_chain";
   interiorPropId?: number;
   propOrientation?: "horizontal" | "vertical";
   propFacing?: "north" | "east" | "south" | "west";
@@ -190,7 +191,7 @@ export const OBSTACLE_RULES: Record<
 
 export const INTERIOR_PROP_RULES: Record<
   NonNullable<Tile["interiorProp"]>,
-  { label: string; movement: "blocked"; blocksSight: false }
+  { label: string; movement: "normal" | "blocked"; blocksSight: false }
 > = {
   table: { label: "Table", movement: "blocked", blocksSight: false },
   chair: { label: "Chair", movement: "blocked", blocksSight: false },
@@ -209,6 +210,8 @@ export const INTERIOR_PROP_RULES: Record<
   barrel: { label: "Barrel", movement: "blocked", blocksSight: false },
   bucket: { label: "Bucket", movement: "blocked", blocksSight: false },
   flower_pot: { label: "Flower pot", movement: "blocked", blocksSight: false },
+  bones: { label: "Bones", movement: "normal", blocksSight: false },
+  wall_chain: { label: "Wall chain", movement: "normal", blocksSight: false },
 };
 
 export const DECK_FEATURE_RULES: Record<

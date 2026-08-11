@@ -486,6 +486,8 @@ const INTERIOR_PROP_DRAWING_STYLES: Record<
   barrel: { fillColor: "#805238", strokeColor: "#3b281f", shapeType: "CIRCLE" },
   bucket: { fillColor: "#555d5d", strokeColor: "#252d2d", shapeType: "CIRCLE" },
   flower_pot: { fillColor: "#9a634b", strokeColor: "#4b3028", shapeType: "CIRCLE" },
+  bones: { fillColor: "#d0c8ae", strokeColor: "#625d50", shapeType: "RECTANGLE" },
+  wall_chain: { fillColor: "#62625f", strokeColor: "#292a29", shapeType: "RECTANGLE" },
 };
 
 function dynamicFogLightMetadata(source: MapLightSource) {
@@ -645,6 +647,8 @@ function interiorPropSpriteItems(
               : prop.kind === "shelf" ? `shelf_${variant % 2 + 1}_1x1.png`
                 : prop.kind === "statue" ? "statue_1x1.png"
                   : prop.kind === "flower_pot" ? `flower_pot_${variant % 3 + 1}_1x1.png`
+                    : prop.kind === "bones" ? `bones_${variant % 5 + 1}_1x1.png`
+                      : prop.kind === "wall_chain" ? `wall_chain_${variant % 2 + 1}_1x2.png`
                     : prop.kind === "table" && prop.points.length === 1 ? "table_1x1.png"
                       : prop.kind === "table" && prop.points.length === 4 &&
                         rectangle.width === 2 && rectangle.height === 2 ? "table_2x2.png"
@@ -655,7 +659,8 @@ function interiorPropSpriteItems(
     upholsteredBench || !!bedAsset ||
     /^cabinet_(north|south)_2x1\.png$/.test(assetName) ||
     /^cabinet_vertical_1x[23]\.png$/.test(assetName) ||
-    /^altar_vertical_1x[23]\.png$/.test(assetName);
+    /^altar_vertical_1x[23]\.png$/.test(assetName) ||
+    prop.kind === "bones" || prop.kind === "wall_chain";
   const assetFolder = bedAsset ? `lpc/${bedAsset.folder}/`
     : upholsteredBench ? "lpc/casual_sofa/"
     : lpcAsset ? "lpc/"

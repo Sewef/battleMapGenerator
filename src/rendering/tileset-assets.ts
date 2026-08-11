@@ -39,6 +39,8 @@ export const INTERIOR_ASSET_SPRITE_LAYOUTS: Readonly<
   "table_horizontal_left.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
   "table_horizontal_middle.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
   "table_horizontal_right.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
+  "wall_chain_1_1x2.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
+  "wall_chain_2_1x2.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
 };
 
 export function interiorAssetSpriteLayout(assetName: string) {
@@ -234,6 +236,8 @@ export function createTilesetAssets() {
     shelves1x1: numberedImages((index) => lpc(`shelf_${index}_1x1.png`), 7),
     statue1x1: image(bailey("statue_1x1.png")),
     flowerPots1x1: numberedImages((index) => bailey(`flower_pot_${index}_1x1.png`), 3),
+    bones1x1: numberedImages((index) => lpc(`bones_${index}_1x1.png`), 5),
+    wallChains1x2: numberedImages((index) => lpc(`wall_chain_${index}_1x2.png`), 2),
 
     // Hand-drawn LPC furniture.
     stool1x1: image(lpc("stool_1x1.png")),
@@ -247,9 +251,9 @@ export function createTilesetAssets() {
     counterVerticalByLength: lengthImages((length) =>
       lpc(`counter_vertical_1x${length}.png`), 3, 7),
     benchHorizontalByLength: lengthImages((length) =>
-      lpc(`bench_horizontal_${length}x1.png`), 2, 4),
+      lpc(`bench_horizontal_${length}x1.png`), 2, 5),
     benchVerticalByLength: lengthImages((length) =>
-      lpc(`bench_vertical_1x${length}.png`), 2, 4),
+      lpc(`bench_vertical_1x${length}.png`), 2, 5),
     cannonNorth: image(lpc("cannon_north_1x2.png")),
     cannonSouth: image(lpc("cannon_south_1x2.png")),
     casualSofas: {
@@ -269,7 +273,7 @@ export function createTilesetAssets() {
     cabinetVertical1x3: image(lpc("cabinet_vertical_1x3.png")),
     cabinet2x1South: image(lpc("cabinet_south_2x1.png")),
     altarVertical1x2: image(lpc("altar_vertical_1x2.png")),
-    altar2x1: image(generated("altar_2x1.png")),
+    altar2x1: image(lpc("altar_2x1.png")),
     altarVertical1x3: image(lpc("altar_vertical_1x3.png")),
     altar3x1: image(lpc("altar_3x1.png")),
     coffin1x2: image(generated("coffin_1x2.png")),

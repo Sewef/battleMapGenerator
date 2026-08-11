@@ -75,6 +75,8 @@ export interface TilesetPropImages {
   shelves1x1: readonly CanvasImageSource[];
   statue1x1: CanvasImageSource;
   flowerPots1x1: readonly CanvasImageSource[];
+  bones1x1: readonly CanvasImageSource[];
+  wallChains1x2: readonly CanvasImageSource[];
 }
 
 export interface CustomPropImages {
@@ -2575,7 +2577,9 @@ function drawInteriorProps(
                 : prop === "shelf" ? `shelf_${variantIndex % 2 + 1}_1x1.png`
                   : prop === "statue" ? "statue_1x1.png"
                     : prop === "flower_pot" ? `flower_pot_${variantIndex % 3 + 1}_1x1.png`
-                      : undefined;
+                      : prop === "bones" ? `bones_${variantIndex % 5 + 1}_1x1.png`
+                        : prop === "wall_chain" ? `wall_chain_${variantIndex % 2 + 1}_1x2.png`
+                          : undefined;
       const tileImage = prop === "chair" ? tilesetProps?.stool1x1
         : prop === "crate" && tilesetProps?.crate1x1.length
           ? tilesetProps?.crate1x1[variantIndex % tilesetProps.crate1x1.length]
@@ -2589,7 +2593,11 @@ function drawInteriorProps(
                   : prop === "statue" ? tilesetProps?.statue1x1
                     : prop === "flower_pot" && tilesetProps?.flowerPots1x1.length
                       ? tilesetProps.flowerPots1x1[variantIndex % tilesetProps.flowerPots1x1.length]
-                      : undefined;
+                      : prop === "bones" && tilesetProps?.bones1x1.length
+                        ? tilesetProps.bones1x1[variantIndex % tilesetProps.bones1x1.length]
+                        : prop === "wall_chain" && tilesetProps?.wallChains1x2.length
+                          ? tilesetProps.wallChains1x2[variantIndex % tilesetProps.wallChains1x2.length]
+                          : undefined;
       if (tileImage) {
         const layout = interiorAssetSpriteLayout(tileAssetName ?? "");
         const source = imageSourceSize(tileImage);

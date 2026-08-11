@@ -164,6 +164,16 @@ function assertInterior(grid: Grid, expectedRooms: number, label: string, expect
       assert(cells.length <= (orientation === "horizontal" ? 2 : 3),
         `${label}: cabinet module ${propId} exceeds the available furniture assets`);
     }
+    if (kind === "bones") {
+      assert(cells.length === 1 && /Burial vault/i.test(cells[0].tile.roomRole ?? ""),
+        `${label}: bones ${propId} must be a single floor decoration in a burial vault`);
+    }
+    if (kind === "wall_chain") {
+      const [{ x, y, tile }] = cells;
+      assert(cells.length === 1 && tile.propFacing === "south" &&
+        grid[y - 1]?.[x]?.terrain === Terrain.Wall,
+      `${label}: wall chain ${propId} must hang from a north wall`);
+    }
     if (kind === "bed") {
       assert(cells.length === 2 || cells.length === 4,
         `${label}: bed ${propId} must occupy a 1x2 or 2x2 footprint`);
@@ -1693,6 +1703,14 @@ for (const mode of ["house", "tavern", "cathedral", "crypt"] as const) {
       const tombRoomIds = new Set(tombs.map((tomb) => grid[tomb[0].y][tomb[0].x].roomId));
       assert([...burialRoomIds].every((roomId) => tombRoomIds.has(roomId)),
         `${mode}:${index}: every burial vault needs at least one tomb`);
+      const bonesRoomIds = new Set(grid.flatMap((row) => row.filter((tile) =>
+        tile.interiorProp === "bones").map((tile) => tile.roomId)));
+      assert([...burialRoomIds].every((roomId) => bonesRoomIds.has(roomId)),
+        `${mode}:${index}: every burial vault needs bones on the floor`);
+      const wallChains = grid.flatMap((row) => row.filter((tile) =>
+        tile.interiorProp === "wall_chain"));
+      assert(wallChains.length >= 1,
+        `${mode}:${index}: crypt needs at least one wall chain`);
       const passageProps = grid.flatMap((row) => row.filter((tile) =>
         tile.roomRole === "Processional passage" && tile.interiorProp));
       assert(passageProps.length === 0, `${mode}:${index}: crypt passage must stay clear`);
@@ -2150,8 +2168,8 @@ const compositeFurnitureGrid: Grid = Array.from(
 for (const [id, kind, orientation, points] of [
   [1, "table", "horizontal", [[0, 0], [1, 0]]],
   [2, "table", "vertical", [[4, 0], [4, 1], [4, 2]]],
-  [3, "bench", "horizontal", [[0, 4], [1, 4], [2, 4], [3, 4]]],
-  [4, "bench", "vertical", [[6, 4], [6, 5]]],
+  [3, "bench", "horizontal", [[0, 4], [1, 4], [2, 4], [3, 4], [4, 4]]],
+  [4, "bench", "vertical", [[6, 0], [6, 1], [6, 2], [6, 3], [6, 4]]],
 ] as const) {
   for (const [x, y] of points) {
     Object.assign(compositeFurnitureGrid[y][x], {
@@ -2191,6 +2209,13 @@ for (const [id, facing, points] of [
     });
   }
 }
+Object.assign(compositeFurnitureGrid[6][2], {
+  interiorProp: "bones", interiorPropId: 11, propOrientation: "horizontal",
+});
+Object.assign(compositeFurnitureGrid[6][8], {
+  interiorProp: "wall_chain", interiorPropId: 12,
+  propOrientation: "vertical", propFacing: "south",
+});
 const compositeFurnitureExport = await createOwlbearSceneJson(
   compositeFurnitureGrid,
   "composite-furniture-export",
@@ -2215,14 +2240,16 @@ const compositeFurnitureItems = Object.values((JSON.parse(compositeFurnitureExpo
 const compositeFurnitureAssets = [
   "table_horizontal_2x1.png",
   "table_vertical_1x3.png",
-  "bench_horizontal_4x1.png",
-  "bench_vertical_1x2.png",
+  "bench_horizontal_5x1.png",
+  "bench_vertical_1x5.png",
   "cabinet_north_2x1.png",
   "cabinet_south_2x1.png",
   "cabinet_vertical_1x2.png",
   "cabinet_vertical_1x3.png",
   "altar_vertical_1x2.png",
   "altar_vertical_1x3.png",
+  "bones_2_1x1.png",
+  "wall_chain_1_1x2.png",
 ];
 assert(compositeFurnitureItems.length === compositeFurnitureAssets.length &&
   compositeFurnitureItems.every(({ type }) => type === "IMAGE"),

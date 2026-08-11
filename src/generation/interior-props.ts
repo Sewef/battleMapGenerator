@@ -650,6 +650,14 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
     return false;
   };
 
+  const placeNorthWallDecoration = (room: Room) => {
+    const candidates = shuffled(room.cells, random).filter((point) =>
+      grid[point.y - 1]?.[point.x]?.terrain === Terrain.Wall &&
+      available(room, [point]) && roomRemainsConnected(room, [point]));
+    return candidates.some((point) =>
+      place(room, "wall_chain", [point], "vertical", "south"));
+  };
+
   const placeSmallProp = (room: Room, kind: "barrel" | "bucket" | "flower_pot") => {
     const candidates = shuffled(room.cells, random).sort((a, b) =>
       Number(neighbors(b).some(({ x, y }) => grid[y]?.[x]?.terrain === Terrain.Wall)) -
@@ -1254,6 +1262,7 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
     } else if (/Side chapel|Inner sanctum|Reliquary/i.test(role)) {
       furnishAxialChapel(room);
       if (room.cells.length >= 28) placeNorthWallProp(room, "statue");
+      if (mode === "crypt" && room.cells.length >= 20) placeNorthWallDecoration(room);
     } else if (/Common room/i.test(role)) {
       placeServiceBar(room);
       placeHearth(room);
@@ -1350,6 +1359,9 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
       if (room.cells.length >= 90 && random() < .45) placeSmallProp(room, "flower_pot");
     } else if (/Burial vault/i.test(role)) {
       furnishBurialVault(room);
+      placeScattered(room, "bones", Math.max(1, Math.min(3,
+        Math.floor(room.cells.length / 24))));
+      if (room.cells.length >= 18) placeNorthWallDecoration(room);
     } else if (/Cargo|hold|store|Magazine|Provision|Armory|Treasury/i.test(role)) {
       placeWallRun(room, "crate", 2, 5);
       placeScattered(room, "crate", Math.max(1, Math.min(4, Math.floor(room.cells.length / 14))));
