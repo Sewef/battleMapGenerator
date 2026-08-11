@@ -159,6 +159,10 @@ function assertInterior(grid: Grid, expectedRooms: number, label: string, expect
       }
     }
     assert(reached.size === cells.length, `${label}: prop ${propId} has a broken footprint`);
+    if (kind === "cabinet") {
+      assert(cells.length <= 3,
+        `${label}: cabinet module ${propId} exceeds the available furniture assets`);
+    }
     if (kind === "bed") {
       assert(cells.length === 2 || cells.length === 4,
         `${label}: bed ${propId} must occupy a 1x2 or 2x2 footprint`);
@@ -2127,18 +2131,78 @@ const counterSpriteItems = Object.values((JSON.parse(counterSpriteExport.json) a
   }> };
 }).items.shared).filter((item) => item.metadata?.[interiorPropMetadataKey] !== undefined);
 const counterAssets = [
-  "counter_horizontal_left_1x1.png",
-  "counter_horizontal_middle_1x1.png",
-  "counter_horizontal_right_1x1.png",
-  "counter_vertical_top_1x1.png",
-  "counter_vertical_middle_1x1.png",
-  "counter_vertical_down_1x1.png",
+  "counter_horizontal_3x1.png",
+  "counter_vertical_1x3.png",
 ];
 assert(counterSpriteItems.length === counterAssets.length &&
   counterSpriteItems.every(({ type }) => type === "IMAGE"),
 "interior tileset export: counters must be movable image props");
 for (const asset of counterAssets) {
   assert(counterSpriteItems.some(({ image }) => image?.url?.endsWith(asset)),
+    `interior tileset export: missing ${asset}`);
+}
+
+const compositeFurnitureGrid: Grid = Array.from(
+  { length: 7 },
+  () => Array.from({ length: 8 }, () => ({ terrain: Terrain.Ground, obstacle: Obstacle.None })),
+);
+for (const [id, kind, orientation, points] of [
+  [1, "table", "horizontal", [[0, 0], [1, 0]]],
+  [2, "table", "vertical", [[4, 0], [4, 1], [4, 2]]],
+  [3, "bench", "horizontal", [[0, 4], [1, 4], [2, 4], [3, 4]]],
+  [4, "bench", "vertical", [[6, 4], [6, 5]]],
+] as const) {
+  for (const [x, y] of points) {
+    Object.assign(compositeFurnitureGrid[y][x], {
+      interiorProp: kind, interiorPropId: id, propOrientation: orientation,
+    });
+  }
+}
+for (const [id, facing, points] of [
+  [5, "north", [[0, 6], [1, 6]]],
+  [6, "south", [[4, 6], [5, 6]]],
+] as const) {
+  for (const [x, y] of points) {
+    Object.assign(compositeFurnitureGrid[y][x], {
+      interiorProp: "cabinet", interiorPropId: id,
+      propOrientation: "horizontal", propFacing: facing,
+    });
+  }
+}
+const compositeFurnitureExport = await createOwlbearSceneJson(
+  compositeFurnitureGrid,
+  "composite-furniture-export",
+  new Set(),
+  {
+    useTileset: true,
+    mapImage: {
+      url: "https://example.com/composite-furniture.webp",
+      mime: "image/webp",
+      width: compositeFurnitureGrid[0].length * 48,
+      height: compositeFurnitureGrid.length * 48,
+    },
+  },
+);
+const compositeFurnitureItems = Object.values((JSON.parse(compositeFurnitureExport.json) as {
+  items: { shared: Record<string, {
+    type: string;
+    image?: { url?: string };
+    metadata?: Record<string, unknown>;
+  }> };
+}).items.shared).filter((item) => item.metadata?.[interiorPropMetadataKey] !== undefined);
+const compositeFurnitureAssets = [
+  "table_horizontal_2x1.png",
+  "table_vertical_1x3.png",
+  "bench_horizontal_4x1.png",
+  "bench_vertical_1x2.png",
+  "cabinet_north_2x1.png",
+  "cabinet_south_2x1.png",
+];
+assert(compositeFurnitureItems.length === compositeFurnitureAssets.length &&
+  compositeFurnitureItems.every(({ type }) => type === "IMAGE"),
+"interior tileset export: composite furniture must be one movable image per prop");
+for (const asset of compositeFurnitureAssets) {
+  assert(compositeFurnitureItems.some(({ image }) => image?.url?.endsWith(asset)),
     `interior tileset export: missing ${asset}`);
 }
 

@@ -50,33 +50,21 @@ export interface TilesetPropImages {
   hearth1x3: CanvasImageSource;
   hearth3x1: CanvasImageSource;
   cabinet1x2: CanvasImageSource;
-  cabinet2x1: CanvasImageSource;
+  cabinet2x1North: CanvasImageSource;
   cabinet1x3: CanvasImageSource;
   cabinet3x1: CanvasImageSource;
   cabinet2x1South: CanvasImageSource;
   cabinet3x1South: CanvasImageSource;
-  tableHorizontalLeft: CanvasImageSource;
-  tableHorizontalMiddle: CanvasImageSource;
-  tableHorizontalRight: CanvasImageSource;
-  tableVerticalTop: CanvasImageSource;
-  tableVerticalMiddle: CanvasImageSource;
-  tableVerticalDown: CanvasImageSource;
-  counterHorizontalLeft: CanvasImageSource;
-  counterHorizontalMiddle: CanvasImageSource;
-  counterHorizontalRight: CanvasImageSource;
-  counterVerticalTop: CanvasImageSource;
-  counterVerticalMiddle: CanvasImageSource;
-  counterVerticalDown: CanvasImageSource;
+  tableHorizontalByLength: Readonly<Record<number, CanvasImageSource>>;
+  tableVerticalByLength: Readonly<Record<number, CanvasImageSource>>;
+  counterHorizontalByLength: Readonly<Record<number, CanvasImageSource>>;
+  counterVerticalByLength: Readonly<Record<number, CanvasImageSource>>;
   altar1x2: CanvasImageSource;
   altar2x1: CanvasImageSource;
   altar1x3: CanvasImageSource;
   altar3x1: CanvasImageSource;
-  benchHorizontalLeft: CanvasImageSource;
-  benchHorizontalMiddle: CanvasImageSource;
-  benchHorizontalRight: CanvasImageSource;
-  benchVerticalTop: CanvasImageSource;
-  benchVerticalMiddle: CanvasImageSource;
-  benchVerticalDown: CanvasImageSource;
+  benchHorizontalByLength: Readonly<Record<number, CanvasImageSource>>;
+  benchVerticalByLength: Readonly<Record<number, CanvasImageSource>>;
   cannonNorth: CanvasImageSource;
   cannonSouth: CanvasImageSource;
   casualSofas: Record<"north" | "east" | "south" | "west", readonly CanvasImageSource[]>;
@@ -2394,77 +2382,37 @@ function drawInteriorProps(
         spanHeight === cellSize;
       const modularVerticalTable = prop === "table" && propCells.length > 1 &&
         spanWidth === cellSize;
-      const counterImages = prop === "bar" && tilesetProps
-        ? vertical
-          ? [
-            tilesetProps.counterVerticalTop,
-            tilesetProps.counterVerticalMiddle,
-            tilesetProps.counterVerticalDown,
-          ] as const
-          : [
-            tilesetProps.counterHorizontalLeft,
-            tilesetProps.counterHorizontalMiddle,
-            tilesetProps.counterHorizontalRight,
-          ] as const
+      const counterImage = prop === "bar" && tilesetProps
+        ? (vertical ? tilesetProps.counterVerticalByLength
+          : tilesetProps.counterHorizontalByLength)[propCells.length]
         : undefined;
-      if (counterImages) {
-        const orderedCells = [...propCells].sort((first, second) => vertical
-          ? first.y - second.y : first.x - second.x);
+      if (counterImage) {
         context.save();
         context.imageSmoothingEnabled = false;
-        for (let index = 0; index < orderedCells.length; index += 1) {
-          const image = index === 0 ? counterImages[0]
-            : index === orderedCells.length - 1 ? counterImages[2]
-              : counterImages[1];
-          const cell = orderedCells[index];
-          context.drawImage(image, cell.x * cellSize,
-            vertical ? cell.y * cellSize : (cell.y - 1) * cellSize,
-            cellSize, vertical ? cellSize : cellSize * 2);
-        }
+        context.drawImage(counterImage, propLeft,
+          vertical ? propTop : propBottom - cellSize * 2,
+          spanWidth, vertical ? spanHeight : cellSize * 2);
         context.restore();
         continue;
       }
-      const modularTableImages = tilesetProps
-        ? [
-          tilesetProps.tableHorizontalLeft,
-          tilesetProps.tableHorizontalMiddle,
-          tilesetProps.tableHorizontalRight,
-        ] as const
+      const horizontalTableImage = modularHorizontalTable
+        ? tilesetProps?.tableHorizontalByLength[propCells.length]
         : undefined;
-      if (modularHorizontalTable && modularTableImages) {
-        const orderedCells = [...propCells].sort((first, second) => first.x - second.x);
+      if (horizontalTableImage) {
         context.save();
         context.imageSmoothingEnabled = false;
-        for (let index = 0; index < orderedCells.length; index += 1) {
-          const image = index === 0 ? modularTableImages[0]
-            : index === orderedCells.length - 1 ? modularTableImages[2]
-              : modularTableImages[1];
-          const cell = orderedCells[index];
-          context.drawImage(image, cell.x * cellSize, (cell.y - 1) * cellSize,
-            cellSize, cellSize * 2);
-        }
+        context.drawImage(horizontalTableImage, propLeft, propBottom - cellSize * 2,
+          spanWidth, cellSize * 2);
         context.restore();
         continue;
       }
-      const modularVerticalTableImages = tilesetProps
-        ? [
-          tilesetProps.tableVerticalTop,
-          tilesetProps.tableVerticalMiddle,
-          tilesetProps.tableVerticalDown,
-        ] as const
+      const verticalTableImage = modularVerticalTable
+        ? tilesetProps?.tableVerticalByLength[propCells.length]
         : undefined;
-      if (modularVerticalTable && modularVerticalTableImages) {
-        const orderedCells = [...propCells].sort((first, second) => first.y - second.y);
+      if (verticalTableImage) {
         context.save();
         context.imageSmoothingEnabled = false;
-        for (let index = 0; index < orderedCells.length; index += 1) {
-          const image = index === 0 ? modularVerticalTableImages[0]
-            : index === orderedCells.length - 1 ? modularVerticalTableImages[2]
-              : modularVerticalTableImages[1];
-          const cell = orderedCells[index];
-          context.drawImage(image, cell.x * cellSize, cell.y * cellSize,
-            cellSize, cellSize);
-        }
+        context.drawImage(verticalTableImage, propLeft, propTop, spanWidth, spanHeight);
         context.restore();
         continue;
       }
@@ -2530,51 +2478,23 @@ function drawInteriorProps(
         context.restore();
         continue;
       }
-      const modularBenchImages = tilesetProps
-        ? [
-          tilesetProps.benchHorizontalLeft,
-          tilesetProps.benchHorizontalMiddle,
-          tilesetProps.benchHorizontalRight,
-        ] as const
+      const horizontalBenchImage = prop === "bench" && !upholsteredBench && !vertical
+        ? tilesetProps?.benchHorizontalByLength[propCells.length]
         : undefined;
-      if (prop === "bench" && !upholsteredBench && !vertical && modularBenchImages) {
-        const orderedCells = [...propCells].sort((first, second) => first.x - second.x);
+      if (horizontalBenchImage) {
         context.save();
         context.imageSmoothingEnabled = false;
-        for (let index = 0; index < orderedCells.length; index += 1) {
-          const image = index === 0 ? modularBenchImages[0]
-            : index === orderedCells.length - 1 ? modularBenchImages[2]
-              : modularBenchImages[1];
-          const cell = orderedCells[index];
-          const cellCenterX = (cell.x + .5) * cellSize;
-          const cellCenterY = (cell.y + .5) * cellSize;
-          context.save();
-          context.translate(cellCenterX, cellCenterY);
-          context.drawImage(image, -cellSize / 2, -cellSize / 2, cellSize, cellSize);
-          context.restore();
-        }
+        context.drawImage(horizontalBenchImage, propLeft, propTop, spanWidth, spanHeight);
         context.restore();
         continue;
       }
-      const modularVerticalBenchImages = tilesetProps
-        ? [
-          tilesetProps.benchVerticalTop,
-          tilesetProps.benchVerticalMiddle,
-          tilesetProps.benchVerticalDown,
-        ] as const
+      const verticalBenchImage = prop === "bench" && !upholsteredBench && vertical
+        ? tilesetProps?.benchVerticalByLength[propCells.length]
         : undefined;
-      if (prop === "bench" && !upholsteredBench && vertical && modularVerticalBenchImages) {
-        const orderedCells = [...propCells].sort((first, second) => first.y - second.y);
+      if (verticalBenchImage) {
         context.save();
         context.imageSmoothingEnabled = false;
-        for (let index = 0; index < orderedCells.length; index += 1) {
-          const image = index === 0 ? modularVerticalBenchImages[0]
-            : index === orderedCells.length - 1 ? modularVerticalBenchImages[2]
-              : modularVerticalBenchImages[1];
-          const cell = orderedCells[index];
-          context.drawImage(image, cell.x * cellSize, cell.y * cellSize,
-            cellSize, cellSize);
-        }
+        context.drawImage(verticalBenchImage, propLeft, propTop, spanWidth, spanHeight);
         context.restore();
         continue;
       }
@@ -2583,7 +2503,8 @@ function drawInteriorProps(
           ? vertical ? tilesetProps?.cabinet1x3
             : propFacing === "south" ? tilesetProps?.cabinet3x1South : tilesetProps?.cabinet3x1
           : vertical ? tilesetProps?.cabinet1x2
-            : propFacing === "south" ? tilesetProps?.cabinet2x1South : tilesetProps?.cabinet2x1
+            : propFacing === "south"
+              ? tilesetProps?.cabinet2x1South : tilesetProps?.cabinet2x1North
         : prop === "tomb" && propCells.length === 2
           ? vertical ? tilesetProps?.coffin1x2 : tilesetProps?.coffin2x1
           : undefined;

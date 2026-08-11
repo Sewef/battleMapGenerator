@@ -16,8 +16,11 @@ export const INTERIOR_ASSET_SPRITE_LAYOUTS: Readonly<
   Record<string, InteriorPropSpriteLayout>
 > = {
   // These files occupy one gameplay cell, but their artwork rises one cell north.
+  "altar_1x3.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
   "barrel_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
   "cabinet_1x2.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
+  "cabinet_north_2x1.png": { renderWidthCells: 2, renderHeightCells: 2, anchor: "bottom" },
+  "cabinet_south_2x1.png": { renderWidthCells: 2, renderHeightCells: 2, anchor: "bottom" },
   "counter_horizontal_left_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
   "counter_horizontal_middle_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
   "counter_horizontal_right_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
@@ -39,6 +42,22 @@ export const INTERIOR_ASSET_SPRITE_LAYOUTS: Readonly<
 };
 
 export function interiorAssetSpriteLayout(assetName: string) {
+  const horizontalComposite = /^(table|counter|bench)_horizontal_(\d+)x1\.png$/.exec(assetName);
+  if (horizontalComposite) {
+    return {
+      renderWidthCells: Number(horizontalComposite[2]),
+      renderHeightCells: horizontalComposite[1] === "bench" ? 1 : 2,
+      anchor: horizontalComposite[1] === "bench" ? "center" as const : "bottom" as const,
+    };
+  }
+  const verticalComposite = /^(table|counter|bench)_vertical_1x(\d+)\.png$/.exec(assetName);
+  if (verticalComposite) {
+    return {
+      renderWidthCells: 1,
+      renderHeightCells: Number(verticalComposite[2]),
+      anchor: "center" as const,
+    };
+  }
   return INTERIOR_ASSET_SPRITE_LAYOUTS[assetName] ?? DEFAULT_INTERIOR_PROP_SPRITE_LAYOUT;
 }
 
@@ -120,6 +139,18 @@ const numberedImages = (
   count: number,
 ) => Array.from({ length: count }, (_, index) => image(source(index + 1)));
 
+const lengthImages = (
+  source: (length: number) => string,
+  minimum: number,
+  maximum: number,
+) => Object.fromEntries(Array.from(
+  { length: maximum - minimum + 1 },
+  (_, index) => {
+    const length = minimum + index;
+    return [length, image(source(length))];
+  },
+));
+
 const casualSofaImages = (facing: FurnitureFacing) =>
   casualSofaAssetNames(facing).map((name) => image(lpc(`casual_sofa/${name}`)));
 
@@ -134,6 +165,26 @@ export function collectTilesetImages(value: unknown): HTMLImageElement[] {
     return Object.values(value).flatMap(collectTilesetImages);
   }
   return [];
+}
+
+export interface TilesetLoadStatus {
+  total: number;
+  loaded: number;
+  pending: number;
+  failed: string[];
+}
+
+export function tilesetLoadStatus(value: unknown): TilesetLoadStatus {
+  const images = collectTilesetImages(value);
+  const failed = images.filter((entry) => entry.complete && entry.naturalWidth === 0)
+    .map((entry) => entry.currentSrc || entry.src);
+  const loaded = images.filter((entry) => entry.complete && entry.naturalWidth > 0).length;
+  return {
+    total: images.length,
+    loaded,
+    pending: images.length - loaded - failed.length,
+    failed,
+  };
 }
 
 export function createTilesetAssets() {
@@ -171,24 +222,18 @@ export function createTilesetAssets() {
     // Hand-drawn LPC furniture.
     stool1x1: image(lpc("stool_1x1.png")),
     table1x1: image(lpc("table_1x1.png")),
-    tableHorizontalLeft: image(lpc("table_horizontal_left.png")),
-    tableHorizontalMiddle: image(lpc("table_horizontal_middle.png")),
-    tableHorizontalRight: image(lpc("table_horizontal_right.png")),
-    tableVerticalTop: image(lpc("table_vertical_top.png")),
-    tableVerticalMiddle: image(lpc("table_vertical_middle.png")),
-    tableVerticalDown: image(lpc("table_vertical_down.png")),
-    counterHorizontalLeft: image(lpc("counter_horizontal_left_1x1.png")),
-    counterHorizontalMiddle: image(lpc("counter_horizontal_middle_1x1.png")),
-    counterHorizontalRight: image(lpc("counter_horizontal_right_1x1.png")),
-    counterVerticalTop: image(lpc("counter_vertical_top_1x1.png")),
-    counterVerticalMiddle: image(lpc("counter_vertical_middle_1x1.png")),
-    counterVerticalDown: image(lpc("counter_vertical_down_1x1.png")),
-    benchHorizontalLeft: image(lpc("bench_horizontal_left_1x1.png")),
-    benchHorizontalMiddle: image(lpc("bench_horizontal_middle_1x1.png")),
-    benchHorizontalRight: image(lpc("bench_horizontal_right_1x1.png")),
-    benchVerticalTop: image(lpc("bench_vertical_top.png")),
-    benchVerticalMiddle: image(lpc("bench_vertical_middle.png")),
-    benchVerticalDown: image(lpc("bench_vertical_down.png")),
+    tableHorizontalByLength: lengthImages((length) =>
+      lpc(`table_horizontal_${length}x1.png`), 2, 3),
+    tableVerticalByLength: lengthImages((length) =>
+      lpc(`table_vertical_1x${length}.png`), 2, 3),
+    counterHorizontalByLength: lengthImages((length) =>
+      lpc(`counter_horizontal_${length}x1.png`), 3, 7),
+    counterVerticalByLength: lengthImages((length) =>
+      lpc(`counter_vertical_1x${length}.png`), 3, 7),
+    benchHorizontalByLength: lengthImages((length) =>
+      lpc(`bench_horizontal_${length}x1.png`), 2, 4),
+    benchVerticalByLength: lengthImages((length) =>
+      lpc(`bench_vertical_1x${length}.png`), 2, 4),
     cannonNorth: image(lpc("cannon_north_1x2.png")),
     cannonSouth: image(lpc("cannon_south_1x2.png")),
     casualSofas: {
@@ -204,22 +249,25 @@ export function createTilesetAssets() {
     hearth1x3: image(generated("hearth_1x3.png")),
     hearth3x1: image(generated("hearth_3x1.png")),
     cabinet1x2: image(generated("cabinet_1x2.png")),
-    cabinet2x1: image(lpc("cabinet_2x1.png")),
+    cabinet2x1North: image(lpc("cabinet_north_2x1.png")),
     cabinet1x3: image(generated("cabinet_1x3.png")),
     cabinet3x1: image(generated("cabinet_3x1.png")),
-    cabinet2x1South: image(lpc("cabinet_2x1.png")),
+    cabinet2x1South: image(lpc("cabinet_south_2x1.png")),
     cabinet3x1South: image(generated("cabinet_3x1_south.png")),
     altar1x2: image(generated("altar_1x2.png")),
     altar2x1: image(generated("altar_2x1.png")),
     altar1x3: image(generated("altar_1x3.png")),
-    altar3x1: image(generated("altar_3x1.png")),
+    altar3x1: image(lpc("altar_3x1.png")),
     coffin1x2: image(generated("coffin_1x2.png")),
     coffin2x1: image(generated("coffin_2x1.png")),
   } satisfies TilesetPropImages;
 
   const terrainReady = () => terrain.complete && terrain.naturalWidth > 0;
-  const propsReady = () => collectTilesetImages(props)
-    .every((entry) => entry.complete && entry.naturalWidth > 0);
+  const propsStatus = () => tilesetLoadStatus(props);
+  const propsReady = () => {
+    const status = propsStatus();
+    return status.loaded === status.total;
+  };
 
-  return { terrain, props, terrainReady, propsReady };
+  return { terrain, props, terrainReady, propsReady, propsStatus };
 }

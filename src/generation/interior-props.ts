@@ -306,7 +306,26 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
               : [];
             if ((kind === "cabinet" || kind === "hearth") &&
               clearFrontage.length < Math.ceil(points.length / 2)) continue;
-            if (!place(room, kind, points, run.orientation, run.facing)) continue;
+            const props = kind === "cabinet" && points.length > 3
+              ? (() => {
+                const moduleCount = Math.ceil(points.length / 3);
+                const baseLength = Math.floor(points.length / moduleCount);
+                const longerModules = points.length % moduleCount;
+                let moduleStart = 0;
+                return Array.from({ length: moduleCount }, (_, moduleIndex): PlannedProp => {
+                  const moduleLength = baseLength + (moduleIndex < longerModules ? 1 : 0);
+                  const modulePoints = points.slice(moduleStart, moduleStart + moduleLength);
+                  moduleStart += moduleLength;
+                  return {
+                    kind,
+                    points: modulePoints,
+                    orientation: run.orientation,
+                    facing: run.facing,
+                  };
+                });
+              })()
+              : [{ kind, points, orientation: run.orientation, facing: run.facing }];
+            if (!placeComposition(room, props)) continue;
             clearFrontage.forEach((point) => reserved.add(key(point)));
             return true;
           }

@@ -81,6 +81,7 @@ const {
   props: tilesetProps,
   terrainReady: tilesetReady,
   propsReady: tilesetPropsReady,
+  propsStatus: tilesetPropsStatus,
 } = createTilesetAssets();
 const tilesetEnabledFor = (mode: Preset["mode"]) => useTilesetInput.checked &&
   (isInteriorMode(mode) ? tilesetPropsReady() : tilesetReady());
@@ -107,6 +108,8 @@ let generatedOptions: TerrainOptions | undefined;
 let mapRevision = 0;
 let pendingGenerationFrame: number | undefined;
 let pendingSeedGeneration: number | undefined;
+let lastTilesetWarning = "";
+let tilesetPropsReadyLogged = false;
 const hiddenLegendItems = new Set<string>();
 let owlbearExportCache: {
   key: string;
@@ -177,6 +180,22 @@ function applyPreset(preset: Preset, useNewSeed = true) {
 
 function renderMap(grid: Grid, targetCanvas = previewCanvas, cellSize?: number) {
   const useTileset = tilesetEnabledFor(activePreset.mode);
+  if (targetCanvas === previewCanvas && useTilesetInput.checked && !useTileset) {
+    const status = tilesetPropsStatus();
+    const diagnostic = isInteriorMode(activePreset.mode)
+      ? `${activePreset.mode}:${status.loaded}:${status.pending}:${status.failed.join("|")}`
+      : `${activePreset.mode}:terrain:${tilesetImage.complete}:${tilesetImage.naturalWidth}`;
+    if (diagnostic !== lastTilesetWarning) {
+      lastTilesetWarning = diagnostic;
+      console.warn("[tileset] Rendering without tileset: assets unavailable", {
+        mode: activePreset.mode,
+        interior: isInteriorMode(activePreset.mode),
+        ...status,
+      });
+    }
+  } else if (useTileset) {
+    lastTilesetWarning = "";
+  }
   drawGrid(grid, {
     targetCanvas,
     mode: activePreset.mode,
@@ -539,14 +558,40 @@ bindPropPreview(
   "rock",
 );
 previewGridInput.addEventListener("change", () => renderMap(currentGrid));
-useTilesetInput.addEventListener("change", () => renderMap(currentGrid));
+useTilesetInput.addEventListener("change", () => {
+  console.info("[tileset] Option changed", {
+    checked: useTilesetInput.checked,
+    mode: activePreset.mode,
+    enabled: tilesetEnabledFor(activePreset.mode),
+    ...tilesetPropsStatus(),
+  });
+  renderMap(currentGrid);
+});
 stylizedLightingInput.addEventListener("change", () => renderMap(currentGrid));
 tilesetImage.addEventListener("load", () => {
+  console.info("[tileset] Terrain loaded", {
+    source: tilesetImage.currentSrc || tilesetImage.src,
+  });
   if (useTilesetInput.checked) renderMap(currentGrid);
+});
+tilesetImage.addEventListener("error", () => {
+  console.error("[tileset] Failed to load terrain", {
+    source: tilesetImage.currentSrc || tilesetImage.src,
+  });
 });
 collectTilesetImages(tilesetProps).forEach((image) => {
   image.addEventListener("load", () => {
-    if (useTilesetInput.checked && tilesetPropsReady()) renderMap(currentGrid);
+    if (!tilesetPropsReady() || tilesetPropsReadyLogged) return;
+    tilesetPropsReadyLogged = true;
+    console.info("[tileset] All interior assets loaded", tilesetPropsStatus());
+    if (useTilesetInput.checked) renderMap(currentGrid);
+  });
+  image.addEventListener("error", () => {
+    console.error("[tileset] Failed to load interior asset", {
+      source: image.currentSrc || image.src,
+      ...tilesetPropsStatus(),
+    });
+    if (useTilesetInput.checked) renderMap(currentGrid);
   });
 });
 document.querySelector("#legend")!.addEventListener("click", (event) => {
