@@ -14,7 +14,11 @@ import {
   getTerrainStyle,
 } from "./palettes";
 import { drawStylizedLighting } from "./lighting";
-import { bedAssetDefinitions, interiorAssetSpriteLayout } from "./tileset-assets";
+import {
+  bedAssetDefinitions,
+  interiorAssetSpriteLayout,
+  selectBedAssetDefinition,
+} from "./tileset-assets";
 
 export interface RenderOptions {
   targetCanvas: HTMLCanvasElement;
@@ -2553,12 +2557,24 @@ function drawInteriorProps(
         ? (propCells.length === 4 ? tilesetProps?.bedDoubles : tilesetProps?.bedSingles)
         ?.[propFacing ?? "north"]
         : undefined;
-      const bedIndex = bedImages?.length ? variantIndex % bedImages.length : 0;
+      const bedDefinitions = bedAssetDefinitions(
+        propCells.length === 4,
+        propFacing ?? "north",
+      );
+      const selectedBed = selectBedAssetDefinition(
+        propCells.length === 4,
+        propFacing ?? "north",
+        variantIndex,
+        propRoomRole,
+      );
+      const bedIndex = selectedBed
+        ? bedDefinitions.findIndex(({ folder, name }) =>
+          folder === selectedBed.folder && name === selectedBed.name)
+        : -1;
       const bedImage = bedImages?.[bedIndex];
       if (bedImage) {
         const source = imageSourceSize(bedImage) ?? { width: spanWidth, height: spanHeight };
-        const bedAsset = bedAssetDefinitions(propCells.length === 4,
-          propFacing ?? "north")[bedIndex];
+        const bedAsset = bedDefinitions[bedIndex];
         const scale = cellSize / 32;
         context.save();
         context.imageSmoothingEnabled = Math.abs(scale - Math.round(scale)) > .001;

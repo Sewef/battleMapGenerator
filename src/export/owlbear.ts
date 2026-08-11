@@ -13,10 +13,10 @@ import {
   type MapLightSource,
 } from "../rendering/lighting";
 import {
-  bedAssetDefinitions,
   casualSofaAssetNames,
   interiorAssetPath,
   interiorAssetSpriteLayout,
+  selectBedAssetDefinition,
   type FurnitureFacing,
 } from "../rendering/tileset-assets";
 
@@ -638,11 +638,14 @@ function interiorPropSpriteItems(
   const casualSofaNames = upholsteredBench
     ? casualSofaAssetNames((prop.facing ?? "north") as FurnitureFacing)
     : [];
-  const bedAssets = prop.kind === "bed"
-    ? bedAssetDefinitions(prop.points.length === 4,
-      (prop.facing ?? "north") as FurnitureFacing)
-    : [];
-  const bedAsset = bedAssets.length ? bedAssets[variant % bedAssets.length] : undefined;
+  const bedAsset = prop.kind === "bed"
+    ? selectBedAssetDefinition(
+      prop.points.length === 4,
+      (prop.facing ?? "north") as FurnitureFacing,
+      variant,
+      prop.roomRole,
+    )
+    : undefined;
   const assetName = prop.kind === "bed"
     ? bedAsset?.name
     : prop.kind === "hearth" && (prop.points.length === 2 || prop.points.length === 3)

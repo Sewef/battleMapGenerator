@@ -159,6 +159,23 @@ export function bedAssetDefinitions(
   return [...singleBeds, ...childBeds];
 }
 
+export function selectBedAssetDefinition(
+  doubleBed: boolean,
+  facing: FurnitureFacing,
+  variant: number,
+  roomRole = "",
+) {
+  const assets = bedAssetDefinitions(doubleBed, facing);
+  if (doubleBed) return assets[variant % assets.length];
+  const adultBeds = assets.filter(({ folder }) => folder === "bed_single");
+  const childBeds = assets.filter(({ folder }) => folder === "bed_children");
+  const explicitlyForChildren = /child|children|nursery/i.test(roomRole);
+  const guestRoom = /guest room/i.test(roomRole);
+  const useChildBed = explicitlyForChildren || !guestRoom && variant % 6 === 0;
+  const candidates = useChildBed ? childBeds : adultBeds;
+  return candidates[Math.floor(variant / (useChildBed ? 6 : 1)) % candidates.length];
+}
+
 const CASUAL_SOFA_COLORS = [
   "black", "blue", "brown", "green", "grey", "red", "white", "yellow",
 ] as const;

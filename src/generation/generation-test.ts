@@ -16,10 +16,25 @@ import {
 import { generateTerrain } from "./generate";
 import { createOwlbearSceneJson } from "../export/owlbear";
 import { collectMapLightSources } from "../rendering/lighting";
+import { selectBedAssetDefinition } from "../rendering/tileset-assets";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
+
+const guestBedVariants = Array.from({ length: 60 }, (_, variant) =>
+  selectBedAssetDefinition(false, "north", variant, "Guest room 1"));
+assert(guestBedVariants.every((asset) => asset?.folder === "bed_single"),
+  "bed assets: tavern guest rooms must use adult beds");
+const regularChildBedCount = Array.from({ length: 60 }, (_, variant) =>
+  selectBedAssetDefinition(false, "north", variant, "Bedroom 1"))
+  .filter((asset) => asset?.folder === "bed_children").length;
+assert(regularChildBedCount === 10,
+  "bed assets: child beds should be limited to one variant in six");
+assert(Array.from({ length: 16 }, (_, variant) =>
+  selectBedAssetDefinition(false, "north", variant, "Children bedroom"))
+  .every((asset) => asset?.folder === "bed_children"),
+"bed assets: explicitly child-oriented rooms must use child beds");
 
 function assertGrid(grid: Grid, label: string) {
   assert(grid.length > 0 && grid[0].length > 0, `${label}: empty grid`);
