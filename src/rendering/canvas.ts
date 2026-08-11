@@ -2453,11 +2453,19 @@ function drawInteriorProps(
         const source = imageSourceSize(altarImage);
         if (source) {
           const scale = cellSize / 32;
+          const altarAssetName = vertical
+            ? `altar_vertical_1x${propCells.length}.png`
+            : `altar_${propCells.length}x1.png`;
+          const layout = interiorAssetSpriteLayout(altarAssetName);
+          const drawHeight = source.height * scale;
+          const drawTop = layout.anchor === "bottom"
+            ? propBottom - drawHeight
+            : centerY - drawHeight / 2;
           context.save();
           context.imageSmoothingEnabled = Math.abs(scale - Math.round(scale)) > .001;
           context.imageSmoothingQuality = "high";
           context.drawImage(altarImage, centerX - source.width * scale / 2,
-            centerY - source.height * scale / 2, source.width * scale, source.height * scale);
+            drawTop, source.width * scale, drawHeight);
           context.restore();
           continue;
         }

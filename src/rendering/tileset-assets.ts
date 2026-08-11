@@ -16,6 +16,8 @@ export const INTERIOR_ASSET_SPRITE_LAYOUTS: Readonly<
   Record<string, InteriorPropSpriteLayout>
 > = {
   // These files occupy one gameplay cell, but their artwork rises one cell north.
+  "altar_3x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
+  "altar_vertical_1x2.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
   "barrel_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
   "cabinet_north_2x1.png": { renderWidthCells: 2, renderHeightCells: 2, anchor: "bottom" },
   "cabinet_south_2x1.png": { renderWidthCells: 2, renderHeightCells: 2, anchor: "bottom" },
