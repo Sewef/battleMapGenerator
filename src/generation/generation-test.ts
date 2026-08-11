@@ -2064,8 +2064,8 @@ assert(spriteItems.filter(({ image }) => image?.url?.includes("/lpc/bed_")).leng
   spriteItems.filter(({ image }) => image?.url?.endsWith("_north.png")).length === 2 &&
   spriteItems.filter(({ image }) => image?.url?.endsWith("_south.png")).length === 2 &&
   spriteItems.some(({ image }) => image?.url?.endsWith("_east.png")) &&
-  spriteItems.filter(({ image }) => image?.url?.endsWith("crate_1x1.png")).length === 2 &&
-  spriteItems.some(({ image }) => image?.url?.endsWith("stool_1x1.png")),
+  spriteItems.filter(({ image }) => image?.url?.endsWith("/lpc/crate_4_1x1.png")).length === 2 &&
+  spriteItems.some(({ image }) => image?.url?.endsWith("/lpc/stool_1x1.png")),
 "interior tileset export: expected sprite assets are missing");
 const eastFacingBed = spriteItems.find(({ image }) => image?.url?.endsWith("_east.png"));
 assert(eastFacingBed?.rotation === 0 && (eastFacingBed.scale?.x ?? 0) > 0,
@@ -2074,6 +2074,62 @@ const southFacingBeds = spriteItems.filter(({ image }) => image?.url?.includes("
 assert(southFacingBeds.length === 2 && southFacingBeds.every(({ rotation, scale }) =>
   rotation === 0 && (scale?.x ?? 0) > 0),
 "interior tileset export: south-facing beds must use dedicated unrotated sprites");
+
+const assetRoutingGrid: Grid = Array.from({ length: 4 }, () =>
+  Array.from({ length: 12 }, () => ({ terrain: Terrain.Ground, obstacle: Obstacle.None })));
+for (const [id, kind, x] of [
+  [1, "table", 0], [2, "barrel", 1], [3, "bucket", 2], [4, "shelf", 3],
+  [5, "drawers", 4], [6, "statue", 5], [7, "flower_pot", 6],
+] as const) {
+  Object.assign(assetRoutingGrid[0][x], {
+    interiorProp: kind, interiorPropId: id, propOrientation: "horizontal",
+  });
+}
+for (const [x, y] of [[8, 0], [9, 0], [8, 1], [9, 1]] as const) {
+  Object.assign(assetRoutingGrid[y][x], {
+    interiorProp: "table", interiorPropId: 8, propOrientation: "horizontal",
+  });
+}
+for (const x of [0, 1, 2]) {
+  Object.assign(assetRoutingGrid[3][x], {
+    interiorProp: "altar", interiorPropId: 9, propOrientation: "horizontal",
+  });
+}
+for (const x of [4, 5]) {
+  Object.assign(assetRoutingGrid[3][x], {
+    interiorProp: "altar", interiorPropId: 10, propOrientation: "horizontal",
+  });
+}
+const assetRoutingExport = await createOwlbearSceneJson(
+  assetRoutingGrid,
+  "interior-asset-routing-export",
+  new Set(),
+  {
+    useTileset: true,
+    mapImage: {
+      url: "https://example.com/interior-asset-routing.webp",
+      mime: "image/webp",
+      width: assetRoutingGrid[0].length * 48,
+      height: assetRoutingGrid.length * 48,
+    },
+  },
+);
+const assetRoutingUrls = Object.values((JSON.parse(assetRoutingExport.json) as {
+  items: { shared: Record<string, {
+    image?: { url?: string };
+    metadata?: Record<string, unknown>;
+  }> };
+}).items.shared).filter((item) => item.metadata?.[interiorPropMetadataKey] !== undefined)
+  .map(({ image }) => image?.url ?? "");
+for (const path of [
+  "/lpc/table_1x1.png", "/lpc/barrel_1x1.png", "/lpc/bucket_2_1x1.png",
+  "/lpc/shelf_5_1x1.png", "/bailey/drawer_3_1x1.png", "/bailey/statue_1x1.png",
+  "/bailey/flower_pot_2_1x1.png", "/bailey/table_2x2.png", "/lpc/altar_3x1.png",
+  "/lpc/altar_2x1.png",
+]) {
+  assert(assetRoutingUrls.some((url) => url.endsWith(path)),
+    `interior tileset export: incorrect asset routing for ${path}`);
+}
 
 const hearthSpriteGrid: Grid = Array.from({ length: 6 }, () =>
   Array.from({ length: 6 }, () => ({ terrain: Terrain.Ground, obstacle: Obstacle.None })));

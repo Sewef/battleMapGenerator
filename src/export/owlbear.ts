@@ -15,6 +15,7 @@ import {
 import {
   bedAssetDefinitions,
   casualSofaAssetNames,
+  interiorAssetPath,
   interiorAssetSpriteLayout,
   type FurnitureFacing,
 } from "../rendering/tileset-assets";
@@ -34,16 +35,12 @@ const FOG_TERRAINS = new Set<TerrainKind>([
   Terrain.Ravine,
   Terrain.Door,
 ]);
-const PUBLIC_TILESET_ASSET_BASE =
+const FALLBACK_TILESET_ASSET_BASE =
   "https://cdn.jsdelivr.net/gh/Sewef/battleMapGenerator@main/public/assets/tilesets/";
 
-const BAILEY_INTERIOR_ASSETS = new Set([
-  "barrel_1x1.png", "bed_1x2.png", "bed_2x2.png", "bucket_1x1.png",
-  "crate_1x1.png", "drawer_1_1x1.png", "drawer_2_1x1.png", "drawer_3_1x1.png",
-  "flower_pot_1_1x1.png", "flower_pot_2_1x1.png", "flower_pot_3_1x1.png",
-  "shelf_1_1x1.png", "shelf_2_1x1.png", "statue_1x1.png", "stool_1x1.png",
-  "table_1x1.png",
-]);
+const publicTilesetAssetBase = () => typeof window === "undefined"
+  ? FALLBACK_TILESET_ASSET_BASE
+  : new URL("/assets/tilesets/", window.location.origin).href;
 
 type ExportedObstacle = {
   kind: Exclude<ObstacleKind, "none">;
@@ -640,11 +637,11 @@ function interiorPropSpriteItems(
         : `bench_${prop.facing === "south" || prop.facing === "west"
           ? "south" : "north"}.png`
     : prop.kind === "chair" ? "stool_1x1.png"
-      : prop.kind === "crate" ? "crate_1x1.png"
+      : prop.kind === "crate" ? `crate_${variant % 4 + 1}_1x1.png`
         : prop.kind === "barrel" ? "barrel_1x1.png"
-          : prop.kind === "bucket" ? "bucket_1x1.png"
+          : prop.kind === "bucket" ? `bucket_${variant % 2 + 1}_1x1.png`
             : prop.kind === "drawers" ? `drawer_${variant % 3 + 1}_1x1.png`
-              : prop.kind === "shelf" ? `shelf_${variant % 2 + 1}_1x1.png`
+              : prop.kind === "shelf" ? `shelf_${variant % 7 + 1}_1x1.png`
                 : prop.kind === "statue" ? "statue_1x1.png"
                   : prop.kind === "flower_pot" ? `flower_pot_${variant % 3 + 1}_1x1.png`
                     : prop.kind === "bones" ? `bones_${variant % 5 + 1}_1x1.png`
@@ -655,16 +652,9 @@ function interiorPropSpriteItems(
                         : undefined);
   if (!assetName) return [];
   const spriteLayout = interiorAssetSpriteLayout(assetName);
-  const lpcAsset = modularWoodenBench || modularTable || modularCounter ||
-    upholsteredBench || !!bedAsset ||
-    /^cabinet_(north|south)_2x1\.png$/.test(assetName) ||
-    /^cabinet_vertical_1x[23]\.png$/.test(assetName) ||
-    /^altar_vertical_1x[23]\.png$/.test(assetName) ||
-    prop.kind === "bones" || prop.kind === "wall_chain";
-  const assetFolder = bedAsset ? `lpc/${bedAsset.folder}/`
-    : upholsteredBench ? "lpc/casual_sofa/"
-    : lpcAsset ? "lpc/"
-    : BAILEY_INTERIOR_ASSETS.has(assetName) ? "bailey/" : "ai/";
+  const assetPath = bedAsset ? `lpc/${bedAsset.folder}/${assetName}`
+    : upholsteredBench ? `lpc/casual_sofa/${assetName}`
+      : interiorAssetPath(assetName);
   const perCell = prop.kind === "crate";
   const fittedLength = prop.kind === "hearth" || prop.kind === "cabinet" ||
     prop.kind === "tomb" || prop.kind === "altar" ||
@@ -734,7 +724,7 @@ function interiorPropSpriteItems(
     `${INTERIOR_PROP_RULES[prop.kind].label} ${prop.id}${
       placements.length > 1 ? `.${index + 1}` : ""}${roomSuffix}`,
     "PROP",
-    `${PUBLIC_TILESET_ASSET_BASE}${assetFolder}${placement.assetName}`,
+    `${publicTilesetAssetBase()}${assetPath}`,
     "image/png",
     layoutAssetWidth,
     layoutAssetHeight,
@@ -770,7 +760,7 @@ function interiorPropSpriteItems(
 }
 
 const LIGHT_MARKER_ASSET = {
-  url: `${PUBLIC_TILESET_ASSET_BASE}bailey/rock_1x1.png`,
+  url: `${publicTilesetAssetBase()}bailey/rock_1x1.png`,
   mime: "image/png",
   width: 32,
   height: 32,
@@ -876,7 +866,7 @@ export async function inspectPropAsset(
     const relativePath = defaultAssetPath.includes(tilesetMarker)
       ? defaultAssetPath.split(tilesetMarker, 2)[1]
       : filename;
-    const url = new URL(relativePath, PUBLIC_TILESET_ASSET_BASE).href;
+    const url = new URL(relativePath, publicTilesetAssetBase()).href;
     return {
       url,
       mime: "image/png",
