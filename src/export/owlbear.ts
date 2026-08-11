@@ -37,10 +37,19 @@ const FOG_TERRAINS = new Set<TerrainKind>([
 ]);
 const FALLBACK_TILESET_ASSET_BASE =
   "https://cdn.jsdelivr.net/gh/Sewef/battleMapGenerator@main/public/assets/tilesets/";
+const TILESET_ASSET_REVISION = "20260811-cors";
 
 const publicTilesetAssetBase = () => typeof window === "undefined"
   ? FALLBACK_TILESET_ASSET_BASE
   : new URL("/assets/tilesets/", window.location.origin).href;
+
+function publicTilesetAssetUrl(relativePath: string) {
+  const url = new URL(relativePath, publicTilesetAssetBase());
+  if (typeof window !== "undefined") {
+    url.searchParams.set("v", TILESET_ASSET_REVISION);
+  }
+  return url.href;
+}
 
 type ExportedObstacle = {
   kind: Exclude<ObstacleKind, "none">;
@@ -724,7 +733,7 @@ function interiorPropSpriteItems(
     `${INTERIOR_PROP_RULES[prop.kind].label} ${prop.id}${
       placements.length > 1 ? `.${index + 1}` : ""}${roomSuffix}`,
     "PROP",
-    `${publicTilesetAssetBase()}${assetPath}`,
+    publicTilesetAssetUrl(assetPath),
     "image/png",
     layoutAssetWidth,
     layoutAssetHeight,
@@ -760,7 +769,7 @@ function interiorPropSpriteItems(
 }
 
 const LIGHT_MARKER_ASSET = {
-  url: `${publicTilesetAssetBase()}bailey/rock_1x1.png`,
+  url: publicTilesetAssetUrl("bailey/rock_1x1.png"),
   mime: "image/png",
   width: 32,
   height: 32,
@@ -866,7 +875,7 @@ export async function inspectPropAsset(
     const relativePath = defaultAssetPath.includes(tilesetMarker)
       ? defaultAssetPath.split(tilesetMarker, 2)[1]
       : filename;
-    const url = new URL(relativePath, publicTilesetAssetBase()).href;
+    const url = publicTilesetAssetUrl(relativePath);
     return {
       url,
       mime: "image/png",
