@@ -1,0 +1,4 @@
+/assets/tilesets/*
+  Access-Control-Allow-Origin: https://www.owlbear.rodeo
+  Access-Control-Allow-Methods: GET, HEAD, OPTIONS
+  Cross-Origin-Resource-Policy: cross-origin
