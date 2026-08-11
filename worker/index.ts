@@ -12,6 +12,9 @@ export { MapStorageCoordinator };
 
 type ImageDimensions = { width: number; height: number };
 
+const TILESET_PATH_PREFIX = "/assets/tilesets/";
+const OWLBEAR_ORIGIN = "https://www.owlbear.rodeo";
+
 function storageCoordinator(env: Env) {
   return env.MAP_STORAGE_COORDINATOR.getByName("global-map-storage");
 }
@@ -22,6 +25,36 @@ function corsHeaders() {
     "Cross-Origin-Resource-Policy": "cross-origin",
     "X-Content-Type-Options": "nosniff",
   };
+}
+
+function tilesetCorsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": OWLBEAR_ORIGIN,
+    "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+    "Cross-Origin-Resource-Policy": "cross-origin",
+  };
+}
+
+async function getTilesetAsset(request: Request, env: Env) {
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: tilesetCorsHeaders() });
+  }
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return errorResponse("Method not allowed.", 405, {
+      ...tilesetCorsHeaders(),
+      Allow: "GET, HEAD, OPTIONS",
+    });
+  }
+  const asset = await env.ASSETS.fetch(request);
+  const headers = new Headers(asset.headers);
+  for (const [name, value] of Object.entries(tilesetCorsHeaders())) {
+    headers.set(name, value);
+  }
+  return new Response(asset.body, {
+    status: asset.status,
+    statusText: asset.statusText,
+    headers,
+  });
 }
 
 function errorResponse(message: string, status: number, headers?: HeadersInit) {
@@ -233,6 +266,9 @@ async function getMapImage(
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    if (url.pathname.startsWith(TILESET_PATH_PREFIX)) {
+      return getTilesetAsset(request, env);
+    }
     if (url.pathname === MAP_IMAGE_COLLECTION_PATH) {
       try {
         return await uploadMapImage(request, env);
