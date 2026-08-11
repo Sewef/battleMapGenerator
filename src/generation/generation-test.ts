@@ -2052,6 +2052,7 @@ const spriteExport = await createOwlbearSceneJson(spriteGrid, "interior-sprite-e
 const spriteItems = Object.values((JSON.parse(spriteExport.json) as {
   items: { shared: Record<string, {
     type: string;
+    zIndex?: number;
     rotation?: number;
     scale?: { x?: number; y?: number };
     image?: { url?: string };
@@ -2074,6 +2075,22 @@ const southFacingBeds = spriteItems.filter(({ image }) => image?.url?.includes("
 assert(southFacingBeds.length === 2 && southFacingBeds.every(({ rotation, scale }) =>
   rotation === 0 && (scale?.x ?? 0) > 0),
 "interior tileset export: south-facing beds must use dedicated unrotated sprites");
+const spriteDepths = spriteItems.map((item) => {
+  const metadata = item.metadata?.[interiorPropMetadataKey] as {
+    footprint?: Array<{ x: number; y: number }>;
+  } | undefined;
+  return {
+    bottomY: Math.max(...(metadata?.footprint ?? []).map(({ y }) => y + 1)),
+    zIndex: item.zIndex ?? 0,
+  };
+});
+for (const foreground of spriteDepths) {
+  for (const background of spriteDepths) {
+    if (foreground.bottomY <= background.bottomY) continue;
+    assert(foreground.zIndex > background.zIndex,
+      "interior tileset export: lower sprites must render above higher sprites");
+  }
+}
 
 const assetRoutingGrid: Grid = Array.from({ length: 4 }, () =>
   Array.from({ length: 12 }, () => ({ terrain: Terrain.Ground, obstacle: Obstacle.None })));

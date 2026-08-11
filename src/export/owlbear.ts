@@ -235,6 +235,18 @@ function imageItem(
   };
 }
 
+function perspectiveZIndex(
+  baseZIndex: number,
+  bottomY: number,
+  centerX: number,
+  tieBreaker = 0,
+) {
+  // The lower visual edge controls depth. X and the tie breaker only make
+  // otherwise equal depths deterministic and cannot overtake a full row.
+  return baseZIndex + Math.round(bottomY * 1_000_000) +
+    Math.round(centerX * 1_000) + tieBreaker;
+}
+
 type FogPoint = { x: number; y: number };
 type FogEdge = { start: FogPoint; end: FogPoint; direction: number };
 
@@ -508,8 +520,9 @@ function dynamicFogLightMetadata(source: MapLightSource) {
 function interiorPropItem(
   id: string,
   prop: ExportedInteriorProp,
-  zIndex: number,
+  baseZIndex: number,
   lightSource?: MapLightSource,
+  tieBreaker = 0,
 ) {
   const minimumX = Math.min(...prop.points.map(({ x }) => x));
   const maximumX = Math.max(...prop.points.map(({ x }) => x));
@@ -534,6 +547,12 @@ function interiorPropItem(
       x: minimumX * OWLBEAR_SCENE_DPI + (footprintWidth - width) / 2,
       y: minimumY * OWLBEAR_SCENE_DPI + (footprintHeight - height) / 2,
     };
+  const zIndex = perspectiveZIndex(
+    baseZIndex,
+    maximumY + 1,
+    minimumX + widthInCells / 2,
+    tieBreaker,
+  );
   const roomSuffix = prop.roomRole ? ` · ${prop.roomRole}` : "";
   return {
     id,
@@ -577,8 +596,9 @@ function interiorPropItem(
 
 function interiorPropSpriteItems(
   prop: ExportedInteriorProp,
-  zIndex: number,
+  baseZIndex: number,
   lightSource?: MapLightSource,
+  tieBreaker = 0,
 ) {
   const variant = Math.abs(prop.id);
   const rectangle = (() => {
@@ -745,7 +765,12 @@ function interiorPropSpriteItems(
     bedAsset
       ? { x: bedAsset.anchorX, y: bedAsset.anchorY }
       : { x: layoutAssetWidth / 2, y: layoutAssetHeight / 2 },
-    zIndex + index,
+    perspectiveZIndex(
+      baseZIndex,
+      placement.centerY + placement.heightCells / 2,
+      placement.centerX,
+      tieBreaker + index,
+    ),
     false,
     {
       x: (flipHorizontal ? -1 : 1) * placement.widthCells * PROP_IMAGE_DPI / layoutAssetWidth,
@@ -981,6 +1006,8 @@ export async function createOwlbearSceneJson(
     [Obstacle.Building]: "Building",
   };
   let nextPropZIndex = baseZIndex + 1;
+  let propTieBreaker = 0;
+  let highestPropZIndex = baseZIndex;
   collectObstacles(grid).forEach((obstacle) => {
     if (
       hiddenItems.has(obstacle.kind) ||
@@ -1004,14 +1031,15 @@ export async function createOwlbearSceneJson(
         },
         PROP_IMAGE_DPI,
         { x: asset.width / 2, y: asset.height / 2 },
-        nextPropZIndex,
+        perspectiveZIndex(baseZIndex, y + size, x + size / 2, propTieBreaker),
         false,
         {
           x: size * PROP_IMAGE_DPI / asset.width,
           y: size * PROP_IMAGE_DPI / asset.height,
         },
       );
-      nextPropZIndex += 1;
+      propTieBreaker += 1;
+      highestPropZIndex = Math.max(highestPropZIndex, shared[id].zIndex);
     });
   });
 
@@ -1024,16 +1052,27 @@ export async function createOwlbearSceneJson(
     const lightSource = options.dynamicFog
       ? lightSourceByInteriorPropId.get(prop.id) : undefined;
     const sprites = options.useTileset
-      ? interiorPropSpriteItems(prop, nextPropZIndex, lightSource) : [];
+      ? interiorPropSpriteItems(prop, baseZIndex, lightSource, propTieBreaker) : [];
     if (sprites.length) {
-      sprites.forEach((item) => { shared[item.id] = item; });
-      nextPropZIndex += sprites.length;
+      sprites.forEach((item) => {
+        shared[item.id] = item;
+        highestPropZIndex = Math.max(highestPropZIndex, item.zIndex);
+      });
+      propTieBreaker += sprites.length;
     } else {
       const id = crypto.randomUUID();
-      shared[id] = interiorPropItem(id, prop, nextPropZIndex, lightSource);
-      nextPropZIndex += 1;
+      shared[id] = interiorPropItem(
+        id,
+        prop,
+        baseZIndex,
+        lightSource,
+        propTieBreaker,
+      );
+      highestPropZIndex = Math.max(highestPropZIndex, shared[id].zIndex);
+      propTieBreaker += 1;
     }
   });
+  nextPropZIndex = highestPropZIndex + 1;
 
   if (options.dynamicFog) {
     const rooms = roomFogContours(grid);
