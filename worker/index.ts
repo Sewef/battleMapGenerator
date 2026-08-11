@@ -13,7 +13,6 @@ export { MapStorageCoordinator };
 type ImageDimensions = { width: number; height: number };
 
 const TILESET_PATH_PREFIX = "/assets/tilesets/";
-const OWLBEAR_ORIGIN = "https://www.owlbear.rodeo";
 
 function storageCoordinator(env: Env) {
   return env.MAP_STORAGE_COORDINATOR.getByName("global-map-storage");
@@ -29,15 +28,23 @@ function corsHeaders() {
 
 function tilesetCorsHeaders() {
   return {
-    "Access-Control-Allow-Origin": OWLBEAR_ORIGIN,
-    "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET,HEAD,OPTIONS",
+    "Access-Control-Max-Age": "86400",
     "Cross-Origin-Resource-Policy": "cross-origin",
   };
 }
 
 async function getTilesetAsset(request: Request, env: Env) {
   if (request.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: tilesetCorsHeaders() });
+    return new Response(null, {
+      status: 204,
+      headers: {
+        ...tilesetCorsHeaders(),
+        "Access-Control-Allow-Headers":
+          request.headers.get("Access-Control-Request-Headers") ?? "*",
+      },
+    });
   }
   if (request.method !== "GET" && request.method !== "HEAD") {
     return errorResponse("Method not allowed.", 405, {
