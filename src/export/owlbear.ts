@@ -39,7 +39,9 @@ const FOG_TERRAINS = new Set<TerrainKind>([
 ]);
 const FALLBACK_TILESET_ASSET_BASE =
   "https://cdn.jsdelivr.net/gh/Sewef/battleMapGenerator@main/public/assets/tilesets/";
-const TILESET_ASSET_REVISION = "20260811-cors";
+// Owlbear caches remote image URLs aggressively. Change this revision whenever
+// a shipped tileset image is replaced so an export cannot reuse the old bitmap.
+const TILESET_ASSET_REVISION = "20260812-rocks";
 
 const publicTilesetAssetBase = () => typeof window === "undefined"
   ? FALLBACK_TILESET_ASSET_BASE

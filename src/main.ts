@@ -291,20 +291,24 @@ document.querySelector("#reset")!.addEventListener("click", () => {
   applyPreset(activePreset);
   generate();
 });
-function webpRenderOptions(includeProps: boolean) {
+function webpRenderOptions(
+  includeProps: boolean,
+  mode: Preset["mode"] = generatedOptions?.mode ?? activePreset.mode,
+) {
   const hiddenItems = new Set(hiddenLegendItems);
   if (!includeProps) {
     hiddenItems.add(Obstacle.Tree);
     hiddenItems.add(Obstacle.Rock);
   }
-  const useTileset = tilesetEnabledFor(activePreset.mode);
+  ensurePropsForMode(mode);
+  const useTileset = tilesetEnabledFor(mode);
   return {
     hiddenItems,
     showGrid: showGridInput.checked,
     useTileset,
     tilesetImage: tilesetReady() ? tilesetImage : undefined,
     tilesetTerrain: tilesetReady() ? tilesetTerrain : undefined,
-    tilesetProps: tilesetPropsReady(activePreset.mode) ? tilesetProps : undefined,
+    tilesetProps: tilesetPropsReady(mode) ? tilesetProps : undefined,
     customProps: useTileset ? activeCustomProps() : undefined,
     stylizedLighting: stylizedLightingInput.checked,
     hideInteriorProps: !includeProps,
@@ -387,9 +391,11 @@ async function copyText(text: string) {
 }
 
 function owlbearExportKey() {
-  const useTileset = tilesetEnabledFor(activePreset.mode);
+  const mode = generatedOptions?.mode ?? activePreset.mode;
+  const useTileset = tilesetEnabledFor(mode);
   return JSON.stringify({
     mapRevision,
+    mode,
     seed: generatedOptions?.seed ?? seedInput.value.trim(),
     hiddenItems: [...hiddenLegendItems].sort(),
     useTileset,
@@ -501,12 +507,12 @@ async function runOwlbearExport(action: "copy" | "download") {
   try {
     const generation = generatedOptions;
     if (!generation) throw new Error("Generate a map before exporting.");
-    const useTileset = tilesetEnabledFor(activePreset.mode);
+    const useTileset = tilesetEnabledFor(generation.mode);
     let scene = cachedScene;
     if (!scene) {
       owlbearStatus.textContent = "Rendering and uploading the exact background...";
       const mapCanvas = renderExportCanvas(currentGrid, generation.mode, {
-        ...webpRenderOptions(false),
+        ...webpRenderOptions(false, generation.mode),
         cellSize: 48,
       });
       const mapImage = await uploadMapCanvas(mapCanvas);

@@ -3,6 +3,7 @@ import {
   drawGrid,
   type CustomPropImages,
   type TilesetPropImages,
+  type TilesetTerrainImages,
 } from "../rendering/canvas";
 
 const WEBP_QUALITY = 0.95;
@@ -12,6 +13,7 @@ export interface WebpRenderOptions {
   showGrid?: boolean;
   useTileset?: boolean;
   tilesetImage?: CanvasImageSource;
+  tilesetTerrain?: TilesetTerrainImages;
   tilesetProps?: TilesetPropImages;
   customProps?: CustomPropImages;
   stylizedLighting?: boolean;
@@ -70,6 +72,7 @@ export function renderExportCanvas(
     showGrid: options.showGrid ?? true,
     useTileset: options.useTileset ?? false,
     tilesetImage: options.tilesetImage,
+    tilesetTerrain: options.tilesetTerrain,
     tilesetProps: options.tilesetProps,
     customProps: options.customProps,
     stylizedLighting: options.stylizedLighting ?? false,
