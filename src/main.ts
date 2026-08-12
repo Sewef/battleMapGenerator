@@ -84,9 +84,10 @@ const {
   terrainStatus: tilesetTerrainStatus,
   propsReady: tilesetPropsReady,
   propsStatus: tilesetPropsStatus,
+  ensurePropsForMode,
 } = createTilesetAssets();
 const tilesetEnabledFor = (mode: Preset["mode"]) => useTilesetInput.checked &&
-  (isInteriorMode(mode) ? tilesetPropsReady() : tilesetReady());
+  (isInteriorMode(mode) ? tilesetPropsReady(mode) : tilesetReady());
 const customProps: CustomPropImages = {};
 const customPropSources: Partial<Record<"tree" | "rock", string>> = {};
 const activeCustomProps = (): CustomPropImages => ({
@@ -164,6 +165,8 @@ function updateBiomeParameterFields(preset: Preset) {
 
 function applyPreset(preset: Preset, useNewSeed = true) {
   activePreset = preset;
+  tilesetPropsReadyLogged = false;
+  ensurePropsForMode(preset.mode);
   updateBiomeParameterFields(preset);
   widthInput.value = String(preset.width);
   heightInput.value = String(preset.height);
@@ -182,9 +185,10 @@ function applyPreset(preset: Preset, useNewSeed = true) {
 }
 
 function renderMap(grid: Grid, targetCanvas = previewCanvas, cellSize?: number) {
+  ensurePropsForMode(activePreset.mode);
   const useTileset = tilesetEnabledFor(activePreset.mode);
   if (targetCanvas === previewCanvas && useTilesetInput.checked && !useTileset) {
-    const status = tilesetPropsStatus();
+    const status = tilesetPropsStatus(activePreset.mode);
     const diagnostic = isInteriorMode(activePreset.mode)
       ? `${activePreset.mode}:${status.loaded}:${status.pending}:${status.failed.join("|")}`
       : `${activePreset.mode}:terrain:${JSON.stringify(tilesetTerrainStatus())}`;
@@ -210,7 +214,7 @@ function renderMap(grid: Grid, targetCanvas = previewCanvas, cellSize?: number) 
     useTileset,
     tilesetImage: tilesetReady() ? tilesetImage : undefined,
     tilesetTerrain: tilesetReady() ? tilesetTerrain : undefined,
-    tilesetProps: tilesetPropsReady() ? tilesetProps : undefined,
+    tilesetProps: tilesetPropsReady(activePreset.mode) ? tilesetProps : undefined,
     customProps: useTileset ? activeCustomProps() : undefined,
     stylizedLighting: stylizedLightingInput.checked,
   });
@@ -300,7 +304,7 @@ function webpRenderOptions(includeProps: boolean) {
     useTileset,
     tilesetImage: tilesetReady() ? tilesetImage : undefined,
     tilesetTerrain: tilesetReady() ? tilesetTerrain : undefined,
-    tilesetProps: tilesetPropsReady() ? tilesetProps : undefined,
+    tilesetProps: tilesetPropsReady(activePreset.mode) ? tilesetProps : undefined,
     customProps: useTileset ? activeCustomProps() : undefined,
     stylizedLighting: stylizedLightingInput.checked,
     hideInteriorProps: !includeProps,
@@ -512,6 +516,7 @@ async function runOwlbearExport(action: "copy" | "download") {
         hiddenLegendItems,
         {
           mapImage,
+          mode: generation.mode,
           useTileset,
           dynamicFog: owlbearDynamicFogInput.checked,
           treeUrl: useTileset
@@ -568,7 +573,7 @@ useTilesetInput.addEventListener("change", () => {
     checked: useTilesetInput.checked,
     mode: activePreset.mode,
     enabled: tilesetEnabledFor(activePreset.mode),
-    ...tilesetPropsStatus(),
+    ...tilesetPropsStatus(activePreset.mode),
   });
   renderMap(currentGrid);
 });
@@ -589,15 +594,15 @@ collectTilesetImages({ tilesetImage, tilesetTerrain }).forEach((image) => {
 });
 collectTilesetImages(tilesetProps).forEach((image) => {
   image.addEventListener("load", () => {
-    if (!tilesetPropsReady() || tilesetPropsReadyLogged) return;
+    if (!tilesetPropsReady(activePreset.mode) || tilesetPropsReadyLogged) return;
     tilesetPropsReadyLogged = true;
-    console.info("[tileset] All interior assets loaded", tilesetPropsStatus());
+    console.info("[tileset] Required prop assets loaded", tilesetPropsStatus(activePreset.mode));
     if (useTilesetInput.checked) renderMap(currentGrid);
   });
   image.addEventListener("error", () => {
     console.error("[tileset] Failed to load interior asset", {
       source: image.currentSrc || image.src,
-      ...tilesetPropsStatus(),
+      ...tilesetPropsStatus(activePreset.mode),
     });
     if (useTilesetInput.checked) renderMap(currentGrid);
   });

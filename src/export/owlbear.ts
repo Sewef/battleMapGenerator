@@ -3,6 +3,7 @@ import {
   Obstacle,
   Terrain,
   type Grid,
+  type LandscapeMode,
   type ObstacleKind,
   type TerrainKind,
   type Tile,
@@ -14,6 +15,7 @@ import {
 } from "../rendering/lighting";
 import {
   bedAssetDefinitions,
+  blueBedAssetDefinitions,
   casualSofaAssetNames,
   interiorAssetPath,
   interiorAssetSpriteLayout,
@@ -53,6 +55,12 @@ type PropAssetSet = {
   oneByOne: OwlbearPropAsset;
   twoByTwo: OwlbearPropAsset;
 };
+type RockAssetSet = {
+  oneByOne: OwlbearPropAsset[];
+  oneByTwo: OwlbearPropAsset[];
+  twoByOne: OwlbearPropAsset[];
+  twoByTwo: OwlbearPropAsset[];
+};
 
 export type OwlbearPropAsset = {
   url: string;
@@ -72,17 +80,27 @@ const PROP_MIME_BY_EXTENSION: Record<string, OwlbearPropAsset["mime"]> = {
 const SUPPORTED_PROP_MIMES = new Set<OwlbearPropAsset["mime"]>(
   Object.values(PROP_MIME_BY_EXTENSION),
 );
-const DEFAULT_PROP_DIMENSIONS: Record<string, number> = {
-  "tree_1x1.png": 32,
-  "tree_2x2.png": 64,
-  "rock_1x1.png": 32,
-  "rock_2x2.png": 64,
-  "tree.png": 64,
-  "rock.png": 64,
+const DEFAULT_PROP_DIMENSIONS: Record<string, { width: number; height: number }> = {
+  "tree_1x1.png": { width: 32, height: 32 },
+  "tree_2x2.png": { width: 64, height: 64 },
+  ...Object.fromEntries(Array.from({ length: 7 }, (_, index) =>
+    [`rock_${index + 1}_1x1.png`, { width: 32, height: 32 }])),
+  ...Object.fromEntries(Array.from({ length: 9 }, (_, index) =>
+    [`rock_${index + 1}_1x2.png`, { width: 32, height: 64 }])),
+  "rock_2x1.png": { width: 64, height: 32 },
+  ...Object.fromEntries(Array.from({ length: 7 }, (_, index) =>
+    [`rock_${index + 1}_2x2.png`, { width: 64, height: 64 }])),
+  "rock_desert_1x1.png": { width: 32, height: 32 },
+  "rock_desert_1x2.png": { width: 32, height: 64 },
+  "rock_desert_1_2x2.png": { width: 64, height: 64 },
+  "rock_desert_2_2x2.png": { width: 64, height: 64 },
+  "tree.png": { width: 64, height: 64 },
+  "rock.png": { width: 64, height: 64 },
 };
 
 export interface OwlbearExportOptions {
   mapImage: UploadedMapImage;
+  mode?: LandscapeMode;
   useTileset?: boolean;
   dynamicFog?: boolean;
   treeUrl?: string;
@@ -569,6 +587,7 @@ function interiorPropItem(
 function interiorPropSpriteItems(
   prop: ExportedInteriorProp,
   zIndex: number,
+  mode: LandscapeMode | undefined,
   lightSource?: MapLightSource,
 ) {
   const variant = Math.abs(prop.id);
@@ -610,8 +629,10 @@ function interiorPropSpriteItems(
     ? casualSofaAssetNames((prop.facing ?? "north") as FurnitureFacing)
     : [];
   const bedAssets = prop.kind === "bed"
-    ? bedAssetDefinitions(prop.points.length === 4,
-      (prop.facing ?? "north") as FurnitureFacing)
+    ? (mode === "spaceship" ? blueBedAssetDefinitions : bedAssetDefinitions)(
+      prop.points.length === 4,
+      (prop.facing ?? "north") as FurnitureFacing,
+    )
     : [];
   const bedAsset = bedAssets.length ? bedAssets[variant % bedAssets.length] : undefined;
   const assetName = prop.kind === "bed"
@@ -860,8 +881,15 @@ export async function inspectPropAsset(
   if (!value) {
     const filename = defaultAssetPath.split("/").at(-1);
     if (!filename) throw new Error("Missing default prop asset name.");
-    const size = DEFAULT_PROP_DIMENSIONS[filename];
-    if (!size) throw new Error(`Unknown default prop asset: ${filename}`);
+    const rockDimensions = /^rock(?:_(?:light|dark|desert|snow))?_\d+_(\d+)x(\d+)\.png$/
+      .exec(filename);
+    const dimensions = DEFAULT_PROP_DIMENSIONS[filename] ?? (rockDimensions
+      ? {
+        width: Number(rockDimensions[1]) * 32,
+        height: Number(rockDimensions[2]) * 32,
+      }
+      : undefined);
+    if (!dimensions) throw new Error(`Unknown default prop asset: ${filename}`);
     const tilesetMarker = "/assets/tilesets/";
     const relativePath = defaultAssetPath.includes(tilesetMarker)
       ? defaultAssetPath.split(tilesetMarker, 2)[1]
@@ -870,8 +898,7 @@ export async function inspectPropAsset(
     return {
       url,
       mime: "image/png",
-      width: size,
-      height: size,
+      ...dimensions,
     };
   }
   let parsed: URL;
@@ -916,6 +943,44 @@ async function owlBearPropAssets(
   return { oneByOne: fallback, twoByTwo: fallback };
 }
 
+async function owlBearRockAssets(
+  customUrl: string | undefined,
+  useTileset: boolean,
+  mode: LandscapeMode | undefined,
+): Promise<RockAssetSet> {
+  if (customUrl?.trim() || !useTileset) {
+    const assets = await owlBearPropAssets(customUrl, "rock", useTileset);
+    return {
+      oneByOne: [assets.oneByOne],
+      oneByTwo: [],
+      twoByOne: [],
+      twoByTwo: [assets.twoByTwo],
+    };
+  }
+  const family = mode === "desert-canyon" || mode === "badlands"
+    ? "rock_desert"
+    : mode === "frozen-lake"
+      ? "rock_snow"
+      : mode === "underground" || mode === "sewer" || mode === "volcanic"
+        ? "rock_dark"
+        : mode === "coast" || mode === "archipelago"
+          ? "rock_light" : "rock";
+  const names = (count: number, footprint: string) =>
+    Array.from({ length: count }, (_, index) => `${family}_${index + 1}_${footprint}.png`);
+  const paths = {
+    oneByOne: names(56, "1x1"),
+    oneByTwo: names(12, "1x2"),
+    twoByOne: names(4, "2x1"),
+    twoByTwo: names(14, "2x2"),
+  };
+  const load = (names: string[]) => Promise.all(names.map((name) =>
+    inspectPropAsset(undefined, `/assets/tilesets/lpc/rock/${name}`)));
+  const [oneByOne, oneByTwo, twoByOne, twoByTwo] = await Promise.all([
+    load(paths.oneByOne), load(paths.oneByTwo), load(paths.twoByOne), load(paths.twoByTwo),
+  ]);
+  return { oneByOne, oneByTwo, twoByOne, twoByTwo };
+}
+
 export async function createOwlbearSceneJson(
   grid: Grid,
   seed: string,
@@ -925,7 +990,7 @@ export async function createOwlbearSceneJson(
   if (!grid.length) throw new Error("Generate a map before exporting.");
   const [treeAssets, rockAssets] = await Promise.all([
     owlBearPropAssets(options.treeUrl, "tree", options.useTileset ?? false),
-    owlBearPropAssets(options.rockUrl, "rock", options.useTileset ?? false),
+    owlBearRockAssets(options.rockUrl, options.useTileset ?? false, options.mode),
   ]);
   type ExportedSceneItem = (
       ReturnType<typeof imageItem> |
@@ -977,9 +1042,53 @@ export async function createOwlbearSceneJson(
       hiddenItems.has(obstacle.kind) ||
       obstacle.kind === Obstacle.Building
     ) return;
-    const assets = obstacle.kind === Obstacle.Tree ? treeAssets : rockAssets;
+    if (obstacle.kind === Obstacle.Rock) {
+      const sorted = [...obstacle.points].sort((a, b) => a.y - b.y || a.x - b.x);
+      const verticalPair = sorted.length === 2 && sorted[0].x === sorted[1].x &&
+        sorted[1].y === sorted[0].y + 1;
+      const horizontalPair = sorted.length === 2 && sorted[0].y === sorted[1].y &&
+        sorted[1].x === sorted[0].x + 1 && rockAssets.twoByOne.length > 0;
+      const placements = verticalPair
+        ? [{ x: sorted[0].x, y: sorted[0].y, width: 1, height: 2 }]
+        : horizontalPair
+          ? [{ x: sorted[0].x, y: sorted[0].y, width: 2, height: 1 }]
+          : propPlacements(obstacle.points).map(({ x, y, size }) => ({
+            x, y, width: size, height: size,
+          }));
+      placements.forEach(({ x, y, width, height }, pointIndex) => {
+        const variants = width === 2
+          ? height === 2 ? rockAssets.twoByTwo : rockAssets.twoByOne
+          : height === 2 && rockAssets.oneByTwo.length
+            ? rockAssets.oneByTwo : rockAssets.oneByOne;
+        const asset = variants[Math.abs(obstacle.id + pointIndex) % variants.length];
+        const id = crypto.randomUUID();
+        shared[id] = imageItem(
+          id,
+          `Rock ${obstacle.id}.${pointIndex + 1}`,
+          "PROP",
+          asset.url,
+          asset.mime,
+          asset.width,
+          asset.height,
+          {
+            x: (x + width / 2) * OWLBEAR_SCENE_DPI,
+            y: (y + height / 2) * OWLBEAR_SCENE_DPI,
+          },
+          PROP_IMAGE_DPI,
+          { x: asset.width / 2, y: asset.height / 2 },
+          nextPropZIndex,
+          false,
+          {
+            x: width * PROP_IMAGE_DPI / asset.width,
+            y: height * PROP_IMAGE_DPI / asset.height,
+          },
+        );
+        nextPropZIndex += 1;
+      });
+      return;
+    }
     propPlacements(obstacle.points).forEach(({ x, y, size }, pointIndex) => {
-      const asset = size === 2 ? assets.twoByTwo : assets.oneByOne;
+      const asset = size === 2 ? treeAssets.twoByTwo : treeAssets.oneByOne;
       const id = crypto.randomUUID();
       shared[id] = imageItem(
         id,
@@ -1015,7 +1124,7 @@ export async function createOwlbearSceneJson(
     const lightSource = options.dynamicFog
       ? lightSourceByInteriorPropId.get(prop.id) : undefined;
     const sprites = options.useTileset
-      ? interiorPropSpriteItems(prop, nextPropZIndex, lightSource) : [];
+      ? interiorPropSpriteItems(prop, nextPropZIndex, options.mode, lightSource) : [];
     if (sprites.length) {
       sprites.forEach((item) => { shared[item.id] = item; });
       nextPropZIndex += sprites.length;

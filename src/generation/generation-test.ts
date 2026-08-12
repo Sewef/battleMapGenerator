@@ -2041,6 +2041,7 @@ for (const [x, y] of [[4, 4], [5, 4], [4, 5], [5, 5]] as const) {
   });
 }
 const spriteExport = await createOwlbearSceneJson(spriteGrid, "interior-sprite-export", new Set(), {
+  mode: "spaceship",
   useTileset: true,
   mapImage: {
     url: "https://example.com/interior-sprites.webp",
@@ -2061,6 +2062,7 @@ const spriteItems = Object.values((JSON.parse(spriteExport.json) as {
 assert(spriteItems.length === 8 && spriteItems.every(({ type }) => type === "IMAGE"),
   "interior tileset export: beds, crates and stools must be movable image props");
 assert(spriteItems.filter(({ image }) => image?.url?.includes("/lpc/bed_")).length === 5 &&
+  spriteItems.filter(({ image }) => image?.url?.includes("/blue_")).length === 5 &&
   spriteItems.filter(({ image }) => image?.url?.endsWith("_north.png")).length === 2 &&
   spriteItems.filter(({ image }) => image?.url?.endsWith("_south.png")).length === 2 &&
   spriteItems.some(({ image }) => image?.url?.endsWith("_east.png")) &&
