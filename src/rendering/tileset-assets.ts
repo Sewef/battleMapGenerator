@@ -1,4 +1,5 @@
-import type { TilesetPropImages } from "./canvas";
+import type { TilesetPropImages, TilesetTerrainImages } from "./canvas";
+import { isInteriorMode, type LandscapeMode } from "../domain/map";
 
 export interface InteriorPropSpriteLayout {
   renderWidthCells: number;
@@ -176,6 +177,14 @@ export function selectBedAssetDefinition(
   return candidates[Math.floor(variant / (useChildBed ? 6 : 1)) % candidates.length];
 }
 
+export function blueBedAssetDefinitions(
+  doubleBed: boolean,
+  facing: FurnitureFacing,
+) {
+  return bedAssetDefinitions(doubleBed, facing)
+    .filter(({ name }) => name.startsWith("blue_"));
+}
+
 const CASUAL_SOFA_COLORS = [
   "black", "blue", "brown", "green", "grey", "red", "white", "yellow",
 ] as const;
@@ -186,10 +195,26 @@ export function casualSofaAssetNames(facing: FurnitureFacing) {
     `${color}_${variant}_${facing}.png`));
 }
 
+let deferAssetImages = false;
+
 const image = (source: string) => {
   const result = new Image();
-  result.src = source;
+  if (deferAssetImages) result.dataset.tilesetSource = source;
+  else result.src = source;
   return result;
+};
+
+const deferredImage = (source: string) => {
+  const result = new Image();
+  result.dataset.tilesetSource = source;
+  return result;
+};
+
+const activateImages = (value: unknown) => {
+  for (const entry of collectTilesetImages(value)) {
+    const source = entry.dataset.tilesetSource;
+    if (source && !entry.src) entry.src = source;
+  }
 };
 
 const numberedImages = (
@@ -208,6 +233,26 @@ const lengthImages = (
     return [length, image(source(length))];
   },
 ));
+
+const rockFamilyImages = (family: "rock" | "rock_light" | "rock_dark" |
+  "rock_desert" | "rock_snow") => ({
+  oneByOne: Array.from({ length: 56 }, (_, index) =>
+    deferredImage(lpc(`rock/${family}_${index + 1}_1x1.png`))),
+  oneByTwo: Array.from({ length: 12 }, (_, index) =>
+    deferredImage(lpc(`rock/${family}_${index + 1}_1x2.png`))),
+  twoByOne: Array.from({ length: 4 }, (_, index) =>
+    deferredImage(lpc(`rock/${family}_${index + 1}_2x1.png`))),
+  twoByTwo: Array.from({ length: 14 }, (_, index) =>
+    deferredImage(lpc(`rock/${family}_${index + 1}_2x2.png`))),
+});
+
+const rockFamilyKey = (mode: LandscapeMode) => {
+  if (mode === "desert-canyon" || mode === "badlands") return "desert" as const;
+  if (mode === "frozen-lake") return "snow" as const;
+  if (mode === "underground" || mode === "sewer" || mode === "volcanic") return "dark" as const;
+  if (mode === "coast" || mode === "archipelago") return "light" as const;
+  return "normal" as const;
+};
 
 const casualSofaImages = (facing: FurnitureFacing) =>
   casualSofaAssetNames(facing).map((name) => image(lpc(`casual_sofa/${name}`)));
@@ -247,12 +292,31 @@ export function tilesetLoadStatus(value: unknown): TilesetLoadStatus {
 
 export function createTilesetAssets() {
   const terrain = image(bailey("terrain.png"));
+  const terrainTiles: Record<keyof TilesetTerrainImages, HTMLImageElement> = {
+    beachSand: image(lpc("terrain/beach_sand.png")),
+    coldWater: image(lpc("terrain/cold_water.png")),
+    desertSand: image(lpc("terrain/desert_sand.png")),
+    grass: image(lpc("terrain/grass.png")),
+    grassRough: image(lpc("terrain/grass_rough.png")),
+    ice: image(lpc("terrain/ice.png")),
+    lava: image(lpc("terrain/lava.png")),
+    sandRough: image(lpc("terrain/sand_rough.png")),
+    snow: image(lpc("terrain/snow.png")),
+    tiledSoil: image(lpc("terrain/tiled_soil.png")),
+    water: image(lpc("terrain/water.png")),
+  };
+  deferAssetImages = true;
   const props = {
     // Outdoor Bailey tiles.
     tree1x1: image(bailey("tree_1x1.png")),
     tree2x2: image(bailey("tree_2x2.png")),
-    rock1x1: image(bailey("rock_1x1.png")),
-    rock2x2: image(bailey("rock_2x2.png")),
+    rockFamilies: {
+      normal: rockFamilyImages("rock"),
+      light: rockFamilyImages("rock_light"),
+      dark: rockFamilyImages("rock_dark"),
+      desert: rockFamilyImages("rock_desert"),
+      snow: rockFamilyImages("rock_snow"),
+    },
 
     crate1x1: numberedImages((index) => interior(`crate_${index}_1x1.png`), 4),
     barrel1x1: image(interior("barrel_1x1.png")),
@@ -319,13 +383,37 @@ export function createTilesetAssets() {
     coffin1x2: image(interior("coffin_1x2.png")),
     coffin2x1: image(interior("coffin_2x1.png")),
   } satisfies TilesetPropImages;
+  deferAssetImages = false;
 
-  const terrainReady = () => terrain.complete && terrain.naturalWidth > 0;
-  const propsStatus = () => tilesetLoadStatus(props);
-  const propsReady = () => {
-    const status = propsStatus();
+  const terrainStatus = () => tilesetLoadStatus({ terrain, terrainTiles });
+  const terrainReady = () => {
+    const status = terrainStatus();
+    return status.loaded === status.total;
+  };
+  const { rockFamilies, tree1x1, tree2x2, ...interiorProps } = props;
+  const ensurePropsForMode = (mode: LandscapeMode) => {
+    if (isInteriorMode(mode)) activateImages(interiorProps);
+    else activateImages({ tree1x1, tree2x2, rocks: rockFamilies[rockFamilyKey(mode)] });
+  };
+  const propsStatus = (mode: LandscapeMode) => {
+    ensurePropsForMode(mode);
+    return isInteriorMode(mode)
+      ? tilesetLoadStatus(interiorProps)
+      : tilesetLoadStatus({ tree1x1, tree2x2, rocks: rockFamilies[rockFamilyKey(mode)] });
+  };
+  const propsReady = (mode: LandscapeMode) => {
+    const status = propsStatus(mode);
     return status.loaded === status.total;
   };
 
-  return { terrain, props, terrainReady, propsReady, propsStatus };
+  return {
+    terrain,
+    terrainTiles,
+    props,
+    ensurePropsForMode,
+    terrainReady,
+    terrainStatus,
+    propsReady,
+    propsStatus,
+  };
 }

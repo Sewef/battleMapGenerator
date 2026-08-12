@@ -287,7 +287,10 @@ export function renderApp(root: HTMLElement) {
           <a href="https://opengameart.org/content/16x16-game-assets" target="_blank" rel="noopener noreferrer">16x16 Game Assets</a>
           by George Bailey · CC BY 4.0
           <span class="footer-separator" aria-hidden="true">·</span>
-          <a class="discord-link" href="https://discord.gg/AZkX28fb64" target="_blank" rel="noopener noreferrer">Join the Discord</a>
+          <a href="https://opengameart.org/art-search-advanced?keys=lpc" target="_blank" rel="noopener noreferrer">LPC</a>
+          by Various Artists · CC-BY-SA 3.0 · GPL 3.0
+          <span class="footer-separator" aria-hidden="true">·</span>
+          <a class="discord-link" href="https://discord.gg/AZkX28fb64" target="_blank" rel="noopener noreferrer">Join my Discord</a>
         </p>
       </footer>
     </main>

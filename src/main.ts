@@ -78,13 +78,16 @@ const owlbearDownloadButton =
   document.querySelector<HTMLButtonElement>("#download-owlbear")!;
 const {
   terrain: tilesetImage,
+  terrainTiles: tilesetTerrain,
   props: tilesetProps,
   terrainReady: tilesetReady,
+  terrainStatus: tilesetTerrainStatus,
   propsReady: tilesetPropsReady,
   propsStatus: tilesetPropsStatus,
+  ensurePropsForMode,
 } = createTilesetAssets();
 const tilesetEnabledFor = (mode: Preset["mode"]) => useTilesetInput.checked &&
-  (isInteriorMode(mode) ? tilesetPropsReady() : tilesetReady());
+  (isInteriorMode(mode) ? tilesetPropsReady(mode) : tilesetReady());
 const customProps: CustomPropImages = {};
 const customPropSources: Partial<Record<"tree" | "rock", string>> = {};
 const activeCustomProps = (): CustomPropImages => ({
@@ -109,6 +112,7 @@ let mapRevision = 0;
 let pendingGenerationFrame: number | undefined;
 let pendingSeedGeneration: number | undefined;
 let lastTilesetWarning = "";
+let tilesetTerrainReadyLogged = false;
 let tilesetPropsReadyLogged = false;
 const hiddenLegendItems = new Set<string>();
 let owlbearExportCache: {
@@ -161,6 +165,8 @@ function updateBiomeParameterFields(preset: Preset) {
 
 function applyPreset(preset: Preset, useNewSeed = true) {
   activePreset = preset;
+  tilesetPropsReadyLogged = false;
+  ensurePropsForMode(preset.mode);
   updateBiomeParameterFields(preset);
   widthInput.value = String(preset.width);
   heightInput.value = String(preset.height);
@@ -179,12 +185,13 @@ function applyPreset(preset: Preset, useNewSeed = true) {
 }
 
 function renderMap(grid: Grid, targetCanvas = previewCanvas, cellSize?: number) {
+  ensurePropsForMode(activePreset.mode);
   const useTileset = tilesetEnabledFor(activePreset.mode);
   if (targetCanvas === previewCanvas && useTilesetInput.checked && !useTileset) {
-    const status = tilesetPropsStatus();
+    const status = tilesetPropsStatus(activePreset.mode);
     const diagnostic = isInteriorMode(activePreset.mode)
       ? `${activePreset.mode}:${status.loaded}:${status.pending}:${status.failed.join("|")}`
-      : `${activePreset.mode}:terrain:${tilesetImage.complete}:${tilesetImage.naturalWidth}`;
+      : `${activePreset.mode}:terrain:${JSON.stringify(tilesetTerrainStatus())}`;
     if (diagnostic !== lastTilesetWarning) {
       lastTilesetWarning = diagnostic;
       console.warn("[tileset] Rendering without tileset: assets unavailable", {
@@ -206,7 +213,8 @@ function renderMap(grid: Grid, targetCanvas = previewCanvas, cellSize?: number) 
     showGrid: previewGridInput.checked,
     useTileset,
     tilesetImage: tilesetReady() ? tilesetImage : undefined,
-    tilesetProps: tilesetPropsReady() ? tilesetProps : undefined,
+    tilesetTerrain: tilesetReady() ? tilesetTerrain : undefined,
+    tilesetProps: tilesetPropsReady(activePreset.mode) ? tilesetProps : undefined,
     customProps: useTileset ? activeCustomProps() : undefined,
     stylizedLighting: stylizedLightingInput.checked,
   });
@@ -295,7 +303,8 @@ function webpRenderOptions(includeProps: boolean) {
     showGrid: showGridInput.checked,
     useTileset,
     tilesetImage: tilesetReady() ? tilesetImage : undefined,
-    tilesetProps: tilesetPropsReady() ? tilesetProps : undefined,
+    tilesetTerrain: tilesetReady() ? tilesetTerrain : undefined,
+    tilesetProps: tilesetPropsReady(activePreset.mode) ? tilesetProps : undefined,
     customProps: useTileset ? activeCustomProps() : undefined,
     stylizedLighting: stylizedLightingInput.checked,
     hideInteriorProps: !includeProps,
@@ -507,6 +516,7 @@ async function runOwlbearExport(action: "copy" | "download") {
         hiddenLegendItems,
         {
           mapImage,
+          mode: generation.mode,
           useTileset,
           dynamicFog: owlbearDynamicFogInput.checked,
           treeUrl: useTileset
@@ -563,33 +573,36 @@ useTilesetInput.addEventListener("change", () => {
     checked: useTilesetInput.checked,
     mode: activePreset.mode,
     enabled: tilesetEnabledFor(activePreset.mode),
-    ...tilesetPropsStatus(),
+    ...tilesetPropsStatus(activePreset.mode),
   });
   renderMap(currentGrid);
 });
 stylizedLightingInput.addEventListener("change", () => renderMap(currentGrid));
-tilesetImage.addEventListener("load", () => {
-  console.info("[tileset] Terrain loaded", {
-    source: tilesetImage.currentSrc || tilesetImage.src,
+collectTilesetImages({ tilesetImage, tilesetTerrain }).forEach((image) => {
+  image.addEventListener("load", () => {
+    if (!tilesetReady() || tilesetTerrainReadyLogged) return;
+    tilesetTerrainReadyLogged = true;
+    console.info("[tileset] All terrain assets loaded", tilesetTerrainStatus());
+    if (useTilesetInput.checked) renderMap(currentGrid);
   });
-  if (useTilesetInput.checked) renderMap(currentGrid);
-});
-tilesetImage.addEventListener("error", () => {
-  console.error("[tileset] Failed to load terrain", {
-    source: tilesetImage.currentSrc || tilesetImage.src,
+  image.addEventListener("error", () => {
+    console.error("[tileset] Failed to load terrain asset", {
+      source: image.currentSrc || image.src,
+      ...tilesetTerrainStatus(),
+    });
   });
 });
 collectTilesetImages(tilesetProps).forEach((image) => {
   image.addEventListener("load", () => {
-    if (!tilesetPropsReady() || tilesetPropsReadyLogged) return;
+    if (!tilesetPropsReady(activePreset.mode) || tilesetPropsReadyLogged) return;
     tilesetPropsReadyLogged = true;
-    console.info("[tileset] All interior assets loaded", tilesetPropsStatus());
+    console.info("[tileset] Required prop assets loaded", tilesetPropsStatus(activePreset.mode));
     if (useTilesetInput.checked) renderMap(currentGrid);
   });
   image.addEventListener("error", () => {
     console.error("[tileset] Failed to load interior asset", {
       source: image.currentSrc || image.src,
-      ...tilesetPropsStatus(),
+      ...tilesetPropsStatus(activePreset.mode),
     });
     if (useTilesetInput.checked) renderMap(currentGrid);
   });

@@ -16,6 +16,7 @@ import {
 import { drawStylizedLighting } from "./lighting";
 import {
   bedAssetDefinitions,
+  blueBedAssetDefinitions,
   interiorAssetSpriteLayout,
   selectBedAssetDefinition,
 } from "./tileset-assets";
@@ -32,17 +33,31 @@ export interface RenderOptions {
   showGrid?: boolean;
   useTileset?: boolean;
   tilesetImage?: CanvasImageSource;
+  tilesetTerrain?: TilesetTerrainImages;
   tilesetProps?: TilesetPropImages;
   customProps?: CustomPropImages;
   stylizedLighting?: boolean;
   hideInteriorProps?: boolean;
 }
 
+export interface TilesetTerrainImages {
+  beachSand: CanvasImageSource;
+  coldWater: CanvasImageSource;
+  desertSand: CanvasImageSource;
+  grass: CanvasImageSource;
+  grassRough: CanvasImageSource;
+  ice: CanvasImageSource;
+  lava: CanvasImageSource;
+  sandRough: CanvasImageSource;
+  snow: CanvasImageSource;
+  tiledSoil: CanvasImageSource;
+  water: CanvasImageSource;
+}
+
 export interface TilesetPropImages {
   tree1x1: CanvasImageSource;
   tree2x2: CanvasImageSource;
-  rock1x1: CanvasImageSource;
-  rock2x2: CanvasImageSource;
+  rockFamilies: Record<RockFamily, RockFamilyImages>;
   crate1x1: readonly CanvasImageSource[];
   barrel1x1: CanvasImageSource;
   bucket1x1: readonly CanvasImageSource[];
@@ -199,6 +214,52 @@ function drawTilesetProp(
   context.restore();
 }
 
+type RockFamily = "normal" | "light" | "dark" | "desert" | "snow";
+type RockFamilyImages = {
+  oneByOne: readonly CanvasImageSource[];
+  oneByTwo: readonly CanvasImageSource[];
+  twoByOne: readonly CanvasImageSource[];
+  twoByTwo: readonly CanvasImageSource[];
+};
+
+function rockFamilyForMode(mode: LandscapeMode): RockFamily {
+  if (mode === "desert-canyon" || mode === "badlands") return "desert";
+  if (mode === "frozen-lake") return "snow";
+  if (mode === "underground" || mode === "sewer" || mode === "volcanic") return "dark";
+  if (mode === "coast" || mode === "archipelago") return "light";
+  return "normal";
+}
+
+function drawLpcProp(
+  image: CanvasImageSource,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  cellSize: number,
+  context: CanvasRenderingContext2D,
+) {
+  const source = imageSourceSize(image);
+  const targetWidth = width * cellSize;
+  const targetHeight = height * cellSize;
+  const scale = source
+    ? Math.min(targetWidth / source.width, targetHeight / source.height)
+    : 1;
+  const drawWidth = source ? source.width * scale : targetWidth;
+  const drawHeight = source ? source.height * scale : targetHeight;
+  context.save();
+  context.imageSmoothingEnabled = false;
+  applyPropContactShadow(cellSize, context);
+  context.drawImage(
+    image,
+    x * cellSize + (targetWidth - drawWidth) / 2,
+    y * cellSize + targetHeight - drawHeight,
+    drawWidth,
+    drawHeight,
+  );
+  context.restore();
+}
+
 function drawCustomProp(
   image: CanvasImageSource,
   x: number,
@@ -339,30 +400,92 @@ function createTilesetTilePattern(
 
 function createTilesetPatterns(
   image: CanvasImageSource | undefined,
+  terrainImages: TilesetTerrainImages | undefined,
   mode: LandscapeMode,
   context: CanvasRenderingContext2D,
   cellSize: number,
+  width: number,
+  height: number,
 ) {
   const patterns = new Map<TerrainKind, CanvasPattern>();
-  if (!image) return patterns;
-  for (const terrain of terrainPaintOrder) {
-    const coordinate = tilesetCoordinate(terrain, mode);
-    if (!coordinate) continue;
-    const pattern = createTilesetTilePattern(
-      image,
-      coordinate,
-      context,
-      cellSize,
-      0,
-      getTerrainStyle(terrain, mode).color,
-      terrain === Terrain.Cliff
-        ? .58
-        : terrain === Terrain.Ground || terrain === Terrain.Difficult
-          ? .48
-          : terrain === Terrain.Water || terrain === Terrain.Lava
-            ? .34
-            : .42,
-    );
+  if (image) {
+    for (const terrain of terrainPaintOrder) {
+      const coordinate = tilesetCoordinate(terrain, mode);
+      if (!coordinate) continue;
+      const pattern = createTilesetTilePattern(
+        image,
+        coordinate,
+        context,
+        cellSize,
+        0,
+        getTerrainStyle(terrain, mode).color,
+        terrain === Terrain.Cliff
+          ? .58
+          : terrain === Terrain.Ground || terrain === Terrain.Difficult
+            ? .48
+            : terrain === Terrain.Water || terrain === Terrain.Lava
+              ? .34
+              : .42,
+      );
+      if (pattern) patterns.set(terrain, pattern);
+    }
+  }
+  if (!terrainImages) return patterns;
+  const groundProfile = tilesetProfileByMode[mode] ?? "grass";
+  const groundImage = isInteriorMode(mode)
+    ? undefined
+    : mode === "desert-canyon" || mode === "badlands"
+      ? terrainImages.desertSand
+      : mode === "frozen-lake"
+        ? terrainImages.snow
+        : groundProfile === "grass" ? terrainImages.grass : undefined;
+  const waterImage = mode === "frozen-lake"
+    ? terrainImages.coldWater : terrainImages.water;
+  const replacements: Partial<Record<TerrainKind, CanvasImageSource>> = {
+    ...(groundImage ? { [Terrain.Ground]: groundImage } : {}),
+    ...(groundProfile === "sand"
+      ? { [Terrain.Difficult]: terrainImages.sandRough }
+      : mode === "farmland"
+        ? { [Terrain.Difficult]: terrainImages.tiledSoil }
+      : groundProfile === "grass" && !isInteriorMode(mode)
+        ? { [Terrain.Difficult]: terrainImages.grassRough }
+        : {}),
+    [Terrain.Beach]: terrainImages.beachSand,
+    [Terrain.Water]: waterImage,
+    [Terrain.Ice]: terrainImages.ice,
+    [Terrain.Lava]: terrainImages.lava,
+  };
+  for (const [terrain, terrainImage] of Object.entries(replacements) as
+    Array<[TerrainKind, CanvasImageSource]>) {
+    const source = imageSourceSize(terrainImage);
+    if (!source) continue;
+    const columns = Math.max(1, Math.floor(source.width / 32));
+    const texture = document.createElement("canvas");
+    texture.width = width;
+    texture.height = height;
+    const textureContext = texture.getContext("2d")!;
+    textureContext.imageSmoothingEnabled = false;
+    const salt = terrainPaintOrder.indexOf(terrain) + 101;
+    for (let y = 0; y < Math.ceil(height / cellSize); y += 1) {
+      for (let x = 0; x < Math.ceil(width / cellSize); x += 1) {
+        const column = Math.min(
+          columns - 1,
+          Math.floor(terrainVariation(x, y, salt) * columns),
+        );
+        textureContext.drawImage(
+          terrainImage,
+          column * 32,
+          0,
+          32,
+          32,
+          x * cellSize,
+          y * cellSize,
+          cellSize,
+          cellSize,
+        );
+      }
+    }
+    const pattern = context.createPattern(texture, "repeat");
     if (pattern) patterns.set(terrain, pattern);
   }
   return patterns;
@@ -1226,13 +1349,18 @@ function drawTerrainLayers(
   width: number,
   height: number,
   tilesetImage: CanvasImageSource | undefined,
+  tilesetTerrain: TilesetTerrainImages | undefined,
   context: CanvasRenderingContext2D,
 ) {
+  const hasTilesetTexture = Boolean(tilesetImage || tilesetTerrain);
   const tilesetPatterns = createTilesetPatterns(
     tilesetImage,
+    tilesetTerrain,
     mode,
     context,
     cellSize,
+    width,
+    height,
   );
   const terrainFill = (terrain: TerrainKind) =>
     tilesetPatterns.get(terrain) ?? getTerrainStyle(terrain, mode).color;
@@ -1271,6 +1399,7 @@ function drawTerrainLayers(
     layerContext.fillRect(0, 0, width, height);
 
     if (
+      !hasTilesetTexture &&
       terrain !== Terrain.Cliff &&
       terrain !== Terrain.Wall &&
       terrain !== Terrain.Door
@@ -2553,28 +2682,35 @@ function drawInteriorProps(
           continue;
         }
       }
-      const bedImages = prop === "bed" && !spaceshipFurniture
-        ? (propCells.length === 4 ? tilesetProps?.bedDoubles : tilesetProps?.bedSingles)
-        ?.[propFacing ?? "north"]
-        : undefined;
-      const bedDefinitions = bedAssetDefinitions(
+      const allBedAssets = bedAssetDefinitions(
         propCells.length === 4,
         propFacing ?? "north",
       );
-      const selectedBed = selectBedAssetDefinition(
-        propCells.length === 4,
-        propFacing ?? "north",
-        variantIndex,
-        propRoomRole,
-      );
-      const bedIndex = selectedBed
-        ? bedDefinitions.findIndex(({ folder, name }) =>
-          folder === selectedBed.folder && name === selectedBed.name)
+      const blueBedAssets = spaceshipFurniture
+        ? blueBedAssetDefinitions(propCells.length === 4, propFacing ?? "north")
+        : [];
+      const selectedBedAsset = prop !== "bed"
+        ? undefined
+        : spaceshipFurniture
+          ? blueBedAssets[variantIndex % blueBedAssets.length]
+          : selectBedAssetDefinition(
+            propCells.length === 4,
+            propFacing ?? "north",
+            variantIndex,
+            propRoomRole,
+          );
+      const bedIndex = selectedBedAsset
+        ? allBedAssets.findIndex(({ folder, name }) =>
+          folder === selectedBedAsset.folder && name === selectedBedAsset.name)
         : -1;
+      const bedImages = prop === "bed"
+        ? (propCells.length === 4 ? tilesetProps?.bedDoubles : tilesetProps?.bedSingles)
+          ?.[propFacing ?? "north"]
+        : undefined;
       const bedImage = bedImages?.[bedIndex];
       if (bedImage) {
         const source = imageSourceSize(bedImage) ?? { width: spanWidth, height: spanHeight };
-        const bedAsset = bedDefinitions[bedIndex];
+        const bedAsset = allBedAssets[bedIndex];
         const scale = cellSize / 32;
         context.save();
         context.imageSmoothingEnabled = Math.abs(scale - Math.round(scale)) > .001;
@@ -5395,6 +5531,9 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   const hiddenOpacity = options.hiddenOpacity ?? .14;
   const showGrid = options.showGrid ?? true;
   const useImageProps = options.useTileset ?? false;
+  const useTilesetTexture = Boolean(
+    options.useTileset && (options.tilesetImage || options.tilesetTerrain),
+  );
   const width = columns * cellSize;
   const height = rows * cellSize;
 
@@ -5429,10 +5568,11 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     width,
     height,
     options.useTileset ? options.tilesetImage : undefined,
+    options.useTileset ? options.tilesetTerrain : undefined,
     context,
   );
   if (mode === "sewer") drawSewerMasonry(grid, cellSize, context);
-  drawGlobalTexture(width, height, context);
+  if (!useTilesetTexture) drawGlobalTexture(width, height, context);
   if (isInteriorMode(mode)) {
     drawInteriorArchitecture(
       grid,
@@ -5459,14 +5599,16 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     height,
     context,
   );
-  drawContinuousLiquidMaterials(
-    grid,
-    cellSize,
-    mode,
-    hiddenItems,
-    hiddenOpacity,
-    context,
-  );
+  if (!useTilesetTexture) {
+    drawContinuousLiquidMaterials(
+      grid,
+      cellSize,
+      mode,
+      hiddenItems,
+      hiddenOpacity,
+      context,
+    );
+  }
   drawRavineUpperEdges(
     grid,
     cellSize,
@@ -5522,18 +5664,20 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     context,
   );
 
-  for (let y = 0; y < rows; y += 1) {
-    for (let x = 0; x < columns; x += 1) {
-      const tile = grid[y][x];
-      context.globalAlpha = hiddenItems.has(tile.terrain) ? hiddenOpacity : 1;
-      if (
-        !tileSurface(tile) &&
-        !overlayTerrains.has(tile.terrain) &&
-        tile.terrain !== Terrain.Water &&
-        tile.terrain !== Terrain.Cliff &&
-        tile.terrain !== Terrain.Ravine
-      ) {
-        drawTerrainDetail(grid, x, y, cellSize, mode, context);
+  if (!useTilesetTexture) {
+    for (let y = 0; y < rows; y += 1) {
+      for (let x = 0; x < columns; x += 1) {
+        const tile = grid[y][x];
+        context.globalAlpha = hiddenItems.has(tile.terrain) ? hiddenOpacity : 1;
+        if (
+          !tileSurface(tile) &&
+          !overlayTerrains.has(tile.terrain) &&
+          tile.terrain !== Terrain.Water &&
+          tile.terrain !== Terrain.Cliff &&
+          tile.terrain !== Terrain.Ravine
+        ) {
+          drawTerrainDetail(grid, x, y, cellSize, mode, context);
+        }
       }
     }
   }
@@ -5576,7 +5720,10 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   context.globalAlpha =
     hiddenItems.has(Obstacle.Rock) ? hiddenOpacity : 1;
   const objectStyle = getBiomeObjectStyle(mode);
-  for (const points of rockGroups.values()) {
+  const rockFamily = rockFamilyForMode(mode);
+  const rockAssets = options.tilesetProps?.rockFamilies[rockFamily];
+  for (const [rockId, points] of rockGroups) {
+    const rockVariant = Math.abs(rockId);
     const largeRockOrigin = completeTwoByTwoOrigin(points);
     if (largeRockOrigin) {
       if (useImageProps && options.customProps?.rock) {
@@ -5589,19 +5736,51 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
           context,
         );
       } else if (useImageProps && options.tilesetProps) {
-        drawTilesetProp(
-          options.tilesetProps.rock2x2,
+        const variants = rockAssets!.twoByTwo;
+        drawLpcProp(
+          variants[rockVariant % variants.length],
           largeRockOrigin.x,
           largeRockOrigin.y,
           2,
+          2,
           cellSize,
           context,
-          objectStyle.rock.fill,
-          .58,
         );
       } else {
         drawRockFormation(points, cellSize, mode, context);
       }
+      continue;
+    }
+    const verticalPair = points.length === 2 &&
+      points[0].x === points[1].x && Math.abs(points[0].y - points[1].y) === 1;
+    if (verticalPair && useImageProps && !options.customProps?.rock && options.tilesetProps) {
+      const top = points[0].y < points[1].y ? points[0] : points[1];
+      const variants = rockAssets!.oneByTwo;
+      drawLpcProp(
+        variants[rockVariant % variants.length],
+        top.x,
+        top.y,
+        1,
+        2,
+        cellSize,
+        context,
+      );
+      continue;
+    }
+    const horizontalPair = points.length === 2 &&
+      points[0].y === points[1].y && Math.abs(points[0].x - points[1].x) === 1;
+    if (horizontalPair && useImageProps && !options.customProps?.rock && options.tilesetProps) {
+      const left = points[0].x < points[1].x ? points[0] : points[1];
+      const variants = rockAssets!.twoByOne;
+      drawLpcProp(
+        variants[rockVariant % variants.length],
+        left.x,
+        left.y,
+        2,
+        1,
+        cellSize,
+        context,
+      );
       continue;
     }
     // Non-square scree groups retain the new loose, individual-rock rendering.
@@ -5616,15 +5795,15 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
           context,
         );
       } else if (useImageProps && options.tilesetProps) {
-        drawTilesetProp(
-          options.tilesetProps.rock1x1,
+        const variants = rockAssets!.oneByOne;
+        drawLpcProp(
+          variants[rockVariant % variants.length],
           point.x,
           point.y,
           1,
+          1,
           cellSize,
           context,
-          objectStyle.rock.fill,
-          .58,
         );
       } else {
         drawRockFormation([point], cellSize, mode, context);
