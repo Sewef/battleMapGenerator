@@ -237,6 +237,7 @@ export function createTilesetAssets() {
     grass: image(lpc("terrain/grass.png")),
     ice: image(lpc("terrain/ice.png")),
     lava: image(lpc("terrain/lava.png")),
+    sandRough: image(lpc("terrain/sand_rough.png")),
     snow: image(lpc("terrain/snow.png")),
     water: image(lpc("terrain/water.png")),
   };

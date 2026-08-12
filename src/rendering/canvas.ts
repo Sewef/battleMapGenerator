@@ -42,6 +42,7 @@ export interface TilesetTerrainImages {
   grass: CanvasImageSource;
   ice: CanvasImageSource;
   lava: CanvasImageSource;
+  sandRough: CanvasImageSource;
   snow: CanvasImageSource;
   water: CanvasImageSource;
 }
@@ -390,6 +391,9 @@ function createTilesetPatterns(
     ? terrainImages.coldWater : terrainImages.water;
   const replacements: Partial<Record<TerrainKind, CanvasImageSource>> = {
     ...(groundImage ? { [Terrain.Ground]: groundImage } : {}),
+    ...(groundProfile === "sand"
+      ? { [Terrain.Difficult]: terrainImages.sandRough }
+      : {}),
     [Terrain.Beach]: terrainImages.beachSand,
     [Terrain.Water]: waterImage,
     [Terrain.Ice]: terrainImages.ice,
@@ -1292,6 +1296,7 @@ function drawTerrainLayers(
   tilesetTerrain: TilesetTerrainImages | undefined,
   context: CanvasRenderingContext2D,
 ) {
+  const hasTilesetTexture = Boolean(tilesetImage || tilesetTerrain);
   const tilesetPatterns = createTilesetPatterns(
     tilesetImage,
     tilesetTerrain,
@@ -1338,6 +1343,7 @@ function drawTerrainLayers(
     layerContext.fillRect(0, 0, width, height);
 
     if (
+      !hasTilesetTexture &&
       terrain !== Terrain.Cliff &&
       terrain !== Terrain.Wall &&
       terrain !== Terrain.Door
@@ -5450,6 +5456,9 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   const hiddenOpacity = options.hiddenOpacity ?? .14;
   const showGrid = options.showGrid ?? true;
   const useImageProps = options.useTileset ?? false;
+  const useTilesetTexture = Boolean(
+    options.useTileset && (options.tilesetImage || options.tilesetTerrain),
+  );
   const width = columns * cellSize;
   const height = rows * cellSize;
 
@@ -5488,7 +5497,7 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     context,
   );
   if (mode === "sewer") drawSewerMasonry(grid, cellSize, context);
-  drawGlobalTexture(width, height, context);
+  if (!useTilesetTexture) drawGlobalTexture(width, height, context);
   if (isInteriorMode(mode)) {
     drawInteriorArchitecture(
       grid,
@@ -5515,14 +5524,16 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     height,
     context,
   );
-  drawContinuousLiquidMaterials(
-    grid,
-    cellSize,
-    mode,
-    hiddenItems,
-    hiddenOpacity,
-    context,
-  );
+  if (!useTilesetTexture) {
+    drawContinuousLiquidMaterials(
+      grid,
+      cellSize,
+      mode,
+      hiddenItems,
+      hiddenOpacity,
+      context,
+    );
+  }
   drawRavineUpperEdges(
     grid,
     cellSize,
@@ -5578,18 +5589,20 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     context,
   );
 
-  for (let y = 0; y < rows; y += 1) {
-    for (let x = 0; x < columns; x += 1) {
-      const tile = grid[y][x];
-      context.globalAlpha = hiddenItems.has(tile.terrain) ? hiddenOpacity : 1;
-      if (
-        !tileSurface(tile) &&
-        !overlayTerrains.has(tile.terrain) &&
-        tile.terrain !== Terrain.Water &&
-        tile.terrain !== Terrain.Cliff &&
-        tile.terrain !== Terrain.Ravine
-      ) {
-        drawTerrainDetail(grid, x, y, cellSize, mode, context);
+  if (!useTilesetTexture) {
+    for (let y = 0; y < rows; y += 1) {
+      for (let x = 0; x < columns; x += 1) {
+        const tile = grid[y][x];
+        context.globalAlpha = hiddenItems.has(tile.terrain) ? hiddenOpacity : 1;
+        if (
+          !tileSurface(tile) &&
+          !overlayTerrains.has(tile.terrain) &&
+          tile.terrain !== Terrain.Water &&
+          tile.terrain !== Terrain.Cliff &&
+          tile.terrain !== Terrain.Ravine
+        ) {
+          drawTerrainDetail(grid, x, y, cellSize, mode, context);
+        }
       }
     }
   }
