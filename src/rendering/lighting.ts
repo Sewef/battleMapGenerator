@@ -1,6 +1,7 @@
 import {
   Obstacle,
   Terrain,
+  isInteriorMode,
   tileSurface,
   type Grid,
   type LandscapeMode,
@@ -242,7 +243,7 @@ function lightingProfile(mode: LandscapeMode): LightingProfile {
   };
 }
 
-function tileHeight(tile: Tile) {
+function tileHeight(tile: Tile, interiorMode: boolean) {
   let height = (tile.height ?? .5) * .32;
   const surface = tileSurface(tile);
   if (surface === Terrain.Bridge) {
@@ -255,9 +256,9 @@ function tileHeight(tile: Tile) {
     height -= .11;
   } else if (tile.terrain === Terrain.Void) {
     height -= .4;
-  } else if (tile.terrain === Terrain.Wall) {
+  } else if (tile.terrain === Terrain.Wall && !interiorMode) {
     height += .5;
-  } else if (tile.terrain === Terrain.Door) {
+  } else if (tile.terrain === Terrain.Door && !interiorMode) {
     height += .2;
   }
   if (tile.obstacle === Obstacle.Tree) {
@@ -282,13 +283,16 @@ function tileVisibility(
 
 function createLightMap(
   grid: Grid,
+  mode: LandscapeMode,
   profile: LightingProfile,
   hiddenItems: ReadonlySet<string>,
   hiddenOpacity: number,
 ) {
   const rows = grid.length;
   const columns = grid[0].length;
-  const heights = grid.map((row) => row.map(tileHeight));
+  const interiorMode = isInteriorMode(mode);
+  const heights = grid.map((row) => row.map((tile) =>
+    tileHeight(tile, interiorMode)));
   const visibility = grid.map((row) =>
     row.map((tile) => tileVisibility(tile, hiddenItems, hiddenOpacity))
   );
@@ -414,29 +418,64 @@ function blocksLocalLight(tile: Tile) {
     tile.obstacle === Obstacle.Building;
 }
 
+function hasDirectLightLine(
+  grid: Grid,
+  source: MapLightSource,
+  targetX: number,
+  targetY: number,
+) {
+  const destinationX = targetX + .5;
+  const destinationY = targetY + .5;
+  const deltaX = destinationX - source.x;
+  const deltaY = destinationY - source.y;
+  const steps = Math.max(1, Math.ceil(Math.hypot(deltaX, deltaY) * 10));
+  let previousX = Math.floor(source.x);
+  let previousY = Math.floor(source.y);
+  for (let step = 1; step <= steps; step += 1) {
+    const ratio = step / steps;
+    const cellX = Math.floor(source.x + deltaX * ratio);
+    const cellY = Math.floor(source.y + deltaY * ratio);
+    if (cellX === previousX && cellY === previousY) continue;
+
+    // Do not let a diagonal ray squeeze through the meeting point of two
+    // opaque walls. A single blocked side still leaves a valid open corner.
+    if (cellX !== previousX && cellY !== previousY) {
+      const horizontalSide = grid[previousY]?.[cellX];
+      const verticalSide = grid[cellY]?.[previousX];
+      if (
+        horizontalSide && verticalSide &&
+        blocksLocalLight(horizontalSide) && blocksLocalLight(verticalSide)
+      ) {
+        return false;
+      }
+    }
+
+    if (cellX === targetX && cellY === targetY) return true;
+    const tile = grid[cellY]?.[cellX];
+    if (!tile || blocksLocalLight(tile)) return false;
+    previousX = cellX;
+    previousY = cellY;
+  }
+  return true;
+}
+
 function reachableLightCells(grid: Grid, source: MapLightSource) {
-  const start = {
-    x: Math.max(0, Math.min(grid[0].length - 1, Math.floor(source.x))),
-    y: Math.max(0, Math.min(grid.length - 1, Math.floor(source.y))),
-  };
-  const queue = [start];
-  const visited = new Set([`${start.x},${start.y}`]);
-  const reached = [start];
-  const directions = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
-  for (let index = 0; index < queue.length; index += 1) {
-    const point = queue[index];
-    for (const [offsetX, offsetY] of directions) {
-      const next = { x: point.x + offsetX, y: point.y + offsetY };
-      const key = `${next.x},${next.y}`;
-      const tile = grid[next.y]?.[next.x];
-      if (!tile || visited.has(key)) continue;
-      const distance = Math.hypot(next.x + .5 - source.x, next.y + .5 - source.y);
-      if (distance > source.attenuationRadius + .75) continue;
-      visited.add(key);
-      reached.push(next);
-      // The near face of an opaque tile receives light, but propagation stops
-      // there so hearths and consoles do not bleed through walls or buildings.
-      if (!blocksLocalLight(tile)) queue.push(next);
+  const reached: Array<{ x: number; y: number }> = [];
+  const minimumX = Math.max(0, Math.floor(source.x - source.attenuationRadius - 1));
+  const maximumX = Math.min(
+    grid[0].length - 1,
+    Math.ceil(source.x + source.attenuationRadius),
+  );
+  const minimumY = Math.max(0, Math.floor(source.y - source.attenuationRadius - 1));
+  const maximumY = Math.min(
+    grid.length - 1,
+    Math.ceil(source.y + source.attenuationRadius),
+  );
+  for (let y = minimumY; y <= maximumY; y += 1) {
+    for (let x = minimumX; x <= maximumX; x += 1) {
+      const distance = Math.hypot(x + .5 - source.x, y + .5 - source.y);
+      if (distance > source.attenuationRadius + .5) continue;
+      if (hasDirectLightLine(grid, source, x, y)) reached.push({ x, y });
     }
   }
   return reached;
@@ -459,12 +498,74 @@ function drawLocalLightSources(
     const centerY = source.y * cellSize;
     const radius = source.attenuationRadius * cellSize;
     const coreRadius = Math.max(1, source.sourceRadius * cellSize);
-    const gradient = context.createRadialGradient(
-      centerX,
-      centerY,
+    const mapWidth = grid[0].length * cellSize;
+    const mapHeight = grid.length * cellSize;
+    const layerLeft = Math.max(0, Math.floor(centerX - radius - cellSize));
+    const layerTop = Math.max(0, Math.floor(centerY - radius - cellSize));
+    const layerRight = Math.min(mapWidth, Math.ceil(centerX + radius + cellSize));
+    const layerBottom = Math.min(mapHeight, Math.ceil(centerY + radius + cellSize));
+    const layerWidth = layerRight - layerLeft;
+    const layerHeight = layerBottom - layerTop;
+    const hardMask = document.createElement("canvas");
+    hardMask.width = layerWidth;
+    hardMask.height = layerHeight;
+    const hardContext = hardMask.getContext("2d")!;
+    hardContext.fillStyle = "#fff";
+    hardContext.beginPath();
+    for (const point of reachableLightCells(grid, source)) {
+      const tile = grid[point.y][point.x];
+      if (tileVisibility(tile, hiddenItems, hiddenOpacity) <= 0) continue;
+      const left = point.x * cellSize - layerLeft;
+      const top = point.y * cellSize - layerTop;
+      if (blocksLocalLight(tile)) {
+        const deltaX = point.x + .5 - source.x;
+        const deltaY = point.y + .5 - source.y;
+        if (Math.abs(deltaX) > Math.abs(deltaY)) {
+          hardContext.rect(
+            deltaX > 0 ? left : left + cellSize * .5,
+            top,
+            cellSize * .5,
+            cellSize,
+          );
+        } else {
+          hardContext.rect(
+            left,
+            deltaY > 0 ? top : top + cellSize * .5,
+            cellSize,
+            cellSize * .5,
+          );
+        }
+      } else {
+        hardContext.rect(left, top, cellSize, cellSize);
+      }
+    }
+    hardContext.fill();
+
+    // Blur the visibility mask, then intersect it with its hard version. The
+    // falloff therefore happens only on the lit side: it softens corners and
+    // stair-steps without bleeding through an opaque wall.
+    const softMask = document.createElement("canvas");
+    softMask.width = layerWidth;
+    softMask.height = layerHeight;
+    const softContext = softMask.getContext("2d")!;
+    softContext.filter = `blur(${Math.max(2, cellSize * .24)}px)`;
+    softContext.drawImage(hardMask, 0, 0);
+    softContext.filter = "none";
+    softContext.globalCompositeOperation = "destination-in";
+    softContext.drawImage(hardMask, 0, 0);
+
+    const lightLayer = document.createElement("canvas");
+    lightLayer.width = layerWidth;
+    lightLayer.height = layerHeight;
+    const lightContext = lightLayer.getContext("2d")!;
+    const localCenterX = centerX - layerLeft;
+    const localCenterY = centerY - layerTop;
+    const gradient = lightContext.createRadialGradient(
+      localCenterX,
+      localCenterY,
       coreRadius,
-      centerX,
-      centerY,
+      localCenterX,
+      localCenterY,
       radius,
     );
     gradient.addColorStop(0, `rgba(${red}, ${green}, ${blue}, ${source.intensity})`);
@@ -474,16 +575,19 @@ function drawLocalLightSources(
     );
     gradient.addColorStop(1, `rgba(${red}, ${green}, ${blue}, 0)`);
 
+    lightContext.fillStyle = gradient;
+    lightContext.fillRect(
+      localCenterX - radius,
+      localCenterY - radius,
+      radius * 2,
+      radius * 2,
+    );
+    lightContext.globalCompositeOperation = "destination-in";
+    lightContext.drawImage(softMask, 0, 0);
+
     context.save();
-    context.beginPath();
-    for (const point of reachableLightCells(grid, source)) {
-      if (tileVisibility(grid[point.y][point.x], hiddenItems, hiddenOpacity) <= 0) continue;
-      context.rect(point.x * cellSize, point.y * cellSize, cellSize, cellSize);
-    }
-    context.clip();
     context.globalCompositeOperation = "screen";
-    context.fillStyle = gradient;
-    context.fillRect(centerX - radius, centerY - radius, radius * 2, radius * 2);
+    context.drawImage(lightLayer, layerLeft, layerTop);
     context.restore();
   }
 }
@@ -502,6 +606,7 @@ export function drawStylizedLighting(
   const profile = lightingProfile(mode);
   const lightMap = createLightMap(
     grid,
+    mode,
     profile,
     hiddenItems,
     hiddenOpacity,

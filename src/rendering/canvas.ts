@@ -1663,6 +1663,7 @@ function drawInteriorArchitecture(
   mode: LandscapeMode,
   context: CanvasRenderingContext2D,
   tilesetProps?: TilesetPropImages,
+  useTileset = false,
 ) {
   const style = getInteriorVisualStyle(mode);
   if (!style) return;
@@ -1685,6 +1686,591 @@ function drawInteriorArchitecture(
       left, top, cellSize, cellSize);
     context.restore();
     return true;
+  };
+  const isRoomFloor = (x: number, y: number) =>
+    grid[y]?.[x]?.terrain === Terrain.Ground;
+  const drawTilesetArchitectureUnderlay = (x: number, y: number) => {
+    const left = x * cellSize;
+    const top = y * cellSize;
+    if (!drawFloorTile(left, top)) {
+      context.fillStyle = style.roomTints[0];
+      context.fillRect(left, top, cellSize, cellSize);
+    }
+    context.fillStyle = getTerrainStyle(Terrain.Void, mode).color;
+    if (grid[y - 1]?.[x]?.terrain === Terrain.Void || !grid[y - 1]?.[x]) {
+      context.fillRect(left, top, cellSize, cellSize * .5);
+    }
+    if (grid[y]?.[x + 1]?.terrain === Terrain.Void || !grid[y]?.[x + 1]) {
+      context.fillRect(left + cellSize * .5, top, cellSize * .5, cellSize);
+    }
+    if (grid[y + 1]?.[x]?.terrain === Terrain.Void || !grid[y + 1]?.[x]) {
+      context.fillRect(left, top + cellSize * .5, cellSize, cellSize * .5);
+    }
+    if (grid[y]?.[x - 1]?.terrain === Terrain.Void || !grid[y]?.[x - 1]) {
+      context.fillRect(left, top, cellSize * .5, cellSize);
+    }
+  };
+  const drawWallFacade = (
+    left: number,
+    top: number,
+    width: number,
+    height: number,
+    wallX: number,
+    wallY: number,
+  ) => {
+    if (width <= 0 || height <= 0) return;
+    context.save();
+    context.beginPath();
+    context.rect(left, top, width, height);
+    context.clip();
+
+    const verticalRun = height > cellSize * 1.1 && width < cellSize * .8;
+    const gradient = verticalRun
+      ? context.createLinearGradient(left, top, left + width, top)
+      : context.createLinearGradient(left, top, left, top + height);
+    gradient.addColorStop(0, style.wallHighlight);
+    gradient.addColorStop(.12, style.wallAlt);
+    gradient.addColorStop(1, style.wall);
+    context.fillStyle = gradient;
+    context.fillRect(left, top, width, height);
+
+    context.strokeStyle = style.wallDetail;
+    context.lineWidth = Math.max(.65, cellSize * .022);
+    const courseHeight = style.floorPattern === "wood"
+      ? cellSize * .26
+      : cellSize * .3;
+    if (style.floorPattern === "wood") {
+      for (let courseY = top + courseHeight; courseY < top + height; courseY += courseHeight) {
+        context.beginPath();
+        context.moveTo(left, courseY);
+        context.lineTo(left + width, courseY);
+        context.stroke();
+      }
+      const courseCount = Math.ceil(height / courseHeight);
+      for (let course = 0; course < courseCount; course += 1) {
+        const courseTop = top + course * courseHeight;
+        const courseBottom = Math.min(top + height, courseTop + courseHeight);
+        const spacing = cellSize * 1.35;
+        const offset = (wallX + wallY + course) % 2 ? spacing * .5 : 0;
+        for (let joint = left + offset; joint < left + width; joint += spacing) {
+          if (joint <= left + cellSize * .08) continue;
+          context.beginPath();
+          context.moveTo(joint, courseTop + cellSize * .025);
+          context.lineTo(joint, courseBottom - cellSize * .025);
+          context.stroke();
+        }
+      }
+    } else if (style.floorPattern === "metal") {
+      for (let seamY = top + cellSize * .42; seamY < top + height; seamY += cellSize * .42) {
+        context.beginPath();
+        context.moveTo(left + cellSize * .06, seamY);
+        context.lineTo(left + width - cellSize * .06, seamY);
+        context.stroke();
+      }
+      context.fillStyle = style.doorHighlight;
+      context.fillRect(
+        left + width * .12,
+        top + height * .12,
+        Math.max(1, width * .08),
+        Math.max(1, height * .08),
+      );
+    } else {
+      for (let courseY = top + courseHeight; courseY < top + height; courseY += courseHeight) {
+        context.beginPath();
+        context.moveTo(left, courseY);
+        context.lineTo(left + width, courseY);
+        context.stroke();
+      }
+      const courseCount = Math.ceil(height / courseHeight);
+      for (let course = 0; course < courseCount; course += 1) {
+        const courseTop = top + course * courseHeight;
+        const courseBottom = Math.min(top + height, courseTop + courseHeight);
+        const spacing = cellSize * 1.1;
+        const offset = (wallX + wallY + course) % 2 ? spacing * .5 : 0;
+        for (let joint = left + offset; joint < left + width; joint += spacing) {
+          if (joint <= left + cellSize * .08) continue;
+          context.beginPath();
+          context.moveTo(joint, courseTop);
+          context.lineTo(joint, courseBottom);
+          context.stroke();
+        }
+      }
+    }
+
+    context.fillStyle = "rgba(10, 9, 14, .2)";
+    context.fillRect(left, top + height * .9, width, height * .1);
+    context.restore();
+  };
+  const traceChamferedRect = (
+    left: number,
+    top: number,
+    width: number,
+    height: number,
+    chamfer: number,
+  ) => {
+    const cut = Math.min(chamfer, width * .25, height * .25);
+    context.beginPath();
+    context.moveTo(left + cut, top);
+    context.lineTo(left + width - cut, top);
+    context.lineTo(left + width, top + cut);
+    context.lineTo(left + width, top + height - cut);
+    context.lineTo(left + width - cut, top + height);
+    context.lineTo(left + cut, top + height);
+    context.lineTo(left, top + height - cut);
+    context.lineTo(left, top + cut);
+    context.closePath();
+  };
+  type WallRun = { x: number; y: number; length: number };
+  const horizontalWallRuns = (predicate: (x: number, y: number) => boolean) => {
+    const runs: WallRun[] = [];
+    for (let y = 0; y < grid.length; y += 1) {
+      let x = 0;
+      while (x < grid[y].length) {
+        if (!predicate(x, y)) {
+          x += 1;
+          continue;
+        }
+        const start = x;
+        while (x < grid[y].length && predicate(x, y)) x += 1;
+        runs.push({ x: start, y, length: x - start });
+      }
+    }
+    return runs;
+  };
+  const verticalWallRuns = (predicate: (x: number, y: number) => boolean) => {
+    const runs: WallRun[] = [];
+    const width = grid[0]?.length ?? 0;
+    for (let x = 0; x < width; x += 1) {
+      let y = 0;
+      while (y < grid.length) {
+        if (!predicate(x, y)) {
+          y += 1;
+          continue;
+        }
+        const start = y;
+        while (y < grid.length && predicate(x, y)) y += 1;
+        runs.push({ x, y: start, length: y - start });
+      }
+    }
+    return runs;
+  };
+  const isWall = (x: number, y: number) => grid[y]?.[x]?.terrain === Terrain.Wall;
+  const vesselInterior = mode === "ship" || mode === "spaceship";
+  const isOutsideVessel = (x: number, y: number) => {
+    const terrain = grid[y]?.[x]?.terrain;
+    return terrain === undefined || terrain === Terrain.Void ||
+      (mode === "ship" && terrain === Terrain.Water);
+  };
+  const vesselExteriorEdges = () => {
+    const edges: Array<{
+      startX: number;
+      startY: number;
+      endX: number;
+      endY: number;
+      x: number;
+      y: number;
+      dx: number;
+      dy: number;
+    }> = [];
+    if (!vesselInterior) return edges;
+    for (let y = 0; y < grid.length; y += 1) {
+      for (let x = 0; x < grid[y].length; x += 1) {
+        if (!isArchitecture(x, y)) continue;
+        for (const edge of cardinalCellEdges) {
+          if (!isOutsideVessel(x + edge.dx, y + edge.dy)) continue;
+          edges.push({
+            startX: x + edge.startX,
+            startY: y + edge.startY,
+            endX: x + edge.endX,
+            endY: y + edge.endY,
+            x,
+            y,
+            dx: edge.dx,
+            dy: edge.dy,
+          });
+        }
+      }
+    }
+    return edges;
+  };
+  const drawVesselHullApron = () => {
+    for (const edge of vesselExteriorEdges()) {
+      const left = edge.x * cellSize;
+      const top = edge.y * cellSize;
+      context.fillStyle = style.wall;
+      if (edge.dy < 0) {
+        context.fillRect(left, top, cellSize, cellSize * .54);
+      } else if (edge.dy > 0) {
+        context.fillRect(left, top + cellSize * .46, cellSize, cellSize * .54);
+      } else if (edge.dx < 0) {
+        context.fillRect(left, top, cellSize * .54, cellSize);
+      } else {
+        context.fillRect(left + cellSize * .46, top, cellSize * .54, cellSize);
+      }
+    }
+  };
+  const drawVesselHullContour = () => {
+    const edges = vesselExteriorEdges();
+    if (!edges.length) return;
+    const traceEdges = () => {
+      context.beginPath();
+      for (const edge of edges) {
+        context.moveTo(edge.startX * cellSize, edge.startY * cellSize);
+        context.lineTo(edge.endX * cellSize, edge.endY * cellSize);
+      }
+    };
+    context.save();
+    context.lineCap = "round";
+    context.lineJoin = mode === "spaceship" ? "bevel" : "round";
+    context.shadowColor = mode === "spaceship"
+      ? "rgba(5, 12, 16, .72)"
+      : "rgba(24, 13, 9, .68)";
+    context.shadowBlur = Math.max(2, cellSize * .16);
+    context.strokeStyle = mode === "spaceship" ? "#1b2a30" : "#2a1913";
+    context.lineWidth = Math.max(2, cellSize * .24);
+    traceEdges();
+    context.stroke();
+    context.shadowColor = "transparent";
+    context.strokeStyle = mode === "spaceship" ? "#526b73" : "#68442d";
+    context.lineWidth = Math.max(1.5, cellSize * .15);
+    traceEdges();
+    context.stroke();
+    context.strokeStyle = mode === "spaceship"
+      ? "rgba(193, 229, 233, .34)"
+      : "rgba(238, 186, 116, .3)";
+    context.lineWidth = Math.max(.8, cellSize * .035);
+    traceEdges();
+    context.stroke();
+    context.restore();
+  };
+  const drawTilesetWallNetworks = () => {
+    // Collision remains cell-based, while the visible wall becomes a thinner
+    // graph through cell centers. Angles no longer fill their entire cell.
+    for (let y = 0; y < grid.length; y += 1) {
+      for (let x = 0; x < grid[y].length; x += 1) {
+        if (isWall(x, y)) {
+          drawTilesetArchitectureUnderlay(x, y);
+        }
+      }
+    }
+    drawVesselHullApron();
+
+    const drawNetworkRibbon = (color: string, thickness: number) => {
+      const networkPoint = (x: number, y: number) => ({
+        x: (x + .5) * cellSize,
+        y: (y + .5) * cellSize,
+      });
+      context.save();
+      context.strokeStyle = color;
+      context.fillStyle = color;
+      context.lineWidth = thickness;
+      context.lineCap = "butt";
+      context.lineJoin = "bevel";
+      context.beginPath();
+      for (let y = 0; y < grid.length; y += 1) {
+        for (let x = 0; x < grid[y].length; x += 1) {
+          if (!isWall(x, y)) continue;
+          const center = networkPoint(x, y);
+          for (const { dx, dy } of cardinalCellEdges) {
+            if (!isArchitecture(x + dx, y + dy)) continue;
+            const neighbor = networkPoint(x + dx, y + dy);
+            context.moveTo(center.x, center.y);
+            context.lineTo(neighbor.x, neighbor.y);
+          }
+        }
+      }
+      context.stroke();
+      const half = thickness * .5;
+      for (let y = 0; y < grid.length; y += 1) {
+        for (let x = 0; x < grid[y].length; x += 1) {
+          if (!isWall(x, y)) continue;
+          const center = networkPoint(x, y);
+          const north = isArchitecture(x, y - 1);
+          const east = isArchitecture(x + 1, y);
+          const south = isArchitecture(x, y + 1);
+          const west = isArchitecture(x - 1, y);
+          const connectionCount = Number(north) + Number(east) +
+            Number(south) + Number(west);
+          const rightAngle = connectionCount === 2 &&
+            (north || south) && (east || west);
+          if (rightAngle && north && !south) {
+            // Both butt-ended branches already meet in three quadrants. Leave
+            // the outer fourth quadrant empty on lower corners: this is the
+            // actual square L shape. Upper corners retain their compact node
+            // because their visible cap otherwise looks incomplete.
+            continue;
+          }
+          // Every junction is a compact orthogonal node. Keeping this square
+          // keeps straight runs, ends and T junctions free of tiny seams.
+          context.fillRect(
+            center.x - half,
+            center.y - half,
+            thickness,
+            thickness,
+          );
+        }
+      }
+      context.restore();
+    };
+    drawNetworkRibbon(style.wallEdge, cellSize * .48);
+    drawNetworkRibbon(style.wallAlt, cellSize * .42);
+
+    const horizontalBounds = (run: WallRun) => {
+      // Facades meet the visible edge of a perpendicular ribbon, rather than
+      // extending all the way to its centre. Reaching the centre makes the
+      // facade and side wall overlap across half a cell and produces a bulky
+      // square at L/T junctions.
+      const leftTerrain = grid[run.y]?.[run.x - 1]?.terrain;
+      const rightTerrain = grid[run.y]?.[run.x + run.length]?.terrain;
+      const leftTurns = isArchitecture(run.x, run.y - 1) ||
+        isArchitecture(run.x, run.y + 1);
+      const rightX = run.x + run.length - 1;
+      const rightTurns = isArchitecture(rightX, run.y - 1) ||
+        isArchitecture(rightX, run.y + 1);
+      const leftInset = leftTerrain === Terrain.Wall
+        ? -.29
+        : leftTerrain === Terrain.Door ? 0 : .18;
+      const rightInset = rightTerrain === Terrain.Wall
+        ? -.29
+        : rightTerrain === Terrain.Door ? 0 : .18;
+      // A perpendicular side facade spans 29–71% of its wall cell. End the
+      // horizontal facade on that actual outer edge, not on the cell centre;
+      // the latter leaves lower corners visibly notched and misaligned.
+      const left = (run.x + (leftTurns ? .29 : leftInset)) * cellSize;
+      const right = (run.x + run.length - (rightTurns ? .29 : rightInset)) * cellSize;
+      return {
+        left,
+        width: Math.max(0, right - left),
+        leftJoined: leftTerrain === Terrain.Wall || leftTurns,
+        rightJoined: rightTerrain === Terrain.Wall || rightTurns,
+      };
+    };
+    const verticalBounds = (run: WallRun) => {
+      const topTerrain = grid[run.y - 1]?.[run.x]?.terrain;
+      const bottomTerrain = grid[run.y + run.length]?.[run.x]?.terrain;
+      const topTurns = isArchitecture(run.x - 1, run.y) ||
+        isArchitecture(run.x + 1, run.y);
+      const bottomY = run.y + run.length - 1;
+      const bottomTurns = isArchitecture(run.x - 1, bottomY) ||
+        isArchitecture(run.x + 1, bottomY);
+      const topInset = topTerrain === Terrain.Wall
+        ? -.29
+        : topTerrain === Terrain.Door ? 0 : .18;
+      const bottomInset = bottomTerrain === Terrain.Wall
+        ? -.29
+        : bottomTerrain === Terrain.Door ? 0 : .18;
+      const top = (run.y + (topTurns ? .5 : topInset)) * cellSize;
+      const bottom = (run.y + run.length - (bottomTurns ? .5 : bottomInset)) * cellSize;
+      return {
+        top,
+        height: Math.max(0, bottom - top),
+        topJoined: topTerrain === Terrain.Wall || topTurns,
+        bottomJoined: bottomTerrain === Terrain.Wall || bottomTurns,
+      };
+    };
+
+    const frontRuns = horizontalWallRuns((x, y) =>
+      isWall(x, y) && isRoomFloor(x, y + 1));
+    for (const run of frontRuns) {
+      const { left, width } = horizontalBounds(run);
+      if (width <= 0) continue;
+      const top = run.y * cellSize;
+      const facadeTop = top + cellSize * .34;
+      const copingTop = top + cellSize * .27;
+      const copingHeight = cellSize * .12;
+      drawWallFacade(
+        left,
+        facadeTop,
+        width,
+        cellSize * .66,
+        run.x,
+        run.y,
+      );
+      context.fillStyle = style.wallAlt;
+      context.fillRect(left, copingTop, width, copingHeight);
+      context.fillStyle = style.wallHighlight;
+      context.fillRect(left, copingTop, width, Math.max(1, cellSize * .035));
+      context.fillStyle = "rgba(17, 13, 19, .42)";
+      context.fillRect(
+        left,
+        copingTop + copingHeight - Math.max(1, cellSize * .035),
+        width,
+        Math.max(1, cellSize * .035),
+      );
+      context.save();
+      context.shadowColor = "rgba(10, 9, 13, .58)";
+      context.shadowBlur = Math.max(1, cellSize * .07);
+      context.shadowOffsetY = cellSize * .07;
+      context.strokeStyle = "rgba(17, 13, 19, .7)";
+      context.lineWidth = Math.max(1, cellSize * .05);
+      context.beginPath();
+      context.moveTo(left, top + cellSize);
+      context.lineTo(left + width, top + cellSize);
+      context.stroke();
+      context.restore();
+    }
+
+    const sideRuns = verticalWallRuns((x, y) =>
+      isWall(x, y) &&
+      !isRoomFloor(x, y + 1) &&
+      (isRoomFloor(x + 1, y) || isRoomFloor(x - 1, y)));
+    for (const run of sideRuns) {
+      const { top, height } = verticalBounds(run);
+      if (height <= 0) continue;
+      const left = (run.x + .29) * cellSize;
+      const width = cellSize * .42;
+      context.save();
+      context.globalAlpha = .8;
+      drawWallFacade(
+        left,
+        top,
+        width,
+        height,
+        run.x,
+        run.y,
+      );
+      context.restore();
+      context.fillStyle = "rgba(15, 13, 20, .2)";
+      context.fillRect(left + cellSize * .34, top, cellSize * .08, height);
+      context.fillStyle = "rgba(255, 238, 210, .08)";
+      context.fillRect(left, top, cellSize * .05, height);
+    }
+
+    for (const run of horizontalWallRuns((x, y) =>
+      isWall(x, y) && !isRoomFloor(x, y + 1) && isRoomFloor(x, y - 1))) {
+      const { left, width } = horizontalBounds(run);
+      if (width <= 0) continue;
+      context.fillStyle = style.wallHighlight;
+      context.fillRect(
+        left,
+        (run.y + .29) * cellSize,
+        width,
+        Math.max(1, cellSize * .03),
+      );
+      context.fillStyle = "rgba(14, 12, 18, .28)";
+      context.fillRect(
+        left,
+        (run.y + .68) * cellSize,
+        width,
+        cellSize * .1,
+      );
+    }
+
+    // Finish vertical L corners after every facade/network layer. Their
+    // outside quadrant otherwise retains fragments from the centred wall
+    // ribbon and looks broken even when the run bounds themselves are correct.
+    for (let y = 0; y < grid.length; y += 1) {
+      for (let x = 0; x < grid[y].length; x += 1) {
+        if (!isWall(x, y)) continue;
+        const joinsNorth = isArchitecture(x, y - 1);
+        const joinsSouth = isArchitecture(x, y + 1);
+        if (joinsNorth === joinsSouth) continue;
+        const joinsWest = isArchitecture(x - 1, y);
+        const joinsEast = isArchitecture(x + 1, y);
+        if (joinsWest === joinsEast) continue;
+
+        const left = x * cellSize;
+        const top = y * cellSize;
+        const outerToRight = joinsWest;
+        const cornerX = left + cellSize * (outerToRight ? .71 : .29);
+        const cornerY = top + cellSize * .34;
+        const lowerCorner = joinsNorth;
+        const outerLeft = outerToRight ? cornerX : left;
+        const outerRight = outerToRight ? left + cellSize : cornerX;
+        const outerTop = lowerCorner ? cornerY : top;
+        const outerBottom = lowerCorner ? top + cellSize : cornerY;
+
+        if (!lowerCorner) {
+          // Upper corners need a compact junction post where the horizontal
+          // facade meets the vertical side. Filling the outside quadrant makes
+          // a detached nub; this post stays within the side wall's true width.
+          const postLeft = left + cellSize * .29;
+          const postTop = top + cellSize * .27;
+          const postWidth = cellSize * .42;
+          const postHeight = cellSize * .73;
+          const capGradient = context.createLinearGradient(
+            postLeft,
+            postTop,
+            postLeft,
+            top + cellSize,
+          );
+          capGradient.addColorStop(0, style.wallHighlight);
+          capGradient.addColorStop(.22, style.wallAlt);
+          capGradient.addColorStop(1, style.wall);
+          context.fillStyle = capGradient;
+          context.fillRect(
+            postLeft,
+            postTop,
+            postWidth,
+            postHeight,
+          );
+
+          const outerX = outerToRight ? postLeft + postWidth : postLeft;
+          context.save();
+          context.strokeStyle = style.wallEdge;
+          context.lineWidth = Math.max(1, cellSize * .045);
+          context.lineCap = "butt";
+          context.lineJoin = "miter";
+          context.beginPath();
+          context.moveTo(outerX, postTop);
+          context.lineTo(outerX, top + cellSize);
+          context.stroke();
+          context.strokeStyle = style.wallHighlight;
+          context.lineWidth = Math.max(.6, cellSize * .018);
+          context.beginPath();
+          context.moveTo(postLeft, postTop);
+          context.lineTo(postLeft + postWidth, postTop);
+          context.stroke();
+          context.restore();
+          continue;
+        }
+
+        context.save();
+        context.beginPath();
+        context.rect(
+          outerLeft,
+          outerTop,
+          outerRight - outerLeft,
+          outerBottom - outerTop,
+        );
+        context.clip();
+        if (!drawFloorTile(left, top)) {
+          context.fillStyle = style.roomTints[0];
+          context.fillRect(left, top, cellSize, cellSize);
+        }
+        context.restore();
+
+        // Two unbroken orthogonal edges make the intended L explicit. Keep
+        // them square and shadow-free so no bevel or halo can reintroduce a
+        // false diagonal at small tile sizes.
+        context.save();
+        context.strokeStyle = style.wallEdge;
+        context.lineWidth = Math.max(1, cellSize * .045);
+        context.lineCap = "butt";
+        context.lineJoin = "miter";
+        context.beginPath();
+        context.moveTo(outerToRight ? left + cellSize : left, cornerY);
+        context.lineTo(cornerX, cornerY);
+        context.lineTo(cornerX, lowerCorner ? top + cellSize : top);
+        context.stroke();
+
+        context.strokeStyle = style.wallHighlight;
+        context.lineWidth = Math.max(.6, cellSize * .018);
+        const highlightInset = cellSize * .035;
+        context.beginPath();
+        context.moveTo(
+          outerToRight ? left + cellSize : left,
+          cornerY + (lowerCorner ? -highlightInset : highlightInset),
+        );
+        context.lineTo(
+          cornerX + (outerToRight ? -highlightInset : highlightInset),
+          cornerY + (lowerCorner ? -highlightInset : highlightInset),
+        );
+        context.stroke();
+        context.restore();
+      }
+    }
+
   };
 
   context.save();
@@ -1750,6 +2336,12 @@ function drawInteriorArchitecture(
         }
       }
     }
+  }
+
+  if (useTileset && mode !== "ship-deck") {
+    drawTilesetWallNetworks();
+  } else if (vesselInterior) {
+    drawVesselHullApron();
   }
 
   for (let y = 0; y < grid.length; y += 1) {
@@ -1844,6 +2436,7 @@ function drawInteriorArchitecture(
         }
         continue;
       }
+      if (useTileset) continue;
       const connectedHorizontally = isArchitecture(x - 1, y) ||
         isArchitecture(x + 1, y);
       const connectedVertically = isArchitecture(x, y - 1) ||
@@ -1894,6 +2487,9 @@ function drawInteriorArchitecture(
       // Give the wall cap volume without laying the same bright stripe over
       // every tile. The soft wash is continuous through connected cells while
       // exposed edges below supply the actual silhouette.
+      context.save();
+      traceWallCap();
+      context.clip();
       const capGradient = context.createLinearGradient(
         left,
         top,
@@ -1903,11 +2499,6 @@ function drawInteriorArchitecture(
       capGradient.addColorStop(0, style.wallHighlight);
       capGradient.addColorStop(.46, "rgba(255,255,255,0)");
       capGradient.addColorStop(1, "rgba(12,15,15,.2)");
-      context.save();
-      traceWallCap();
-      context.clip();
-      context.fillStyle = "rgba(255,255,255,.035)";
-      context.fillRect(left, top, cellSize, cellSize);
       context.fillStyle = capGradient;
       context.fillRect(left, top, cellSize, cellSize);
 
@@ -2013,7 +2604,7 @@ function drawInteriorArchitecture(
 
         const bevelInset = cellSize * .055;
         context.strokeStyle = style.wallHighlight;
-        context.lineWidth = Math.max(.7, cellSize * .022);
+        context.lineWidth = Math.max(.6, cellSize * .022);
         context.beginPath();
         context.moveTo(
           startX - edge.dx * bevelInset,
@@ -2028,6 +2619,8 @@ function drawInteriorArchitecture(
     }
   }
 
+  drawVesselHullContour();
+
   for (let y = 0; y < grid.length; y += 1) {
     for (let x = 0; x < grid[y].length; x += 1) {
       const tile = grid[y][x];
@@ -2035,6 +2628,188 @@ function drawInteriorArchitecture(
       const left = x * cellSize;
       const top = y * cellSize;
       const horizontal = tile.doorOrientation === "horizontal";
+      if (useTileset) {
+        drawTilesetArchitectureUnderlay(x, y);
+        const frontFacing = horizontal && isRoomFloor(x, y + 1);
+        if (frontFacing) {
+          const facadeTop = top + cellSize * .34;
+          drawWallFacade(left, facadeTop, cellSize, cellSize * .66, x, y);
+
+          // The frame reaches both neighbouring facades; only the leaf is
+          // inset, avoiding the detached block produced by the old door tile.
+          context.fillStyle = style.wallAlt;
+          context.fillRect(
+            left,
+            top + cellSize * .27,
+            cellSize,
+            cellSize * .13,
+          );
+          context.fillRect(left, facadeTop, cellSize * .07, cellSize * .66);
+          context.fillRect(
+            left + cellSize * .93,
+            facadeTop,
+            cellSize * .07,
+            cellSize * .66,
+          );
+          context.fillStyle = style.wallHighlight;
+          context.fillRect(
+            left,
+            top + cellSize * .27,
+            cellSize,
+            Math.max(1, cellSize * .035),
+          );
+          context.fillStyle = style.doorEdge;
+          context.fillRect(
+            left + cellSize * .07,
+            top + cellSize * .39,
+            cellSize * .86,
+            cellSize * .61,
+          );
+          context.fillStyle = style.door;
+          traceChamferedRect(
+            left + cellSize * .1,
+            top + cellSize * .43,
+            cellSize * .8,
+            cellSize * .57,
+            cellSize * .035,
+          );
+          context.fill();
+          context.strokeStyle = style.doorHighlight;
+          context.lineWidth = Math.max(.7, cellSize * .022);
+          for (const ratio of [.25, .5, .75]) {
+            context.beginPath();
+            context.moveTo(left + cellSize * (.1 + .8 * ratio), top + cellSize * .45);
+            context.lineTo(left + cellSize * (.1 + .8 * ratio), top + cellSize);
+            context.stroke();
+          }
+          context.fillStyle = style.hardware;
+          context.beginPath();
+          context.arc(
+            left + cellSize * .79,
+            top + cellSize * .7,
+            Math.max(1, cellSize * .04),
+            0,
+            Math.PI * 2,
+          );
+          context.fill();
+        } else {
+          const verticalDoor = !horizontal;
+          const frame = verticalDoor
+            ? {
+              x: left + cellSize * .26,
+              y: top,
+              width: cellSize * .48,
+              height: cellSize,
+            }
+            : {
+              x: left,
+              y: top + cellSize * .26,
+              width: cellSize,
+              height: cellSize * .48,
+            };
+          context.fillStyle = style.wallEdge;
+          context.fillRect(frame.x, frame.y, frame.width, frame.height);
+
+          const leaf = verticalDoor
+            ? {
+              x: left + cellSize * .34,
+              y: top + cellSize * .05,
+              width: cellSize * .32,
+              height: cellSize * .9,
+            }
+            : {
+              x: left + cellSize * .04,
+              y: top + cellSize * .34,
+              width: cellSize * .92,
+              height: cellSize * .32,
+            };
+          context.fillStyle = style.wallAlt;
+          if (verticalDoor) {
+            traceChamferedRect(
+              left + cellSize * .25,
+              top,
+              cellSize * .5,
+              cellSize * .11,
+              cellSize * .035,
+            );
+            context.fill();
+            traceChamferedRect(
+              left + cellSize * .25,
+              top + cellSize * .89,
+              cellSize * .5,
+              cellSize * .11,
+              cellSize * .035,
+            );
+            context.fill();
+          } else {
+            traceChamferedRect(
+              left,
+              top + cellSize * .25,
+              cellSize * .11,
+              cellSize * .5,
+              cellSize * .035,
+            );
+            context.fill();
+            traceChamferedRect(
+              left + cellSize * .89,
+              top + cellSize * .25,
+              cellSize * .11,
+              cellSize * .5,
+              cellSize * .035,
+            );
+            context.fill();
+          }
+          context.fillStyle = style.door;
+          context.strokeStyle = style.doorEdge;
+          context.lineWidth = Math.max(1, cellSize * .04);
+          traceChamferedRect(
+            leaf.x,
+            leaf.y,
+            leaf.width,
+            leaf.height,
+            cellSize * .035,
+          );
+          context.fill();
+          context.stroke();
+          context.strokeStyle = style.wallHighlight;
+          context.lineWidth = Math.max(.7, cellSize * .018);
+          context.beginPath();
+          if (verticalDoor) {
+            context.moveTo(left + cellSize * .27, top + cellSize * .1);
+            context.lineTo(left + cellSize * .73, top + cellSize * .1);
+            context.moveTo(left + cellSize * .27, top + cellSize * .9);
+            context.lineTo(left + cellSize * .73, top + cellSize * .9);
+          } else {
+            context.moveTo(left + cellSize * .1, top + cellSize * .27);
+            context.lineTo(left + cellSize * .1, top + cellSize * .73);
+            context.moveTo(left + cellSize * .9, top + cellSize * .27);
+            context.lineTo(left + cellSize * .9, top + cellSize * .73);
+          }
+          context.stroke();
+          context.strokeStyle = style.doorHighlight;
+          context.lineWidth = Math.max(.7, cellSize * .02);
+          context.beginPath();
+          if (verticalDoor) {
+            context.moveTo(leaf.x + leaf.width * .5, leaf.y + cellSize * .08);
+            context.lineTo(leaf.x + leaf.width * .5, leaf.y + leaf.height - cellSize * .08);
+          } else {
+            context.moveTo(leaf.x + cellSize * .08, leaf.y + leaf.height * .5);
+            context.lineTo(leaf.x + leaf.width - cellSize * .08, leaf.y + leaf.height * .5);
+          }
+          context.stroke();
+          context.fillStyle = style.hardware;
+          context.beginPath();
+          context.arc(
+            leaf.x + leaf.width * .72,
+            verticalDoor ? leaf.y + leaf.height * .75 : leaf.y + leaf.height * .68,
+            Math.max(1, cellSize * .038),
+            0,
+            Math.PI * 2,
+          );
+          context.fill();
+        }
+        continue;
+      }
       if (!drawFloorTile(left, top)) {
         context.fillStyle = getTerrainStyle(Terrain.Ground, mode).color;
         context.fillRect(left, top, cellSize, cellSize);
@@ -2059,16 +2834,16 @@ function drawInteriorArchitecture(
       }
       const slab = horizontal
         ? {
-          x: left + cellSize * .07,
-          y: top + cellSize * .31,
-          width: cellSize * .86,
-          height: cellSize * .38,
+          x: left + cellSize * .04,
+          y: top + cellSize * .34,
+          width: cellSize * .92,
+          height: cellSize * .32,
         }
         : {
-          x: left + cellSize * .31,
-          y: top + cellSize * .07,
-          width: cellSize * .38,
-          height: cellSize * .86,
+          x: left + cellSize * .34,
+          y: top + cellSize * .05,
+          width: cellSize * .32,
+          height: cellSize * .9,
         };
       // Door jambs retain the thickness and material of the interrupted wall,
       // visually seating the leaf inside the opening.
@@ -2076,37 +2851,64 @@ function drawInteriorArchitecture(
       context.strokeStyle = style.wallHighlight;
       context.lineWidth = Math.max(.65, cellSize * .018);
       if (horizontal) {
-        for (const ratio of [.22, .72]) {
-          context.fillRect(
-            left + cellSize * .04,
-            top + cellSize * ratio,
-            cellSize * .92,
-            cellSize * .08,
-          );
-          context.beginPath();
-          context.moveTo(left + cellSize * .05, top + cellSize * ratio);
-          context.lineTo(left + cellSize * .95, top + cellSize * ratio);
-          context.stroke();
-        }
+        traceChamferedRect(
+          left,
+          top + cellSize * .25,
+          cellSize * .11,
+          cellSize * .5,
+          cellSize * .035,
+        );
+        context.fill();
+        traceChamferedRect(
+          left + cellSize * .89,
+          top + cellSize * .25,
+          cellSize * .11,
+          cellSize * .5,
+          cellSize * .035,
+        );
+        context.fill();
+        context.beginPath();
+        context.moveTo(left + cellSize * .1, top + cellSize * .27);
+        context.lineTo(left + cellSize * .1, top + cellSize * .73);
+        context.moveTo(left + cellSize * .9, top + cellSize * .27);
+        context.lineTo(left + cellSize * .9, top + cellSize * .73);
+        context.stroke();
       } else {
-        for (const ratio of [.22, .72]) {
-          context.fillRect(
-            left + cellSize * ratio,
-            top + cellSize * .04,
-            cellSize * .08,
-            cellSize * .92,
-          );
-          context.beginPath();
-          context.moveTo(left + cellSize * ratio, top + cellSize * .05);
-          context.lineTo(left + cellSize * ratio, top + cellSize * .95);
-          context.stroke();
-        }
+        traceChamferedRect(
+          left + cellSize * .25,
+          top,
+          cellSize * .5,
+          cellSize * .11,
+          cellSize * .035,
+        );
+        context.fill();
+        traceChamferedRect(
+          left + cellSize * .25,
+          top + cellSize * .89,
+          cellSize * .5,
+          cellSize * .11,
+          cellSize * .035,
+        );
+        context.fill();
+        context.beginPath();
+        context.moveTo(left + cellSize * .27, top + cellSize * .1);
+        context.lineTo(left + cellSize * .73, top + cellSize * .1);
+        context.moveTo(left + cellSize * .27, top + cellSize * .9);
+        context.lineTo(left + cellSize * .73, top + cellSize * .9);
+        context.stroke();
       }
       context.fillStyle = style.door;
       context.strokeStyle = style.doorEdge;
       context.lineWidth = Math.max(1.2, cellSize * .05);
-      context.fillRect(slab.x, slab.y, slab.width, slab.height);
-      context.strokeRect(slab.x, slab.y, slab.width, slab.height);
+      traceChamferedRect(
+        slab.x,
+        slab.y,
+        slab.width,
+        slab.height,
+        cellSize * .035,
+      );
+      context.fill();
+      context.stroke();
       context.strokeStyle = style.doorHighlight;
       context.lineWidth = Math.max(.8, cellSize * .02);
       if (horizontal) {
@@ -5791,6 +6593,7 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
       mode,
       context,
       options.useTileset ? options.tilesetProps : undefined,
+      options.useTileset ?? false,
     );
     if (mode === "ship-deck") {
       drawSailingShipDeckElevation(grid, cellSize, context);
