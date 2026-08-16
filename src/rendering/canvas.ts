@@ -1844,55 +1844,187 @@ function drawInteriorArchitecture(
         }
         continue;
       }
-      context.fillStyle = style.wallHighlight;
-      context.fillRect(
-        left + cellSize * .08,
-        top + cellSize * .08,
-        cellSize * .84,
-        cellSize * .14,
+      const connectedHorizontally = isArchitecture(x - 1, y) ||
+        isArchitecture(x + 1, y);
+      const connectedVertically = isArchitecture(x, y - 1) ||
+        isArchitecture(x, y + 1);
+      const capInset = cellSize * .12;
+      const traceWallCap = () => {
+        context.beginPath();
+        context.rect(
+          left + capInset,
+          top + capInset,
+          cellSize - capInset * 2,
+          cellSize - capInset * 2,
+        );
+        if (isArchitecture(x - 1, y)) {
+          context.rect(
+            left,
+            top + capInset,
+            cellSize * .5,
+            cellSize - capInset * 2,
+          );
+        }
+        if (isArchitecture(x + 1, y)) {
+          context.rect(
+            left + cellSize * .5,
+            top + capInset,
+            cellSize * .5,
+            cellSize - capInset * 2,
+          );
+        }
+        if (isArchitecture(x, y - 1)) {
+          context.rect(
+            left + capInset,
+            top,
+            cellSize - capInset * 2,
+            cellSize * .5,
+          );
+        }
+        if (isArchitecture(x, y + 1)) {
+          context.rect(
+            left + capInset,
+            top + cellSize * .5,
+            cellSize - capInset * 2,
+            cellSize * .5,
+          );
+        }
+      };
+
+      // Give the wall cap volume without laying the same bright stripe over
+      // every tile. The soft wash is continuous through connected cells while
+      // exposed edges below supply the actual silhouette.
+      const capGradient = context.createLinearGradient(
+        left,
+        top,
+        left + cellSize,
+        top + cellSize,
       );
-      context.strokeStyle = style.wallEdge;
-      context.lineWidth = Math.max(1, cellSize * .035);
-      if (!isArchitecture(x, y - 1)) {
-        context.beginPath();
-        context.moveTo(left, top);
-        context.lineTo(left + cellSize, top);
-        context.stroke();
-      }
-      if (!isArchitecture(x + 1, y)) {
-        context.beginPath();
-        context.moveTo(left + cellSize, top);
-        context.lineTo(left + cellSize, top + cellSize);
-        context.stroke();
-      }
-      if (!isArchitecture(x, y + 1)) {
-        context.save();
-        context.shadowColor = "rgba(28, 19, 16, .42)";
-        context.shadowBlur = Math.max(2, cellSize * .14);
-        context.shadowOffsetY = Math.max(2, cellSize * .12);
-        context.beginPath();
-        context.moveTo(left, top + cellSize);
-        context.lineTo(left + cellSize, top + cellSize);
-        context.stroke();
-        context.restore();
-      }
-      if (!isArchitecture(x - 1, y)) {
-        context.beginPath();
-        context.moveTo(left, top);
-        context.lineTo(left, top + cellSize);
-        context.stroke();
-      }
+      capGradient.addColorStop(0, style.wallHighlight);
+      capGradient.addColorStop(.46, "rgba(255,255,255,0)");
+      capGradient.addColorStop(1, "rgba(12,15,15,.2)");
+      context.save();
+      traceWallCap();
+      context.clip();
+      context.fillStyle = "rgba(255,255,255,.035)";
+      context.fillRect(left, top, cellSize, cellSize);
+      context.fillStyle = capGradient;
+      context.fillRect(left, top, cellSize, cellSize);
+
+      // Material marks follow the architecture rather than alternating
+      // arbitrarily from one cell to the next.
       context.strokeStyle = style.wallDetail;
-      context.lineWidth = Math.max(.7, cellSize * .018);
-      context.beginPath();
-      if ((x + y) % 2) {
-        context.moveTo(left + cellSize * .18, top + cellSize * .55);
-        context.lineTo(left + cellSize * .82, top + cellSize * .55);
+      context.fillStyle = style.wallDetail;
+      context.lineWidth = Math.max(.65, cellSize * .014);
+      if (style.floorPattern === "wood") {
+        context.beginPath();
+        if (connectedHorizontally && !connectedVertically) {
+          for (const ratio of [.36, .67]) {
+            context.moveTo(left + cellSize * .08, top + cellSize * ratio);
+            context.lineTo(left + cellSize * .92, top + cellSize * ratio);
+          }
+        } else if (connectedVertically && !connectedHorizontally) {
+          for (const ratio of [.36, .67]) {
+            context.moveTo(left + cellSize * ratio, top + cellSize * .08);
+            context.lineTo(left + cellSize * ratio, top + cellSize * .92);
+          }
+        } else {
+          context.moveTo(left + cellSize * .16, top + cellSize * .5);
+          context.lineTo(left + cellSize * .84, top + cellSize * .5);
+        }
+        context.stroke();
+        if (terrainVariation(x, y, 2467) > .68) {
+          context.beginPath();
+          context.ellipse(
+            left + cellSize * (.38 + terrainVariation(x, y, 2479) * .24),
+            top + cellSize * (.38 + terrainVariation(x, y, 2491) * .24),
+            cellSize * .055,
+            cellSize * .025,
+            0,
+            0,
+            Math.PI * 2,
+          );
+          context.stroke();
+        }
+      } else if (style.floorPattern === "metal") {
+        context.strokeRect(
+          left + cellSize * .14,
+          top + cellSize * .14,
+          cellSize * .72,
+          cellSize * .72,
+        );
+        for (const [offsetX, offsetY] of [
+          [.18, .18], [.82, .18], [.18, .82], [.82, .82],
+        ]) {
+          context.beginPath();
+          context.arc(
+            left + cellSize * offsetX,
+            top + cellSize * offsetY,
+            Math.max(.55, cellSize * .018),
+            0,
+            Math.PI * 2,
+          );
+          context.fill();
+        }
       } else {
-        context.moveTo(left + cellSize * .5, top + cellSize * .3);
-        context.lineTo(left + cellSize * .5, top + cellSize * .8);
+        const upperJoint = (x + y) % 2 ? .35 : .65;
+        context.beginPath();
+        context.moveTo(left + cellSize * .08, top + cellSize * .5);
+        context.lineTo(left + cellSize * .92, top + cellSize * .5);
+        context.moveTo(left + cellSize * upperJoint, top + cellSize * .08);
+        context.lineTo(left + cellSize * upperJoint, top + cellSize * .5);
+        context.moveTo(left + cellSize * (1 - upperJoint), top + cellSize * .5);
+        context.lineTo(left + cellSize * (1 - upperJoint), top + cellSize * .92);
+        context.stroke();
       }
-      context.stroke();
+      context.restore();
+
+      for (const edge of cardinalCellEdges) {
+        if (isArchitecture(x + edge.dx, y + edge.dy)) continue;
+        const startX = left + edge.startX * cellSize;
+        const startY = top + edge.startY * cellSize;
+        const endX = left + edge.endX * cellSize;
+        const endY = top + edge.endY * cellSize;
+        const neighbor = grid[y + edge.dy]?.[x + edge.dx];
+
+        // Cast the weight of the wall into the adjacent room. This makes the
+        // full-tile wall read as raised masonry/timber instead of dark floor.
+        if (neighbor && neighbor.terrain !== Terrain.Void) {
+          context.save();
+          context.shadowColor = "rgba(18,20,20,.52)";
+          context.shadowBlur = Math.max(2, cellSize * .13);
+          context.shadowOffsetX = edge.dx * cellSize * .11;
+          context.shadowOffsetY = edge.dy * cellSize * .11;
+          context.strokeStyle = style.wallEdge;
+          context.lineWidth = Math.max(1.5, cellSize * .07);
+          context.beginPath();
+          context.moveTo(startX, startY);
+          context.lineTo(endX, endY);
+          context.stroke();
+          context.restore();
+        }
+
+        context.strokeStyle = style.wallEdge;
+        context.lineWidth = Math.max(1, cellSize * .045);
+        context.beginPath();
+        context.moveTo(startX, startY);
+        context.lineTo(endX, endY);
+        context.stroke();
+
+        const bevelInset = cellSize * .055;
+        context.strokeStyle = style.wallHighlight;
+        context.lineWidth = Math.max(.7, cellSize * .022);
+        context.beginPath();
+        context.moveTo(
+          startX - edge.dx * bevelInset,
+          startY - edge.dy * bevelInset,
+        );
+        context.lineTo(
+          endX - edge.dx * bevelInset,
+          endY - edge.dy * bevelInset,
+        );
+        context.stroke();
+      }
     }
   }
 
@@ -1938,6 +2070,38 @@ function drawInteriorArchitecture(
           width: cellSize * .38,
           height: cellSize * .86,
         };
+      // Door jambs retain the thickness and material of the interrupted wall,
+      // visually seating the leaf inside the opening.
+      context.fillStyle = style.wallAlt;
+      context.strokeStyle = style.wallHighlight;
+      context.lineWidth = Math.max(.65, cellSize * .018);
+      if (horizontal) {
+        for (const ratio of [.22, .72]) {
+          context.fillRect(
+            left + cellSize * .04,
+            top + cellSize * ratio,
+            cellSize * .92,
+            cellSize * .08,
+          );
+          context.beginPath();
+          context.moveTo(left + cellSize * .05, top + cellSize * ratio);
+          context.lineTo(left + cellSize * .95, top + cellSize * ratio);
+          context.stroke();
+        }
+      } else {
+        for (const ratio of [.22, .72]) {
+          context.fillRect(
+            left + cellSize * ratio,
+            top + cellSize * .04,
+            cellSize * .08,
+            cellSize * .92,
+          );
+          context.beginPath();
+          context.moveTo(left + cellSize * ratio, top + cellSize * .05);
+          context.lineTo(left + cellSize * ratio, top + cellSize * .95);
+          context.stroke();
+        }
+      }
       context.fillStyle = style.door;
       context.strokeStyle = style.doorEdge;
       context.lineWidth = Math.max(1.2, cellSize * .05);
