@@ -4,7 +4,9 @@ import {
   Terrain,
   isInteriorMode,
   setTileSurface,
+  tileSurface,
   type Grid,
+  type LandscapeMode,
   type TerrainKind,
   type TerrainOptions,
   type Tile,
@@ -165,6 +167,201 @@ function preferredRegion(
 function paintRegions(grid: Grid, map: RegionMap, regions: Set<number>, terrain: TerrainKind) {
   for (const region of regions) {
     for (const { x, y } of map.cells[region]) paintTerrain(grid[y][x], terrain);
+  }
+}
+
+interface TerrainMorphologyOptions {
+  passes?: number;
+  replacement?: TerrainKind;
+  preserveMapEdge?: boolean;
+  preferHighGround?: boolean;
+}
+
+/**
+ * Breaks the shared Voronoi silhouette after region selection. Large features
+ * keep their topology, while their boundary follows the multi-scale height
+ * field and acquires irregular shoulders and small promontories.
+ */
+function morphTerrainMass(
+  grid: Grid,
+  terrain: TerrainKind,
+  random: Random,
+  options: TerrainMorphologyOptions = {},
+) {
+  const replacement = options.replacement ?? Terrain.Ground;
+  const passes = options.passes ?? 2;
+  for (let pass = 0; pass < passes; pass += 1) {
+    const snapshot = grid.map((row) => row.map((tile) => tile.terrain));
+    const next = snapshot.map((row) => [...row]);
+    for (let y = 0; y < grid.length; y += 1) {
+      for (let x = 0; x < grid[y].length; x += 1) {
+        const atMapEdge = x === 0 || y === 0 ||
+          x === grid[y].length - 1 || y === grid.length - 1;
+        if (atMapEdge && options.preserveMapEdge) continue;
+        const current = snapshot[y][x];
+        if (current !== terrain && current !== replacement) continue;
+        let cardinal = 0;
+        let nearby = 0;
+        for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+          for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+            if (!offsetX && !offsetY) continue;
+            if (snapshot[y + offsetY]?.[x + offsetX] === terrain) {
+              nearby += 1;
+              if (!offsetX || !offsetY) cardinal += 1;
+            }
+          }
+        }
+        const elevation = grid[y][x].height ?? .5;
+        const preference = options.preferHighGround ? elevation : 1 - elevation;
+        if (current !== terrain) {
+          const supportedExpansion = cardinal >= 2 && nearby >= 4;
+          const shoulderExpansion = cardinal === 1 && nearby >= 3;
+          const expansionChance = supportedExpansion
+            ? .32 + preference * .38
+            : .1 + preference * .16;
+          if (
+            (supportedExpansion || shoulderExpansion) &&
+            random() < expansionChance
+          ) {
+            next[y][x] = terrain;
+          }
+        }
+      }
+    }
+    for (let y = 0; y < grid.length; y += 1) {
+      for (let x = 0; x < grid[y].length; x += 1) {
+        grid[y][x].terrain = next[y][x];
+      }
+    }
+  }
+}
+
+function paintTerrainDisk(
+  grid: Grid,
+  center: Point,
+  radius: number,
+  terrain: TerrainKind,
+  allowed: ReadonlySet<TerrainKind>,
+  opening?: { x: number; y: number },
+) {
+  for (let offsetY = -radius; offsetY <= radius; offsetY += 1) {
+    for (let offsetX = -radius; offsetX <= radius; offsetX += 1) {
+      if (offsetX * offsetX + offsetY * offsetY > (radius + .25) ** 2) continue;
+      if (
+        opening &&
+        Math.sign(offsetX) === opening.x &&
+        Math.sign(offsetY) === opening.y &&
+        Math.abs(offsetX) + Math.abs(offsetY) >= radius
+      ) {
+        continue;
+      }
+      const tile = grid[center.y + offsetY]?.[center.x + offsetX];
+      if (tile && allowed.has(tile.terrain) && !tileSurface(tile)) {
+        tile.terrain = terrain;
+      }
+    }
+  }
+}
+
+function landmarkCenter(
+  grid: Grid,
+  random: Random,
+  allowed: ReadonlySet<TerrainKind>,
+  margin = 4,
+  matches: (tile: Tile, x: number, y: number) => boolean = () => true,
+) {
+  const candidates = grid.flatMap((row, y) =>
+    row.map((tile, x) => ({ tile, x, y }))
+      .filter(({ tile, x, y }) =>
+        x >= margin && y >= margin &&
+        x < grid[0].length - margin && y < grid.length - margin &&
+        allowed.has(tile.terrain) && !tileSurface(tile) && matches(tile, x, y)
+      )
+  );
+  return candidates.length
+    ? candidates[Math.floor(random() * candidates.length)]
+    : undefined;
+}
+
+function addBiomeLandmark(
+  grid: Grid,
+  options: TerrainOptions,
+  random: Random,
+) {
+  const { mode } = options;
+  const ground = new Set<TerrainKind>([Terrain.Ground, Terrain.Difficult]);
+  if (mode === "countryside" && options.waterWeight > 0 && random() < .48) {
+    const center = landmarkCenter(grid, random, ground, 5);
+    if (center) {
+      paintTerrainDisk(grid, center, 2, Terrain.Beach, ground);
+      paintTerrainDisk(grid, center, 1, Terrain.Water, new Set([Terrain.Beach]));
+    }
+    return;
+  }
+  if (mode === "coast" && options.waterWeight > 0 && random() < .52) {
+    const waterDistance = cellDistancesFromWater(grid);
+    const center = landmarkCenter(
+      grid,
+      random,
+      ground,
+      5,
+      (_tile, x, y) => waterDistance[y][x] >= 2 && waterDistance[y][x] <= 4,
+    );
+    if (center) paintTerrainDisk(grid, center, 2, Terrain.Beach, ground);
+    return;
+  }
+  if (
+    (mode === "badlands" || mode === "highlands") &&
+    options.reliefWeight > 0 &&
+    random() < .62
+  ) {
+    const center = landmarkCenter(grid, random, ground, 5);
+    if (center) {
+      paintTerrainDisk(
+        grid,
+        center,
+        2,
+        Terrain.Cliff,
+        ground,
+        { x: random() > .5 ? 1 : -1, y: 0 },
+      );
+    }
+    return;
+  }
+  if (mode === "wetlands" && random() < .66) {
+    const center = landmarkCenter(grid, random, new Set([Terrain.Water]), 4);
+    if (center) paintTerrainDisk(grid, center, 1, Terrain.Ground, new Set([Terrain.Water]));
+    return;
+  }
+  if (mode === "frozen-lake" && random() < .58) {
+    const center = landmarkCenter(grid, random, new Set([Terrain.Ice]), 4);
+    if (center) paintTerrainDisk(grid, center, 1, Terrain.Water, new Set([Terrain.Ice]));
+    return;
+  }
+  if (mode === "volcanic" && options.waterWeight > 0 && random() < .72) {
+    const center = landmarkCenter(grid, random, ground, 5);
+    if (!center) return;
+    paintTerrainDisk(grid, center, 2, Terrain.Difficult, ground);
+    const directions = [
+      { x: 1, y: 0 },
+      { x: -1, y: 0 },
+      { x: 0, y: 1 },
+      { x: 0, y: -1 },
+    ];
+    const first = directions[Math.floor(random() * directions.length)];
+    const turns = first.x
+      ? [{ x: 0, y: 1 }, { x: 0, y: -1 }]
+      : [{ x: 1, y: 0 }, { x: -1, y: 0 }];
+    const second = turns[Math.floor(random() * turns.length)];
+    for (const offset of [{ x: 0, y: 0 }, first, second]) {
+      const tile = grid[center.y + offset.y]?.[center.x + offset.x];
+      if (
+        tile && !tileSurface(tile) &&
+        (tile.terrain === Terrain.Ground || tile.terrain === Terrain.Difficult)
+      ) {
+        tile.terrain = Terrain.Lava;
+      }
+    }
   }
 }
 
@@ -754,6 +951,174 @@ function drawRoadCrossing(grid: Grid, horizontal: boolean, random: Random) {
   );
 }
 
+function drawTrailCrossing(grid: Grid, horizontal: boolean, random: Random) {
+  return meanderingCrossing(
+    grid,
+    horizontal,
+    random,
+    1,
+    (tile) =>
+      tile.terrain === Terrain.Water ||
+        tile.terrain === Terrain.Ravine ||
+        tile.surface === Terrain.Bridge
+        ? Terrain.Bridge
+        : Terrain.Road,
+    true,
+  );
+}
+
+function addLiquidTributary(
+  grid: Grid,
+  terrain: typeof Terrain.Water | typeof Terrain.Lava,
+  random: Random,
+) {
+  const directions = [
+    { x: 1, y: 0 },
+    { x: -1, y: 0 },
+    { x: 0, y: 1 },
+    { x: 0, y: -1 },
+  ];
+  const sources: Array<Point & { exits: Point[] }> = [];
+  for (let y = 3; y < grid.length - 3; y += 1) {
+    for (let x = 3; x < grid[y].length - 3; x += 1) {
+      if (grid[y][x].terrain !== terrain) continue;
+      const exits = directions.filter((direction) => {
+        const neighbor = grid[y + direction.y]?.[x + direction.x];
+        return neighbor &&
+          neighbor.terrain !== terrain &&
+          neighbor.terrain !== Terrain.Cliff &&
+          neighbor.terrain !== Terrain.Void;
+      });
+      if (exits.length) sources.push({ x, y, exits });
+    }
+  }
+  if (!sources.length) return;
+  const source = sources[Math.floor(random() * sources.length)];
+  let direction = source.exits[Math.floor(random() * source.exits.length)];
+  let point = { x: source.x, y: source.y };
+  const length = 5 + Math.floor(random() * 9);
+  let paintedNewCells = 0;
+  for (let step = 0; step < length; step += 1) {
+    if (step > 1 && random() < .2) {
+      const turns = direction.x
+        ? { x: 0, y: random() > .5 ? 1 : -1 }
+        : { x: random() > .5 ? 1 : -1, y: 0 };
+      const turnTile = grid[point.y + turns.y]?.[point.x + turns.x];
+      if (
+        turnTile && turnTile.terrain !== Terrain.Cliff &&
+        turnTile.terrain !== Terrain.Void
+      ) {
+        direction = turns;
+      }
+    }
+    const next = { x: point.x + direction.x, y: point.y + direction.y };
+    const tile = grid[next.y]?.[next.x];
+    if (!tile || tile.terrain === Terrain.Cliff || tile.terrain === Terrain.Void) break;
+    if (tile.terrain === terrain && paintedNewCells > 0) break;
+    if (tile.terrain !== terrain) paintedNewCells += 1;
+    tile.terrain = terrain;
+    if (tileSurface(tile) === Terrain.Road) setTileSurface(tile, Terrain.Bridge);
+    point = next;
+  }
+}
+
+function hasRoadNetwork(grid: Grid) {
+  return grid.some((row) => row.some((tile) =>
+    tileSurface(tile) === Terrain.Road || tileSurface(tile) === Terrain.Bridge
+  ));
+}
+
+function trailOrientationAcrossLiquid(grid: Grid, random: Random) {
+  const lastY = grid.length - 1;
+  const lastX = grid[0].length - 1;
+  const verticalFlowExits = grid[0].filter((tile) => tile.terrain === Terrain.Water).length +
+    grid[lastY].filter((tile) => tile.terrain === Terrain.Water).length;
+  let horizontalFlowExits = 0;
+  for (const row of grid) {
+    if (row[0].terrain === Terrain.Water) horizontalFlowExits += 1;
+    if (row[lastX].terrain === Terrain.Water) horizontalFlowExits += 1;
+  }
+  if (verticalFlowExits === horizontalFlowExits) return random() > .5;
+  // A horizontal trail crosses a predominantly north-south watercourse, and
+  // vice versa, avoiding long boardwalks that simply follow the channel.
+  return verticalFlowExits > horizontalFlowExits;
+}
+
+function maybeAddBiomeTrail(
+  grid: Grid,
+  mode: LandscapeMode,
+  random: Random,
+) {
+  if (hasRoadNetwork(grid)) return;
+  const chance: Partial<Record<LandscapeMode, number>> = {
+    "ancient-forest": .58,
+    "frozen-lake": .42,
+    badlands: .62,
+    wetlands: .4,
+    "ancient-ruins": .72,
+  };
+  if (random() >= (chance[mode] ?? 0)) return;
+  drawTrailCrossing(grid, trailOrientationAcrossLiquid(grid, random), random);
+}
+
+function addRoadSpurs(grid: Grid, random: Random, requested: number) {
+  const roadCells = grid.flatMap((row, y) =>
+    row.map((tile, x) => ({ tile, x, y }))
+      .filter(({ tile }) => tileSurface(tile) === Terrain.Road)
+  );
+  if (!roadCells.length) return;
+  const directions = [
+    { x: 1, y: 0 },
+    { x: -1, y: 0 },
+    { x: 0, y: 1 },
+    { x: 0, y: -1 },
+  ];
+  for (let spur = 0; spur < requested; spur += 1) {
+    const source = roadCells[Math.floor(random() * roadCells.length)];
+    const leftNeighbor = grid[source.y]?.[source.x - 1];
+    const rightNeighbor = grid[source.y]?.[source.x + 1];
+    const horizontalRoad =
+      (leftNeighbor && tileSurface(leftNeighbor) === Terrain.Road) ||
+      (rightNeighbor && tileSurface(rightNeighbor) === Terrain.Road);
+    let direction = horizontalRoad
+      ? directions[2 + Math.floor(random() * 2)]
+      : directions[Math.floor(random() * 2)];
+    let point = { x: source.x, y: source.y };
+    const length = 4 + Math.floor(random() * 8);
+    for (let step = 0; step < length; step += 1) {
+      if (step > 1 && random() < .24) {
+        const turns = direction.x
+          ? [{ x: 0, y: 1 }, { x: 0, y: -1 }]
+          : [{ x: 1, y: 0 }, { x: -1, y: 0 }];
+        direction = turns[Math.floor(random() * turns.length)];
+      }
+      const next = { x: point.x + direction.x, y: point.y + direction.y };
+      const tile = grid[next.y]?.[next.x];
+      if (
+        !tile ||
+        tile.obstacle === Obstacle.Building ||
+        tile.terrain === Terrain.Lava ||
+        tile.terrain === Terrain.Void ||
+        tile.terrain === Terrain.Wall ||
+        tile.terrain === Terrain.Cliff
+      ) {
+        break;
+      }
+      const existingSurface = tileSurface(tile);
+      if (step > 2 && (existingSurface === Terrain.Road || existingSurface === Terrain.Bridge)) {
+        break;
+      }
+      setTileSurface(
+        tile,
+        tile.terrain === Terrain.Water || tile.terrain === Terrain.Ravine
+          ? Terrain.Bridge
+          : Terrain.Road,
+      );
+      point = next;
+    }
+  }
+}
+
 function assignCliffElevations(grid: Grid) {
   const distances = grid.map((row) => row.map(() => Infinity));
   const queue: Point[] = [];
@@ -793,7 +1158,45 @@ function assignCliffElevations(grid: Grid) {
     for (let x = 0; x < grid[y].length; x += 1) {
       if (grid[y][x].terrain !== Terrain.Cliff) continue;
       const distance = Number.isFinite(distances[y][x]) ? distances[y][x] : 0;
-      grid[y][x].elevation = Math.min(3, 1 + Math.floor(distance / 2));
+      const height = grid[y][x].height ?? .5;
+      const distanceRelief = Math.min(1, distance / 4);
+      const relief = height * .72 + distanceRelief * .28;
+      const desiredElevation = relief >= .68 ? 3 : relief >= .47 ? 2 : 1;
+      // A tall tier must have enough cliff mass in front of it to read as a
+      // terrace. Without this cap, height noise could put elevation 3 directly
+      // on the outer edge and stack two faces on the exact same silhouette.
+      grid[y][x].elevation = Math.min(desiredElevation, distance + 1, 3);
+    }
+  }
+
+  // Height can still produce a low pocket beside a much taller inner cell.
+  // Relax only the taller side so cardinal neighbours never jump by two tiers;
+  // preserving the lower edge keeps the visible foot of the cliff grounded.
+  for (let pass = 0; pass < 2; pass += 1) {
+    const next = grid.map((row) => row.map((tile) => tile.elevation));
+    for (let y = 0; y < grid.length; y += 1) {
+      for (let x = 0; x < grid[y].length; x += 1) {
+        const tile = grid[y][x];
+        if (tile.terrain !== Terrain.Cliff) continue;
+        const lowerNeighbor = [
+          grid[y - 1]?.[x],
+          grid[y + 1]?.[x],
+          grid[y]?.[x - 1],
+          grid[y]?.[x + 1],
+        ].filter((neighbor) => neighbor?.terrain === Terrain.Cliff)
+          .reduce(
+            (minimum, neighbor) => Math.min(minimum, neighbor?.elevation ?? 1),
+            tile.elevation ?? 1,
+          );
+        next[y][x] = Math.min(tile.elevation ?? 1, lowerNeighbor + 1);
+      }
+    }
+    for (let y = 0; y < grid.length; y += 1) {
+      for (let x = 0; x < grid[y].length; x += 1) {
+        if (grid[y][x].terrain === Terrain.Cliff) {
+          grid[y][x].elevation = next[y][x];
+        }
+      }
     }
   }
 }
@@ -990,7 +1393,7 @@ function generateCavern(
   );
 }
 
-export function generateTerrain(options: TerrainOptions): Grid {
+function generateTerrainAttempt(options: TerrainOptions) {
   options = normalizeGenerationOptions(options);
   const { width, height, seed } = options;
   const grid: Grid = Array.from({ length: height }, () =>
@@ -1006,7 +1409,7 @@ export function generateTerrain(options: TerrainOptions): Grid {
       seededRandom(`${seed}:${options.mode}`),
       options.mode,
     );
-    return grid;
+    return { grid };
   }
   const total = width * height;
   const map = buildRegionMap(width, height, options.scale, seededRandom(`${seed}:mesh`));
@@ -1032,6 +1435,12 @@ export function generateTerrain(options: TerrainOptions): Grid {
       (region) => !boundary.has(region), undefined, preferInlandLowland,
     );
     paintRegions(grid, map, pond, Terrain.Water);
+    morphTerrainMass(
+      grid,
+      Terrain.Water,
+      seededRandom(`${seed}:pond-shape`),
+      { preserveMapEdge: true },
+    );
     paintShore(grid, seededRandom(`${seed}:pond-shore`), 2);
     drawRoadCrossing(grid, true, seededRandom(`${seed}:road`));
   }
@@ -1039,18 +1448,27 @@ export function generateTerrain(options: TerrainOptions): Grid {
   if (options.mode === "river") {
     const riverRandom = seededRandom(`${seed}:river`);
     const riverIsHorizontal = riverRandom() > .5;
-    if (options.waterWeight > 0) meanderingCrossing(
-      grid,
-      riverIsHorizontal,
-      riverRandom,
-      [
-        Math.max(0, Math.round(options.waterWeight)),
-        Math.max(0, Math.round(2 * options.waterWeight)),
-      ],
-      () => Terrain.Water,
-      false,
-      .9,
-    );
+    if (options.waterWeight > 0) {
+      meanderingCrossing(
+        grid,
+        riverIsHorizontal,
+        riverRandom,
+        [
+          Math.max(0, Math.round(options.waterWeight)),
+          Math.max(0, Math.round(2 * options.waterWeight)),
+        ],
+        () => Terrain.Water,
+        false,
+        .9,
+      );
+      if (riverRandom() < .72) {
+        addLiquidTributary(
+          grid,
+          Terrain.Water,
+          seededRandom(`${seed}:river-tributary`),
+        );
+      }
+    }
     paintShore(grid, seededRandom(`${seed}:river-shore`), 2);
     drawRoadCrossing(
       grid,
@@ -1070,6 +1488,12 @@ export function generateTerrain(options: TerrainOptions): Grid {
       preferLowland,
     );
     paintRegions(grid, map, sea, Terrain.Water);
+    morphTerrainMass(
+      grid,
+      Terrain.Water,
+      seededRandom(`${seed}:coast-shape`),
+      { passes: 3, preserveMapEdge: true },
+    );
     ensureSingleCoastalSea(grid);
     paintShore(grid, seededRandom(`${seed}:coast-shore`), 3);
     drawCoastalRoad(grid, seededRandom(`${seed}:coastal-road`));
@@ -1077,14 +1501,18 @@ export function generateTerrain(options: TerrainOptions): Grid {
 
   if (options.mode === "desert-canyon") {
     const canyonRandom = seededRandom(`${seed}:desert-canyon`);
-    const ravine = pathAcrossMap(
-      map, width, height, canyonRandom() > .5, canyonRandom,
-      () => true, preferLowland,
-    );
-    drawRegionPath(
-      grid, map, ravine, Terrain.Ravine,
-      Math.max(0, Math.round(options.reliefWeight) - 1),
-    );
+    const ravine = options.reliefWeight > 0
+      ? pathAcrossMap(
+        map, width, height, canyonRandom() > .5, canyonRandom,
+        () => true, preferLowland,
+      )
+      : [];
+    if (ravine.length) {
+      drawRegionPath(
+        grid, map, ravine, Terrain.Ravine,
+        Math.max(0, Math.round(options.reliefWeight) - 1),
+      );
+    }
     const mesa = selectConnectedRegions(
       map, Math.round(total * .13 * options.reliefWeight), canyonRandom,
       (region) => !ravine.includes(region),
@@ -1092,6 +1520,12 @@ export function generateTerrain(options: TerrainOptions): Grid {
       preferHighland,
     );
     paintRegions(grid, map, mesa, Terrain.Cliff);
+    morphTerrainMass(
+      grid,
+      Terrain.Cliff,
+      seededRandom(`${seed}:mesa-shape`),
+      { preferHighGround: true },
+    );
     const oasis = selectConnectedRegions(
       map, Math.round(total * .025 * options.waterWeight), canyonRandom,
       (region) => !mesa.has(region) && !boundary.has(region),
@@ -1099,6 +1533,12 @@ export function generateTerrain(options: TerrainOptions): Grid {
       preferInlandLowland,
     );
     paintRegions(grid, map, oasis, Terrain.Water);
+    morphTerrainMass(
+      grid,
+      Terrain.Water,
+      seededRandom(`${seed}:oasis-shape`),
+      { preserveMapEdge: true },
+    );
     scatterDifficultTerrain(
       grid, Math.round(total * .14 * options.difficultWeight),
       cellDistancesFromWater(grid), seededRandom(`${seed}:desert-scree`),
@@ -1115,6 +1555,13 @@ export function generateTerrain(options: TerrainOptions): Grid {
         false,
         .7,
       );
+      if (forestRandom() < .48) {
+        addLiquidTributary(
+          grid,
+          Terrain.Water,
+          seededRandom(`${seed}:forest-tributary`),
+        );
+      }
     }
     scatterDifficultTerrain(
       grid, Math.round(total * .2 * options.difficultWeight),
@@ -1132,6 +1579,12 @@ export function generateTerrain(options: TerrainOptions): Grid {
       inlandSeeds, preferLowland,
     );
     paintRegions(grid, map, frozenLake, Terrain.Ice);
+    morphTerrainMass(
+      grid,
+      Terrain.Ice,
+      seededRandom(`${seed}:frozen-lake-shape`),
+      { passes: 3, preserveMapEdge: true },
+    );
     const openWater = selectConnectedRegions(
       map, Math.round(total * .045 * options.waterWeight),
       seededRandom(`${seed}:open-water`),
@@ -1140,6 +1593,12 @@ export function generateTerrain(options: TerrainOptions): Grid {
       preferInlandLowland,
     );
     paintRegions(grid, map, openWater, Terrain.Water);
+    morphTerrainMass(
+      grid,
+      Terrain.Water,
+      seededRandom(`${seed}:open-water-shape`),
+      { replacement: Terrain.Ice, preserveMapEdge: true },
+    );
     scatterDifficultTerrain(
       grid, Math.round(total * .16 * options.difficultWeight),
       cellDistancesFromWater(grid), seededRandom(`${seed}:snowdrifts`),
@@ -1148,7 +1607,7 @@ export function generateTerrain(options: TerrainOptions): Grid {
 
   if (options.mode === "badlands") {
     const badlandsRandom = seededRandom(`${seed}:badlands`);
-    for (let index = 0; index < Math.max(1, Math.round(options.reliefWeight * 2)); index += 1) {
+    for (let index = 0; index < Math.round(options.reliefWeight * 2); index += 1) {
       const path = pathAcrossMap(
         map, width, height, badlandsRandom() > .5,
         seededRandom(`${seed}:badlands-ridge:${index}`),
@@ -1266,6 +1725,12 @@ export function generateTerrain(options: TerrainOptions): Grid {
     );
     paintRegions(grid, map, leftMass, Terrain.Cliff);
     paintRegions(grid, map, rightMass, Terrain.Cliff);
+    morphTerrainMass(
+      grid,
+      Terrain.Cliff,
+      seededRandom(`${seed}:mountain-mass-shape`),
+      { passes: 3, preserveMapEdge: true, preferHighGround: true },
+    );
     scatterDifficultTerrain(
       grid, Math.round(total * .12 * options.difficultWeight),
       grid.map((row) => row.map(() => Infinity)),
@@ -1308,6 +1773,12 @@ export function generateTerrain(options: TerrainOptions): Grid {
     );
     paintRegions(grid, map, secondPool, Terrain.Water);
 
+    morphTerrainMass(
+      grid,
+      Terrain.Water,
+      seededRandom(`${seed}:wetland-pool-shape`),
+    );
+
     // Narrow channels connect the wetland visually to the landscape beyond the
     // map without turning it into a single broad river.
     if (options.waterWeight > 0) meanderingCrossing(
@@ -1319,6 +1790,13 @@ export function generateTerrain(options: TerrainOptions): Grid {
       false,
       .65,
     );
+    if (options.waterWeight > 0 && wetlandRandom() < .7) {
+      addLiquidTributary(
+        grid,
+        Terrain.Water,
+        seededRandom(`${seed}:wetland-tributary`),
+      );
+    }
     const wetlandDistance = cellDistancesFromWater(grid);
     scatterDifficultTerrain(
       grid,
@@ -1343,6 +1821,7 @@ export function generateTerrain(options: TerrainOptions): Grid {
     const hasRiver = morphology >= .27;
     const hasLake = morphology < .68 || morphology > .86;
     let lavaPath: Point[] = [];
+    let lavaRiverCells: Point[] = [];
 
     if (hasRiver && options.waterWeight > 0) {
       lavaPath = meanderingCrossing(
@@ -1353,6 +1832,9 @@ export function generateTerrain(options: TerrainOptions): Grid {
         () => Terrain.Lava,
         false,
         .55,
+      );
+      lavaRiverCells = grid.flatMap((row, y) =>
+        row.flatMap((tile, x) => tile.terrain === Terrain.Lava ? [{ x, y }] : [])
       );
     }
     if (hasLake && options.waterWeight > 0) {
@@ -1373,6 +1855,24 @@ export function generateTerrain(options: TerrainOptions): Grid {
         preferLowland,
       );
       paintRegions(grid, map, lavaLake, Terrain.Lava);
+      morphTerrainMass(
+        grid,
+        Terrain.Lava,
+        seededRandom(`${seed}:lava-lake-shape`),
+      );
+      // Morphing the lake also sees the narrow river as an exposed boundary.
+      // Restore its complete painted mask (including orthogonal connectors
+      // between diagonal centerline steps) so the flow stays uninterrupted.
+      for (const point of lavaRiverCells) {
+        grid[point.y][point.x].terrain = Terrain.Lava;
+      }
+    }
+    if (options.waterWeight > 0 && volcanicRandom() < .55) {
+      addLiquidTributary(
+        grid,
+        Terrain.Lava,
+        seededRandom(`${seed}:lava-tributary`),
+      );
     }
 
     scatterDifficultTerrain(
@@ -1402,6 +1902,22 @@ export function generateTerrain(options: TerrainOptions): Grid {
         ),
         Terrain.Cliff,
         Math.max(0, Math.round(options.reliefWeight) - 1),
+      );
+      morphTerrainMass(
+        grid,
+        Terrain.Cliff,
+        seededRandom(`${seed}:volcanic-ridge-ground-shape`),
+        { passes: 1, preferHighGround: true },
+      );
+      morphTerrainMass(
+        grid,
+        Terrain.Cliff,
+        seededRandom(`${seed}:volcanic-ridge-ash-shape`),
+        {
+          passes: 1,
+          replacement: Terrain.Difficult,
+          preferHighGround: true,
+        },
       );
     }
   }
@@ -1465,29 +1981,26 @@ export function generateTerrain(options: TerrainOptions): Grid {
     BIOME_RECIPES[options.mode].smoothing,
   );
 
-  // Second pass: obstacles do not participate in terrain morphology.
+  addBiomeLandmark(
+    grid,
+    options,
+    seededRandom(`${seed}:landmark-variant`),
+  );
+  maybeAddBiomeTrail(
+    grid,
+    options.mode,
+    seededRandom(`${seed}:optional-trail`),
+  );
+
+  // Second pass: establish every major point of interest and its access
+  // before vegetation and scree are fitted into the remaining landscape.
   const waterDistance = cellDistancesFromWater(grid);
-  if (options.mode !== "city") {
-    // Buildings establish the major points of interest. Smaller obstacles are
-    // fitted around them, so a few rocks can no longer silently erase the
-    // requested farmstead, ruin, or mountain refuge quota.
-    if (options.mode !== "underground" && options.mode !== "volcanic") {
-      placeBuildings(grid, options.buildingCount, seededRandom(`${seed}:buildings`));
-    }
-    scatterRocks(grid, Math.round(total * options.rockRatio), seededRandom(`${seed}:rocks`));
-  }
   if (
+    options.mode !== "city" &&
     options.mode !== "underground" &&
-    options.mode !== "volcanic" &&
-    options.mode !== "city"
+    options.mode !== "volcanic"
   ) {
-    placeTrees(
-      grid,
-      Math.round(total * options.treeRatio),
-      waterDistance,
-      seededRandom(`${seed}:groves`),
-      options.mode,
-    );
+    placeBuildings(grid, options.buildingCount, seededRandom(`${seed}:buildings`));
   }
   if (options.mode === "city") {
     const cityBuildings = new Set(grid.flatMap((row) => row)
@@ -1499,6 +2012,36 @@ export function generateTerrain(options: TerrainOptions): Grid {
       seededRandom(`${seed}:city-infill`),
       true,
     );
+  }
+
+  connectPointsOfInterest(grid, options.mode);
+  if (
+    hasRoadNetwork(grid) &&
+    options.mode !== "city" &&
+    options.mode !== "sewer" &&
+    options.mode !== "underground" &&
+    options.mode !== "archipelago" &&
+    options.mode !== "volcanic"
+  ) {
+    addRoadSpurs(
+      grid,
+      seededRandom(`${seed}:road-spurs`),
+      Math.min(3, Math.max(1, Math.ceil(options.buildingCount / 2))),
+    );
+  }
+
+  if (options.mode !== "city") {
+    scatterRocks(
+      grid,
+      Math.round(total * options.rockRatio),
+      seededRandom(`${seed}:rocks`),
+      options.mode,
+    );
+  }
+  if (
+    options.mode !== "underground" &&
+    options.mode !== "volcanic"
+  ) {
     placeTrees(
       grid,
       Math.round(total * options.treeRatio),
@@ -1507,9 +2050,53 @@ export function generateTerrain(options: TerrainOptions): Grid {
       options.mode,
     );
   }
-  connectPointsOfInterest(grid, options.mode);
   assignCliffElevations(grid);
-  validateAndRepairGrid(grid, options.mode);
+  const repair = validateAndRepairGrid(grid, options.mode);
   assignCliffElevations(grid);
-  return grid;
+  return { grid, repair };
+}
+
+export function generateTerrain(options: TerrainOptions): Grid {
+  const first = generateTerrainAttempt(options);
+  if (
+    !first.repair?.repairBudgetExceeded &&
+    !first.repair?.connectivityRepairFailed
+  ) {
+    return first.grid;
+  }
+
+  const candidates: Array<
+    ReturnType<typeof generateTerrainAttempt> & { attempt: number }
+  > = [{ ...first, attempt: 0 }];
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const candidate = generateTerrainAttempt({
+      ...options,
+      seed: `${options.seed}:repair-retry:${attempt}`,
+    });
+    candidates.push({ ...candidate, attempt });
+    if (
+      candidate.repair &&
+      !candidate.repair.repairBudgetExceeded &&
+      !candidate.repair.connectivityRepairFailed
+    ) {
+      break;
+    }
+  }
+  const failureRank = (candidate: typeof candidates[number]) => {
+    if (candidate.repair?.connectivityRepairFailed) {
+      return candidate.repair.remainingConnectedComponents === 0 ? 3 : 2;
+    }
+    return candidate.repair?.repairBudgetExceeded ? 1 : 0;
+  };
+  candidates.sort((a, b) => {
+    return failureRank(a) - failureRank(b) ||
+      (a.repair?.remainingConnectedComponents ?? 1) -
+        (b.repair?.remainingConnectedComponents ?? 1) ||
+      (a.repair?.repairFootprintCells ?? 0) -
+        (b.repair?.repairFootprintCells ?? 0) ||
+      (a.repair?.connectivityRepairCost ?? 0) -
+        (b.repair?.connectivityRepairCost ?? 0) ||
+      a.attempt - b.attempt;
+  });
+  return candidates[0].grid;
 }

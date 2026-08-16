@@ -90,6 +90,36 @@ function hashNoise(x: number, y: number, seed: string) {
   return ((value ^ (value >>> 16)) >>> 0) / 4294967295;
 }
 
+function interpolatedNoise(
+  x: number,
+  y: number,
+  scale: number,
+  seed: string,
+) {
+  const sampleX = x / scale;
+  const sampleY = y / scale;
+  const left = Math.floor(sampleX);
+  const top = Math.floor(sampleY);
+  const fractionX = sampleX - left;
+  const fractionY = sampleY - top;
+  const smooth = (value: number) => value * value * (3 - 2 * value);
+  const blendX = smooth(fractionX);
+  const blendY = smooth(fractionY);
+  const lerp = (from: number, to: number, amount: number) =>
+    from + (to - from) * amount;
+  const north = lerp(
+    hashNoise(left, top, seed),
+    hashNoise(left + 1, top, seed),
+    blendX,
+  );
+  const south = lerp(
+    hashNoise(left, top + 1, seed),
+    hashNoise(left + 1, top + 1, seed),
+    blendX,
+  );
+  return lerp(north, south, blendY);
+}
+
 export function assignHeightField(
   grid: Grid,
   mode: LandscapeMode,
@@ -98,9 +128,9 @@ export function assignHeightField(
   const ruggedness = BIOME_RECIPES[mode].ruggedness;
   for (let y = 0; y < grid.length; y += 1) {
     for (let x = 0; x < grid[y].length; x += 1) {
-      const broad = hashNoise(Math.floor(x / 6), Math.floor(y / 6), `${seed}:h0`);
-      const medium = hashNoise(Math.floor(x / 3), Math.floor(y / 3), `${seed}:h1`);
-      const fine = hashNoise(x, y, `${seed}:h2`);
+      const broad = interpolatedNoise(x, y, 8.5, `${seed}:h0`);
+      const medium = interpolatedNoise(x, y, 3.75, `${seed}:h1`);
+      const fine = interpolatedNoise(x, y, 1.6, `${seed}:h2`);
       grid[y][x].height = clamp(
         (broad * .52 + medium * .31 + fine * .17) * ruggedness +
           (1 - ruggedness) * .35,
@@ -284,7 +314,198 @@ function isPassable(tile: Tile) {
   return tile.terrain !== Terrain.Cliff &&
     tile.terrain !== Terrain.Ravine &&
     tile.terrain !== Terrain.Lava &&
-    tile.terrain !== Terrain.Void;
+    tile.terrain !== Terrain.Void &&
+    tile.terrain !== Terrain.Wall;
+}
+
+const pointKey = ({ x, y }: Point) => `${x},${y}`;
+
+function passableComponents(grid: Grid) {
+  const visited = new Set<string>();
+  const components: Point[][] = [];
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      const start = { x, y };
+      const startKey = pointKey(start);
+      if (visited.has(startKey) || !isPassable(grid[y][x])) continue;
+      const component: Point[] = [];
+      const queue = [start];
+      visited.add(startKey);
+      for (let index = 0; index < queue.length; index += 1) {
+        const point = queue[index];
+        component.push(point);
+        for (const direction of directions) {
+          const next = { x: point.x + direction.x, y: point.y + direction.y };
+          const key = pointKey(next);
+          if (
+            visited.has(key) ||
+            !grid[next.y]?.[next.x] ||
+            !isPassable(grid[next.y][next.x])
+          ) {
+            continue;
+          }
+          visited.add(key);
+          queue.push(next);
+        }
+      }
+      components.push(component);
+    }
+  }
+  return components.sort((a, b) =>
+    b.length - a.length ||
+    (a[0]?.y ?? 0) - (b[0]?.y ?? 0) ||
+    (a[0]?.x ?? 0) - (b[0]?.x ?? 0)
+  );
+}
+
+type RepairScore = { terrainCost: number; length: number };
+type RepairQueueItem = { point: Point; score: RepairScore };
+
+function compareRepairScores(a: RepairScore, b: RepairScore) {
+  return a.terrainCost - b.terrainCost || a.length - b.length;
+}
+
+function compareRepairQueueItems(a: RepairQueueItem, b: RepairQueueItem) {
+  return compareRepairScores(a.score, b.score) ||
+    a.point.y - b.point.y ||
+    a.point.x - b.point.x;
+}
+
+function pushRepairQueue(queue: RepairQueueItem[], item: RepairQueueItem) {
+  queue.push(item);
+  let index = queue.length - 1;
+  while (index > 0) {
+    const parent = Math.floor((index - 1) / 2);
+    if (compareRepairQueueItems(queue[parent], queue[index]) <= 0) break;
+    [queue[parent], queue[index]] = [queue[index], queue[parent]];
+    index = parent;
+  }
+}
+
+function popRepairQueue(queue: RepairQueueItem[]) {
+  const first = queue[0];
+  const last = queue.pop();
+  if (!first || !last || !queue.length) return first;
+  queue[0] = last;
+  let index = 0;
+  while (true) {
+    const left = index * 2 + 1;
+    const right = left + 1;
+    let smallest = index;
+    if (
+      left < queue.length &&
+      compareRepairQueueItems(queue[left], queue[smallest]) < 0
+    ) {
+      smallest = left;
+    }
+    if (
+      right < queue.length &&
+      compareRepairQueueItems(queue[right], queue[smallest]) < 0
+    ) {
+      smallest = right;
+    }
+    if (smallest === index) break;
+    [queue[index], queue[smallest]] = [queue[smallest], queue[index]];
+    index = smallest;
+  }
+  return first;
+}
+
+function connectivityStepCost(tile: Tile) {
+  if (tile.obstacle === Obstacle.Building || tile.terrain === Terrain.Wall) {
+    return Infinity;
+  }
+  // Every edit carries a meaningful base cost, then fragile terrain adds a
+  // premium. This prevents a one-cell cliff notch from being avoided by
+  // clearing a conspicuously long line of otherwise well-placed vegetation.
+  const obstacleCost = tile.obstacle === Obstacle.Tree
+    ? 10
+    : tile.obstacle === Obstacle.Rock ? 12 : 0;
+  const terrainCost = tile.terrain === Terrain.Ravine
+    ? 16
+    : tile.terrain === Terrain.Cliff
+      ? 22 + (tile.elevation ?? 1) * 4
+      : tile.terrain === Terrain.Lava
+        ? 50
+        : tile.terrain === Terrain.Void ? 60 : 0;
+  return obstacleCost + terrainCost;
+}
+
+/**
+ * Finds the least invasive connection from an already connected region to
+ * any still-isolated component. Every cell in the connected region is a
+ * source, so the result starts at the locally closest useful boundary rather
+ * than at an arbitrary component cell. Terrain edits are minimized before
+ * path length, which avoids long artificial cuts through cliffs and lava.
+ */
+function shortestLocalConnection(
+  grid: Grid,
+  connected: ReadonlySet<string>,
+  isolated: ReadonlySet<string>,
+) {
+  const distances = new Map<string, RepairScore>();
+  const previous = new Map<string, Point>();
+  const queue: RepairQueueItem[] = [];
+  for (const key of connected) {
+    const [x, y] = key.split(",").map(Number);
+    const point = { x, y };
+    const isBoundary = directions.some((direction) => {
+      const next = { x: x + direction.x, y: y + direction.y };
+      return grid[next.y]?.[next.x] && !connected.has(pointKey(next));
+    });
+    if (!isBoundary) continue;
+    const score = { terrainCost: 0, length: 0 };
+    distances.set(key, score);
+    pushRepairQueue(queue, { point, score });
+  }
+
+  let end: Point | undefined;
+  while (queue.length) {
+    const current = popRepairQueue(queue)!;
+    const currentKey = pointKey(current.point);
+    const best = distances.get(currentKey);
+    if (!best || compareRepairScores(current.score, best) !== 0) continue;
+    if (isolated.has(currentKey)) {
+      end = current.point;
+      break;
+    }
+    for (const direction of directions) {
+      const next = {
+        x: current.point.x + direction.x,
+        y: current.point.y + direction.y,
+      };
+      const tile = grid[next.y]?.[next.x];
+      if (!tile) continue;
+      const nextKey = pointKey(next);
+      // Every connected boundary cell is already a source. Walking back
+      // through the entire connected region only bloats the queue and cannot
+      // improve either the terrain cost or the path length.
+      if (connected.has(nextKey)) continue;
+      const terrainCost = connectivityStepCost(tile);
+      if (!Number.isFinite(terrainCost)) continue;
+      const score = {
+        terrainCost: current.score.terrainCost + terrainCost,
+        length: current.score.length + 1,
+      };
+      const known = distances.get(nextKey);
+      if (known && compareRepairScores(score, known) >= 0) continue;
+      distances.set(nextKey, score);
+      previous.set(nextKey, current.point);
+      pushRepairQueue(queue, { point: next, score });
+    }
+  }
+  if (!end) return undefined;
+
+  const path = [end];
+  while (!connected.has(pointKey(path[0]))) {
+    const point = previous.get(pointKey(path[0]));
+    if (!point) return undefined;
+    path.unshift(point);
+  }
+  return {
+    path,
+    score: distances.get(pointKey(end))!,
+  };
 }
 
 export interface ValidationReport {
@@ -292,6 +513,23 @@ export interface ValidationReport {
   carvedCliffCrossings: number;
   removedInvalidObstacles: number;
   connectedComponents: number;
+  /** Number of local links added to join isolated walkable regions. */
+  connectivityRepairs: number;
+  /** Unique cells altered by connectivity repairs. */
+  connectivityRepairCells: number;
+  /** Weighted severity of terrain altered by connectivity repairs. */
+  connectivityRepairCost: number;
+  /** Longest gap spanned by one connectivity repair, excluding endpoints. */
+  longestConnectivityRepair: number;
+  /** Unique cells touched by every validation/repair operation. */
+  repairFootprintCells: number;
+  /** Soft diagnostic budget, proportional to the map area. */
+  repairBudgetCells: number;
+  /** Generation should be reconsidered when repairs exceed this soft budget. */
+  repairBudgetExceeded: boolean;
+  /** Components still disconnected when an immutable wall/building blocks repair. */
+  remainingConnectedComponents: number;
+  connectivityRepairFailed: boolean;
 }
 
 export function validateAndRepairGrid(
@@ -301,6 +539,16 @@ export function validateAndRepairGrid(
   let repairedBridgeCells = 0;
   let carvedCliffCrossings = 0;
   let removedInvalidObstacles = 0;
+  let connectivityRepairs = 0;
+  let connectivityRepairCost = 0;
+  let longestConnectivityRepair = 0;
+  const repairFootprint = new Set<string>();
+  const connectivityRepairFootprint = new Set<string>();
+  const markRepair = (x: number, y: number, connectivity = false) => {
+    const key = `${x},${y}`;
+    repairFootprint.add(key);
+    if (connectivity) connectivityRepairFootprint.add(key);
+  };
   const cliffTransitionNormal = (x: number, y: number) => {
     const elevation = grid[y][x].elevation ?? 1;
     let normalX = 0;
@@ -358,7 +606,11 @@ export function validateAndRepairGrid(
     for (let x = 0; x < row.length; x += 1) {
       const tile = row[x];
       if (tile.obstacle === Obstacle.Building && tileSurface(tile)) {
+        if (tile.terrain === Terrain.Road || tile.terrain === Terrain.Bridge) {
+          tile.terrain = Terrain.Ground;
+        }
         delete tile.surface;
+        markRepair(x, y);
       }
       const surface = tileSurface(tile);
       if (surface === Terrain.Road && tile.terrain === Terrain.Cliff) {
@@ -370,19 +622,27 @@ export function validateAndRepairGrid(
         tile.terrain = elevation >= 2 ? Terrain.Ground : Terrain.Difficult;
         delete tile.elevation;
         carvedCliffCrossings += 1;
+        markRepair(x, y);
       } else if (surface !== Terrain.Road) {
+        const removedTransitionMetadata =
+          tile.transition !== undefined ||
+          tile.transitionNormalX !== undefined ||
+          tile.transitionNormalY !== undefined;
         delete tile.transition;
         delete tile.transitionNormalX;
         delete tile.transitionNormalY;
+        if (removedTransitionMetadata) markRepair(x, y);
       }
       const needsBridge =
         tile.terrain === Terrain.Water || tile.terrain === Terrain.Ravine;
       if (surface === Terrain.Road && needsBridge) {
         setTileSurface(tile, Terrain.Bridge);
         repairedBridgeCells += 1;
+        markRepair(x, y);
       } else if (surface === Terrain.Bridge && !needsBridge) {
         setTileSurface(tile, Terrain.Road);
         repairedBridgeCells += 1;
+        markRepair(x, y);
       }
       if (
         tile.obstacle !== Obstacle.None &&
@@ -395,91 +655,121 @@ export function validateAndRepairGrid(
         tile.obstacle = Obstacle.None;
         delete tile.obstacleId;
         removedInvalidObstacles += 1;
+        markRepair(x, y);
       }
     }
   }
 
-  const visited = new Set<string>();
-  const components: Point[][] = [];
-  for (let y = 0; y < grid.length; y += 1) {
-    for (let x = 0; x < grid[y].length; x += 1) {
-      const startKey = `${x},${y}`;
-      if (visited.has(startKey) || !isPassable(grid[y][x])) continue;
-      const component: Point[] = [];
-      const queue = [{ x, y }];
-      visited.add(startKey);
-      for (let index = 0; index < queue.length; index += 1) {
-        const point = queue[index];
-        component.push(point);
-        for (const direction of directions) {
-          const next = { x: point.x + direction.x, y: point.y + direction.y };
-          const key = `${next.x},${next.y}`;
-          if (
-            visited.has(key) ||
-            !grid[next.y]?.[next.x] ||
-            !isPassable(grid[next.y][next.x])
-          ) {
-            continue;
-          }
-          visited.add(key);
-          queue.push(next);
-        }
-      }
-      components.push(component);
-    }
-  }
-  components.sort((a, b) => b.length - a.length);
+  const components = passableComponents(grid);
   const main = components[0] ?? [];
-  const mainTargets = new Set(main.map(({ x, y }) => `${x},${y}`));
-  for (const component of components.slice(1)) {
-    if (!mainTargets.size) continue;
-    const path = weightedPath(grid, component[0], mainTargets, 2);
-    if (!path) continue;
-    for (const point of path) {
+  const mainTargets = new Set(main.map(pointKey));
+  const componentByCell = new Map<string, number>();
+  components.forEach((component, componentIndex) => {
+    for (const point of component) {
+      componentByCell.set(pointKey(point), componentIndex);
+    }
+  });
+  const mergedComponents = new Set<number>(main.length ? [0] : []);
+
+  while (mainTargets.size && mergedComponents.size < components.length) {
+    const isolatedTargets = new Set<string>();
+    components.forEach((component, componentIndex) => {
+      if (mergedComponents.has(componentIndex)) return;
+      for (const point of component) isolatedTargets.add(pointKey(point));
+    });
+    const connection = shortestLocalConnection(
+      grid,
+      mainTargets,
+      isolatedTargets,
+    );
+    if (!connection) break;
+
+    const repairedOnPath = new Set<string>();
+    for (const point of connection.path) {
       const tile = grid[point.y][point.x];
       if (tile.obstacle === Obstacle.Tree || tile.obstacle === Obstacle.Rock) {
         tile.obstacle = Obstacle.None;
         delete tile.obstacleId;
         removedInvalidObstacles += 1;
+        repairedOnPath.add(pointKey(point));
       }
       if (tile.terrain === Terrain.Cliff) {
-        tile.terrain = Terrain.Ground;
+        // A patch of difficult ground reads as a natural notch or scramble;
+        // plain ground made repaired cliff walls look machine-cut.
+        tile.terrain = Terrain.Difficult;
+        delete tile.elevation;
         delete tile.transition;
         delete tile.transitionNormalX;
         delete tile.transitionNormalY;
         carvedCliffCrossings += 1;
+        repairedOnPath.add(pointKey(point));
+      } else if (tile.terrain === Terrain.Ravine) {
+        setTileSurface(tile, Terrain.Bridge);
+        repairedBridgeCells += 1;
+        repairedOnPath.add(pointKey(point));
       } else if (
         tile.terrain === Terrain.Lava ||
         tile.terrain === Terrain.Void
       ) {
-        tile.terrain = Terrain.Ground;
+        tile.terrain = Terrain.Difficult;
+        repairedOnPath.add(pointKey(point));
       }
-      // Connectivity repair is a terrain operation, not a request for a new
-      // road. Only span genuinely impassable water/ravines; ordinary ground
-      // remains a natural gap instead of creating decorative road fragments.
-      // Water is already traversable and therefore belongs to the passable
-      // component we are joining. Marking the final water cell as a bridge
-      // produced isolated one-cell culverts with no road approaches. Ravines
-      // are genuinely blocked and still require an explicit span.
-      if (tile.terrain === Terrain.Ravine) {
-        setTileSurface(tile, Terrain.Bridge);
-      }
-      mainTargets.add(`${point.x},${point.y}`);
     }
+    if (repairedOnPath.size) {
+      connectivityRepairs += 1;
+      connectivityRepairCost += connection.score.terrainCost;
+      longestConnectivityRepair = Math.max(
+        longestConnectivityRepair,
+        Math.max(0, connection.path.length - 2),
+      );
+      for (const key of repairedOnPath) {
+        const [x, y] = key.split(",").map(Number);
+        markRepair(x, y, true);
+      }
+    }
+
+    // The selected endpoint identifies the newly joined original component.
+    // Adding all of it as a source makes the next repair local to the union,
+    // producing a deterministic minimum-spanning style sequence of links.
+    const endpoint = connection.path[connection.path.length - 1];
+    const joinedComponent = componentByCell.get(pointKey(endpoint));
+    if (joinedComponent === undefined) break;
+    mergedComponents.add(joinedComponent);
+    for (const point of components[joinedComponent]) {
+      mainTargets.add(pointKey(point));
+    }
+    for (const point of connection.path) mainTargets.add(pointKey(point));
   }
-  for (const row of grid) {
-    for (const tile of row) {
+
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      const tile = grid[y][x];
       if (tileSurface(tile) && tile.obstacle !== Obstacle.None) {
         tile.obstacle = Obstacle.None;
         delete tile.obstacleId;
         removedInvalidObstacles += 1;
+        markRepair(x, y);
       }
     }
   }
+  const repairBudgetCells = Math.max(
+    4,
+    Math.ceil(grid.reduce((total, row) => total + row.length, 0) * .02),
+  );
+  const remainingConnectedComponents = passableComponents(grid).length;
   return {
     repairedBridgeCells,
     carvedCliffCrossings,
     removedInvalidObstacles,
     connectedComponents: components.length,
+    connectivityRepairs,
+    connectivityRepairCells: connectivityRepairFootprint.size,
+    connectivityRepairCost,
+    longestConnectivityRepair,
+    repairFootprintCells: repairFootprint.size,
+    repairBudgetCells,
+    repairBudgetExceeded: repairFootprint.size > repairBudgetCells,
+    remainingConnectedComponents,
+    connectivityRepairFailed: remainingConnectedComponents !== 1,
   };
 }

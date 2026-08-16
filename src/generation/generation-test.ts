@@ -12,8 +12,10 @@ import {
   type Grid,
   type InteriorMode,
   type LandscapeMode,
+  type TerrainKind,
 } from "../domain/map";
 import { generateTerrain } from "./generate";
+import { validateAndRepairGrid } from "./pipeline";
 import { createOwlbearSceneJson } from "../export/owlbear";
 import { collectMapLightSources } from "../rendering/lighting";
 import { selectBedAssetDefinition } from "../rendering/tileset-assets";
@@ -21,6 +23,20 @@ import { selectBedAssetDefinition } from "../rendering/tileset-assets";
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
+
+const fullyBlockedGrid: Grid = Array.from({ length: 5 }, () =>
+  Array.from({ length: 5 }, () => ({
+    terrain: Terrain.Cliff,
+    obstacle: Obstacle.None,
+    height: .8,
+  }))
+);
+const fullyBlockedReport = validateAndRepairGrid(fullyBlockedGrid, "highlands");
+assert(
+  fullyBlockedReport.remainingConnectedComponents === 0 &&
+    fullyBlockedReport.connectivityRepairFailed,
+  "connectivity repair: a map without any walkable component must fail",
+);
 
 const guestBedVariants = Array.from({ length: 60 }, (_, variant) =>
   selectBedAssetDefinition(false, "north", variant, "Guest room 1"));
@@ -97,6 +113,33 @@ function assertGrid(grid: Grid, label: string) {
         assert(
           tile.obstacle === Obstacle.Building && surface === Terrain.Road,
           `${label}: obstacle on invalid terrain`,
+        );
+      }
+    }
+  }
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      const tile = grid[y][x];
+      if (tile.terrain !== Terrain.Cliff) continue;
+      const neighbors = [
+        grid[y - 1]?.[x],
+        grid[y + 1]?.[x],
+        grid[y]?.[x - 1],
+        grid[y]?.[x + 1],
+      ].filter((neighbor) => neighbor !== undefined);
+      const cliffNeighbors = neighbors.filter((neighbor) =>
+        neighbor.terrain === Terrain.Cliff
+      );
+      assert(
+        cliffNeighbors.every((neighbor) =>
+          Math.abs((tile.elevation ?? 1) - (neighbor.elevation ?? 1)) <= 1
+        ),
+        `${label}: adjacent cliff tiers jump by more than one level`,
+      );
+      if (neighbors.some((neighbor) => neighbor.terrain !== Terrain.Cliff)) {
+        assert(
+          tile.elevation === 1,
+          `${label}: an exposed cliff edge starts above elevation one`,
         );
       }
     }
@@ -1060,6 +1103,199 @@ function touchesOppositeEdges(edges: ReadonlySet<ExteriorEdge>) {
     (edges.has("east") && edges.has("west"));
 }
 
+type ExteriorSpatialMetrics = {
+  walkableBreadth: number;
+  smallFeatureFragmentRatio: number;
+  routeContinuity?: number;
+  naturalObstacleClustering?: number;
+  naturalObstacleRegions?: number;
+  spatialProfile: number[];
+};
+
+function isExteriorWalkable(tile: Grid[number][number]) {
+  return tile.obstacle === Obstacle.None &&
+    (tileSurface(tile) === Terrain.Bridge ||
+      TERRAIN_RULES[tile.terrain].movement !== "blocked");
+}
+
+function belongsToWalkableSquare(grid: Grid, point: GridPoint) {
+  // Membership in a 2x2 square catches maps made almost entirely from
+  // single-cell corridors without imposing one absolute width on every biome.
+  for (const offsetY of [-1, 0]) {
+    for (const offsetX of [-1, 0]) {
+      let squareIsWalkable = true;
+      for (let squareY = 0; squareY < 2 && squareIsWalkable; squareY += 1) {
+        for (let squareX = 0; squareX < 2; squareX += 1) {
+          const tile = grid[point.y + offsetY + squareY]?.[point.x + offsetX + squareX];
+          if (!tile || !isExteriorWalkable(tile)) {
+            squareIsWalkable = false;
+            break;
+          }
+        }
+      }
+      if (squareIsWalkable) return true;
+    }
+  }
+  return false;
+}
+
+function exteriorSpatialProfile(grid: Grid) {
+  const columns = 4;
+  const rows = 3;
+  const profile: number[] = [];
+  for (let regionY = 0; regionY < rows; regionY += 1) {
+    for (let regionX = 0; regionX < columns; regionX += 1) {
+      const minimumX = Math.floor(regionX * grid[0].length / columns);
+      const maximumX = Math.floor((regionX + 1) * grid[0].length / columns);
+      const minimumY = Math.floor(regionY * grid.length / rows);
+      const maximumY = Math.floor((regionY + 1) * grid.length / rows);
+      const counts = [0, 0, 0, 0, 0, 0];
+      let total = 0;
+      for (let y = minimumY; y < maximumY; y += 1) {
+        for (let x = minimumX; x < maximumX; x += 1) {
+          const tile = grid[y][x];
+          total += 1;
+          if (tileSurface(tile)) counts[0] += 1;
+          if (tile.terrain === Terrain.Water || tile.terrain === Terrain.Ice ||
+            tile.terrain === Terrain.Beach) counts[1] += 1;
+          if (tile.terrain === Terrain.Difficult) counts[2] += 1;
+          if (TERRAIN_RULES[tile.terrain].movement === "blocked") counts[3] += 1;
+          if (tile.obstacle === Obstacle.Tree || tile.obstacle === Obstacle.Rock) counts[4] += 1;
+          if (tile.obstacle === Obstacle.Building) counts[5] += 1;
+        }
+      }
+      profile.push(...counts.map((count) => count / total));
+    }
+  }
+  return profile;
+}
+
+function measureExteriorSpatialQuality(grid: Grid): ExteriorSpatialMetrics {
+  const total = grid.length * grid[0].length;
+  const walkable = grid.flatMap((row, y) => row.flatMap((tile, x) =>
+    isExteriorWalkable(tile) ? [{ x, y }] : []));
+  const broadWalkable = walkable.filter((point) => belongsToWalkableSquare(grid, point));
+
+  let featureTiles = 0;
+  let smallFeatureTiles = 0;
+  for (const terrain of [
+    Terrain.Difficult,
+    Terrain.Water,
+    Terrain.Ice,
+    Terrain.Lava,
+    Terrain.Beach,
+    Terrain.Cliff,
+    Terrain.Ravine,
+  ]) {
+    const components = exteriorComponents(grid, (tile) => tile.terrain === terrain);
+    const terrainTiles = components.reduce((sum, component) => sum + component.length, 0);
+    if (terrainTiles < total * .025) continue;
+    featureTiles += terrainTiles;
+    smallFeatureTiles += components
+      .filter((component) => component.length <= 2)
+      .reduce((sum, component) => sum + component.length, 0);
+  }
+
+  const routeComponents = exteriorComponents(grid, (tile) => tileSurface(tile) !== undefined);
+  const routeTiles = routeComponents.reduce((sum, component) => sum + component.length, 0);
+  const routeContinuity = routeTiles >= Math.min(grid.length, grid[0].length) / 2
+    ? (routeComponents[0]?.length ?? 0) / routeTiles
+    : undefined;
+
+  const obstacleObjects = new Map<string, {
+    kind: typeof Obstacle.Tree | typeof Obstacle.Rock;
+    points: GridPoint[];
+  }>();
+  grid.forEach((row, y) => row.forEach((tile, x) => {
+    if (tile.obstacle !== Obstacle.Tree && tile.obstacle !== Obstacle.Rock) return;
+    // Count object centers so a multi-cell sprite cannot satisfy clustering by itself.
+    const key = `${tile.obstacle}:${tile.obstacleId ?? `${x},${y}`}`;
+    const object = obstacleObjects.get(key) ?? { kind: tile.obstacle, points: [] };
+    object.points.push({ x, y });
+    obstacleObjects.set(key, object);
+  }));
+  const obstacleCenters = [...obstacleObjects.values()].map(({ kind, points }) => ({
+    kind,
+    x: points.reduce((sum, point) => sum + point.x, 0) / points.length,
+    y: points.reduce((sum, point) => sum + point.y, 0) / points.length,
+  }));
+  const clusteringRadius = Math.max(3, Math.min(grid.length, grid[0].length) * .14);
+  const clusteredObstacles = obstacleCenters.filter((obstacle, index) =>
+    obstacleCenters.some((neighbor, neighborIndex) => neighborIndex !== index &&
+      neighbor.kind === obstacle.kind &&
+      Math.hypot(neighbor.x - obstacle.x, neighbor.y - obstacle.y) <= clusteringRadius));
+  const obstacleRegions = new Set(obstacleCenters.map(({ x, y }) => {
+    const regionX = Math.min(3, Math.floor(x * 4 / grid[0].length));
+    const regionY = Math.min(2, Math.floor(y * 3 / grid.length));
+    return `${regionX},${regionY}`;
+  }));
+
+  return {
+    walkableBreadth: broadWalkable.length / Math.max(1, walkable.length),
+    smallFeatureFragmentRatio: smallFeatureTiles / Math.max(1, featureTiles),
+    routeContinuity,
+    naturalObstacleClustering: obstacleCenters.length >= 8
+      ? clusteredObstacles.length / obstacleCenters.length
+      : undefined,
+    naturalObstacleRegions: obstacleCenters.length >= 8 ? obstacleRegions.size : undefined,
+    spatialProfile: exteriorSpatialProfile(grid),
+  };
+}
+
+function assertExteriorSpatialQuality(grids: Grid[], label: string) {
+  const metrics = grids.map(measureExteriorSpatialQuality);
+  const average = (values: number[]) =>
+    values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
+  const minimumBreadth = Math.min(...metrics.map(({ walkableBreadth }) => walkableBreadth));
+  const averageBreadth = average(metrics.map(({ walkableBreadth }) => walkableBreadth));
+  assert(minimumBreadth >= .18 && averageBreadth >= .45,
+    `${label}: walkable space is too consistently narrow (${minimumBreadth.toFixed(2)} min, ${averageBreadth.toFixed(2)} average)`);
+
+  const maximumFragmentation = Math.max(...metrics.map(({ smallFeatureFragmentRatio }) =>
+    smallFeatureFragmentRatio));
+  const averageFragmentation = average(metrics.map(({ smallFeatureFragmentRatio }) =>
+    smallFeatureFragmentRatio));
+  assert(maximumFragmentation <= .55 && averageFragmentation <= .2,
+    `${label}: terrain features are excessively fragmented (${maximumFragmentation.toFixed(2)} max, ${averageFragmentation.toFixed(2)} average)`);
+
+  const routeContinuities = metrics.flatMap(({ routeContinuity }) =>
+    routeContinuity === undefined ? [] : [routeContinuity]);
+  if (routeContinuities.length >= grids.length / 2) {
+    assert(Math.min(...routeContinuities) >= .7 && average(routeContinuities) >= .9,
+      `${label}: routes are too fragmented (${Math.min(...routeContinuities).toFixed(2)} min, ${average(routeContinuities).toFixed(2)} average)`);
+  }
+
+  const obstacleMetrics = metrics.filter((metric) =>
+    metric.naturalObstacleClustering !== undefined && metric.naturalObstacleRegions !== undefined);
+  if (obstacleMetrics.length >= grids.length / 2) {
+    const clustering = obstacleMetrics.map(({ naturalObstacleClustering }) =>
+      naturalObstacleClustering!);
+    const regions = obstacleMetrics.map(({ naturalObstacleRegions }) => naturalObstacleRegions!);
+    assert(average(clustering) >= .25,
+      `${label}: natural obstacles do not form recognizable groups (${average(clustering).toFixed(2)})`);
+    assert(average(regions) >= 2,
+      `${label}: natural obstacles collapse into too little of the map (${average(regions).toFixed(2)} regions average)`);
+  }
+
+  // Quantized regional ratios measure structural variety while ignoring exact
+  // per-tile noise that would make every seed trivially unique.
+  const signatures = new Set(metrics.map(({ spatialProfile }) => spatialProfile
+    .map((value) => Math.round(value * 8))
+    .join(",")));
+  let maximumProfileDistance = 0;
+  for (let first = 0; first < metrics.length; first += 1) {
+    for (let second = first + 1; second < metrics.length; second += 1) {
+      const profileDistance = metrics[first].spatialProfile.reduce((sum, value, index) =>
+        sum + Math.abs(value - metrics[second].spatialProfile[index]), 0) /
+        metrics[first].spatialProfile.length;
+      maximumProfileDistance = Math.max(maximumProfileDistance, profileDistance);
+    }
+  }
+  assert(signatures.size >= Math.max(4, Math.ceil(grids.length * .25)) &&
+    maximumProfileDistance >= .012,
+  `${label}: seeds produce too little structural variety (${signatures.size} profiles, ${maximumProfileDistance.toFixed(3)} max distance)`);
+}
+
 function assertExteriorSemantics(
   grid: Grid,
   mode: string,
@@ -1250,13 +1486,70 @@ for (const preset of PRESETS) {
 
 const exteriorSemanticPresets = PRESETS.filter(({ mode }) => !isInteriorMode(mode));
 for (const preset of exteriorSemanticPresets) {
+  const spatialQualitySamples: Grid[] = [];
   for (let index = 0; index < 32; index += 1) {
     const label = `${preset.id}:exterior-semantics:${index}`;
     const grid = generateTerrain({ ...preset, seed: label });
     assertGrid(grid, label);
     assertExteriorSemantics(grid, preset.mode, preset.buildingCount, label);
+    spatialQualitySamples.push(grid);
     generated += 1;
   }
+  assertExteriorSpatialQuality(spatialQualitySamples, preset.id);
+}
+
+for (const mode of [
+  "countryside",
+  "river",
+  "coast",
+  "desert-canyon",
+  "ancient-forest",
+  "frozen-lake",
+  "wetlands",
+  "volcanic",
+] as const) {
+  const preset = PRESETS.find((candidate) => candidate.mode === mode);
+  assert(preset, `missing ${mode} preset`);
+  const grid = generateTerrain({
+    ...preset,
+    waterWeight: 0,
+    seed: `${mode}:zero-water-weight`,
+  });
+  const forbidden: ReadonlySet<TerrainKind> = mode === "volcanic"
+    ? new Set([Terrain.Lava])
+    : mode === "frozen-lake"
+      ? new Set([Terrain.Water, Terrain.Ice])
+      : mode === "coast"
+        ? new Set([Terrain.Water, Terrain.Beach])
+        : new Set([Terrain.Water]);
+  assert(
+    grid.flat().every((tile) => !forbidden.has(tile.terrain)),
+    `${mode}: waterWeight=0 still creates a liquid or shoreline feature`,
+  );
+  generated += 1;
+}
+
+for (const mode of [
+  "desert-canyon",
+  "badlands",
+  "mountain-pass",
+  "highlands",
+  "volcanic",
+] as const) {
+  const preset = PRESETS.find((candidate) => candidate.mode === mode);
+  assert(preset, `missing ${mode} preset`);
+  const grid = generateTerrain({
+    ...preset,
+    reliefWeight: 0,
+    seed: `${mode}:zero-relief-weight`,
+  });
+  assert(
+    grid.flat().every((tile) =>
+      tile.terrain !== Terrain.Cliff && tile.terrain !== Terrain.Ravine
+    ),
+    `${mode}: reliefWeight=0 still creates cliffs or ravines`,
+  );
+  generated += 1;
 }
 
 const compactExteriorRegressionSeeds: Partial<Record<LandscapeMode, string>> = {
