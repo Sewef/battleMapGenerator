@@ -243,7 +243,7 @@ function lightingProfile(mode: LandscapeMode): LightingProfile {
 }
 
 function tileHeight(tile: Tile) {
-  let height = (tile.height ?? .5) * .55;
+  let height = (tile.height ?? .5) * .32;
   const surface = tileSurface(tile);
   if (surface === Terrain.Bridge) {
     height += .08;
@@ -261,11 +261,11 @@ function tileHeight(tile: Tile) {
     height += .2;
   }
   if (tile.obstacle === Obstacle.Tree) {
-    height += .52;
+    height += .22;
   } else if (tile.obstacle === Obstacle.Rock) {
-    height += .34;
+    height += .1;
   } else if (tile.obstacle === Obstacle.Building) {
-    height += .62;
+    height += .38;
   }
   return height;
 }

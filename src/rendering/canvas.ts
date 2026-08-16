@@ -156,10 +156,10 @@ function applyPropContactShadow(
   // The directional light comes from the north-west, so props cast a short,
   // soft shadow towards the south-east. Keeping this tied to one cell makes
   // large props feel grounded without producing long, dominant silhouettes.
-  context.shadowColor = "rgba(20, 24, 22, .28)";
-  context.shadowBlur = Math.max(1.25, cellSize * .065);
-  context.shadowOffsetX = Math.max(.75, cellSize * .04);
-  context.shadowOffsetY = Math.max(1.25, cellSize * .075);
+  context.shadowColor = "rgba(20, 24, 22, .24)";
+  context.shadowBlur = Math.max(1, cellSize * .045);
+  context.shadowOffsetX = Math.max(.5, cellSize * .025);
+  context.shadowOffsetY = Math.max(.8, cellSize * .045);
 }
 
 function tintedTilesetProp(
@@ -611,38 +611,16 @@ function fillWaterMaskCell(
   y: number,
   cellSize: number,
 ) {
-  const isWater = (cellX: number, cellY: number) =>
-    outsideGrid(grid, cellX, cellY) ||
-    (
-      grid[cellY]?.[cellX] !== undefined &&
-      underlyingTerrain(grid, cellX, cellY) === Terrain.Water
-    );
-  const left = x * cellSize;
-  const top = y * cellSize;
-  const right = left + cellSize;
-  const bottom = top + cellSize;
-  const radius = cellSize * .14;
-  const topLeftRadius = !isWater(x - 1, y) && !isWater(x, y - 1) ? radius : 0;
-  const topRightRadius = !isWater(x + 1, y) && !isWater(x, y - 1) ? radius : 0;
-  const bottomRightRadius = !isWater(x + 1, y) && !isWater(x, y + 1)
-    ? radius
-    : 0;
-  const bottomLeftRadius = !isWater(x - 1, y) && !isWater(x, y + 1)
-    ? radius
-    : 0;
-
-  context.beginPath();
-  context.moveTo(left + topLeftRadius, top);
-  context.lineTo(right - topRightRadius, top);
-  context.quadraticCurveTo(right, top, right, top + topRightRadius);
-  context.lineTo(right, bottom - bottomRightRadius);
-  context.quadraticCurveTo(right, bottom, right - bottomRightRadius, bottom);
-  context.lineTo(left + bottomLeftRadius, bottom);
-  context.quadraticCurveTo(left, bottom, left, bottom - bottomLeftRadius);
-  context.lineTo(left, top + topLeftRadius);
-  context.quadraticCurveTo(left, top, left + topLeftRadius, top);
-  context.closePath();
-  context.fill();
+  fillIrregularLiquidMaskCell(
+    context,
+    grid,
+    x,
+    y,
+    cellSize,
+    Terrain.Water,
+    881,
+    .1,
+  );
 }
 
 function fillLavaMaskCell(
@@ -652,65 +630,60 @@ function fillLavaMaskCell(
   y: number,
   cellSize: number,
 ) {
-  const isLava = (cellX: number, cellY: number) =>
-    outsideGrid(grid, cellX, cellY) ||
-    (
-      grid[cellY]?.[cellX] !== undefined &&
-      underlyingTerrain(grid, cellX, cellY) === Terrain.Lava
-    );
-  const left = x * cellSize;
-  const top = y * cellSize;
-  const right = left + cellSize;
-  const bottom = top + cellSize;
-  const radius = cellSize * .2;
-  const topLeftRadius = !isLava(x - 1, y) && !isLava(x, y - 1) ? radius : 0;
-  const topRightRadius = !isLava(x + 1, y) && !isLava(x, y - 1) ? radius : 0;
-  const bottomRightRadius = !isLava(x + 1, y) && !isLava(x, y + 1)
-    ? radius
-    : 0;
-  const bottomLeftRadius = !isLava(x - 1, y) && !isLava(x, y + 1)
-    ? radius
-    : 0;
-  const tension = .32;
+  fillIrregularLiquidMaskCell(
+    context,
+    grid,
+    x,
+    y,
+    cellSize,
+    Terrain.Lava,
+    967,
+    .13,
+  );
+}
 
+function fillIrregularLiquidMaskCell(
+  context: CanvasRenderingContext2D,
+  grid: Grid,
+  x: number,
+  y: number,
+  cellSize: number,
+  terrain: typeof Terrain.Water | typeof Terrain.Lava,
+  salt: number,
+  amplitude: number,
+) {
+  const isLiquid = (cellX: number, cellY: number) =>
+    outsideGrid(grid, cellX, cellY) ||
+    underlyingTerrain(grid, cellX, cellY) === terrain;
+  const segmentCount = 6;
+  const points: Array<{ x: number; y: number }> = [];
+  const addEdge = (side: 0 | 1 | 2 | 3, exposed: boolean) => {
+    for (let index = side === 0 ? 0 : 1; index <= segmentCount; index += 1) {
+      const ratio = index / segmentCount;
+      const progress = side === 2 || side === 3 ? 1 - ratio : ratio;
+      const jitter = index === 0 || index === segmentCount || !exposed
+        ? 0
+        : (
+          terrainVariation(x * segmentCount + index, y * 4 + side, salt + side * 43) - .5
+        ) * cellSize * amplitude;
+      if (side === 0) {
+        points.push({ x: (x + progress) * cellSize, y: y * cellSize + jitter });
+      } else if (side === 1) {
+        points.push({ x: (x + 1) * cellSize + jitter, y: (y + progress) * cellSize });
+      } else if (side === 2) {
+        points.push({ x: (x + progress) * cellSize, y: (y + 1) * cellSize + jitter });
+      } else {
+        points.push({ x: x * cellSize + jitter, y: (y + progress) * cellSize });
+      }
+    }
+  };
+  addEdge(0, !isLiquid(x, y - 1));
+  addEdge(1, !isLiquid(x + 1, y));
+  addEdge(2, !isLiquid(x, y + 1));
+  addEdge(3, !isLiquid(x - 1, y));
   context.beginPath();
-  context.moveTo(left + topLeftRadius, top);
-  context.lineTo(right - topRightRadius, top);
-  context.bezierCurveTo(
-    right - topRightRadius * tension,
-    top,
-    right,
-    top + topRightRadius * tension,
-    right,
-    top + topRightRadius,
-  );
-  context.lineTo(right, bottom - bottomRightRadius);
-  context.bezierCurveTo(
-    right,
-    bottom - bottomRightRadius * tension,
-    right - bottomRightRadius * tension,
-    bottom,
-    right - bottomRightRadius,
-    bottom,
-  );
-  context.lineTo(left + bottomLeftRadius, bottom);
-  context.bezierCurveTo(
-    left + bottomLeftRadius * tension,
-    bottom,
-    left,
-    bottom - bottomLeftRadius * tension,
-    left,
-    bottom - bottomLeftRadius,
-  );
-  context.lineTo(left, top + topLeftRadius);
-  context.bezierCurveTo(
-    left,
-    top + topLeftRadius * tension,
-    left + topLeftRadius * tension,
-    top,
-    left + topLeftRadius,
-    top,
-  );
+  context.moveTo(points[0].x, points[0].y);
+  points.slice(1).forEach((point) => context.lineTo(point.x, point.y));
   context.closePath();
   context.fill();
 }
@@ -778,6 +751,63 @@ function fillRavineMaskCell(
   context.fill();
 }
 
+function fillOrganicTerrainMaskCell(
+  context: CanvasRenderingContext2D,
+  grid: Grid,
+  x: number,
+  y: number,
+  cellSize: number,
+  terrain: typeof Terrain.Difficult | typeof Terrain.Beach,
+) {
+  const isTerrain = (cellX: number, cellY: number) =>
+    outsideGrid(grid, cellX, cellY) ||
+    underlyingTerrain(grid, cellX, cellY) === terrain;
+  const segmentCount = 6;
+  const points: Array<{ x: number; y: number }> = [];
+  const salt = terrain === Terrain.Difficult ? 211 : 563;
+
+  const addEdge = (side: 0 | 1 | 2 | 3, exposed: boolean) => {
+    for (let index = side === 0 ? 0 : 1; index <= segmentCount; index += 1) {
+      const ratio = index / segmentCount;
+      const progress = side === 2 || side === 3 ? 1 - ratio : ratio;
+      const jitter = index === 0 || index === segmentCount || !exposed
+        ? 0
+        : (
+          terrainVariation(
+            x * segmentCount + index,
+            y * 4 + side,
+            salt + side * 37,
+          ) - .5
+        ) * cellSize * .09;
+      if (side === 0) {
+        points.push({ x: (x + progress) * cellSize, y: y * cellSize + jitter });
+      } else if (side === 1) {
+        points.push({
+          x: (x + 1) * cellSize + jitter,
+          y: (y + progress) * cellSize,
+        });
+      } else if (side === 2) {
+        points.push({
+          x: (x + progress) * cellSize,
+          y: (y + 1) * cellSize + jitter,
+        });
+      } else {
+        points.push({ x: x * cellSize + jitter, y: (y + progress) * cellSize });
+      }
+    }
+  };
+
+  addEdge(0, !isTerrain(x, y - 1));
+  addEdge(1, !isTerrain(x + 1, y));
+  addEdge(2, !isTerrain(x, y + 1));
+  addEdge(3, !isTerrain(x - 1, y));
+  context.beginPath();
+  context.moveTo(points[0].x, points[0].y);
+  points.slice(1).forEach((point) => context.lineTo(point.x, point.y));
+  context.closePath();
+  context.fill();
+}
+
 function createTerrainMask(
   grid: Grid,
   terrain: TerrainKind,
@@ -805,6 +835,15 @@ function createTerrainMask(
           fillLavaMaskCell(maskContext, grid, x, y, cellSize);
         } else if (terrain === Terrain.Ravine) {
           fillRavineMaskCell(maskContext, grid, x, y, cellSize);
+        } else if (terrain === Terrain.Difficult || terrain === Terrain.Beach) {
+          fillOrganicTerrainMaskCell(
+            maskContext,
+            grid,
+            x,
+            y,
+            cellSize,
+            terrain,
+          );
         } else {
           maskContext.fillRect(
             x * cellSize,
@@ -1433,7 +1472,7 @@ function drawTerrainLayers(
           Math.max(3, cellSize * .1),
           Math.max(7, cellSize * .34),
           Math.max(3, cellSize * .13),
-          "rgba(18, 16, 15, .56)",
+          "rgba(15, 18, 18, .54)",
         ),
         0,
         0,
@@ -1451,7 +1490,7 @@ function drawTerrainLayers(
           sideDepth,
           0,
           sideBlur,
-          "rgba(78, 75, 68, .12)",
+          "rgba(205, 210, 202, .1)",
         ),
         0,
         0,
@@ -1462,7 +1501,7 @@ function drawTerrainLayers(
           -sideDepth,
           0,
           sideBlur,
-          "rgba(33, 25, 23, .5)",
+          "rgba(18, 21, 21, .48)",
         ),
         0,
         0,
@@ -1473,7 +1512,7 @@ function drawTerrainLayers(
           0,
           -Math.max(9, cellSize * .55),
           Math.max(2, lowerBlur * 1.15),
-          "rgba(42, 27, 25, .7)",
+          "rgba(17, 19, 20, .68)",
         ),
         0,
         0,
@@ -1484,7 +1523,7 @@ function drawTerrainLayers(
           0,
           -Math.max(6, cellSize * .3),
           Math.max(1, cellSize * .04),
-          "rgba(27, 19, 19, .88)",
+          "rgba(12, 14, 15, .84)",
         ),
         0,
         0,
@@ -3688,14 +3727,37 @@ function createCliffRockFace(
       const top = y * cellSize;
 
       if (!isCliff(x, y + 1)) {
+        faceContext.lineCap = "round";
+        for (let index = 1; index <= 4; index += 1) {
+          const variation = terrainVariation(x * 4 + index, y, 1579);
+          if (variation < .24) continue;
+          const startX = left + cellSize * (index / 5 + (variation - .5) * .06);
+          const startY = top + cellSize * (.58 + variation * .06);
+          const endX = startX + cellSize * (variation - .5) * .1;
+          const endY = top + cellSize * (.88 + variation * .04);
+          faceContext.strokeStyle = "rgba(14, 17, 17, .3)";
+          faceContext.lineWidth = Math.max(1, cellSize * .028);
+          faceContext.beginPath();
+          faceContext.moveTo(startX, startY);
+          faceContext.lineTo(endX, endY);
+          faceContext.stroke();
+          faceContext.strokeStyle = "rgba(218, 218, 201, .12)";
+          faceContext.lineWidth = Math.max(.6, cellSize * .012);
+          faceContext.beginPath();
+          faceContext.moveTo(startX - cellSize * .025, startY);
+          faceContext.lineTo(endX - cellSize * .025, endY);
+          faceContext.stroke();
+        }
+
         // Loose stones belong at the foot of the face. Keeping them small and
         // partially clipped by the mask avoids making them float mid-slope.
-        for (let index = 0; index < 6; index += 1) {
-          const variation = terrainVariation(x * 6 + index, y, 1601);
+        for (let index = 0; index < 5; index += 1) {
+          const variation = terrainVariation(x * 5 + index, y, 1601);
+          if (variation < .48) continue;
           drawRock(
-            left + cellSize * (index + .5) / 6,
+            left + cellSize * (index + .5) / 5,
             top + cellSize * (.965 + (variation - .5) * .025),
-            cellSize * (.075 + variation * .018),
+            cellSize * (.065 + variation * .02),
             variation,
           );
         }
@@ -4287,13 +4349,13 @@ function drawShorelines(
       }
     }
   }
-  context.globalAlpha = visibility * .34;
+  context.globalAlpha = visibility * .42;
   context.strokeStyle = getTerrainStyle(Terrain.Ground, mode).color;
-  context.lineWidth = Math.max(2, cellSize * .12);
+  context.lineWidth = Math.max(2, cellSize * .14);
   context.stroke();
-  context.globalAlpha = visibility * .28;
+  context.globalAlpha = visibility * .4;
   context.strokeStyle = getTerrainStyle(Terrain.Water, mode).alt;
-  context.lineWidth = Math.max(1, cellSize * .03);
+  context.lineWidth = Math.max(1, cellSize * .035);
   context.stroke();
   context.restore();
 }
@@ -5218,16 +5280,21 @@ function drawDifficultTerrainDetail(
     }
     context.stroke();
   } else if (style.kind === "snow") {
-    for (const [offset, width] of [[.35, .08], [.72, .045]] as const) {
+    for (const [index, offset, width] of [
+      [0, .35, .08],
+      [1, .72, .045],
+    ] as const) {
+      if (index === 0 ? variation < .2 : secondaryVariation < .43) continue;
       context.strokeStyle = width > .05 ? style.dark : style.light;
       context.lineWidth = Math.max(.7, cellSize * width);
       context.beginPath();
-      context.moveTo(left + cellSize * .08, top + cellSize * offset);
+      const driftOffset = offset + (secondaryVariation - .5) * .08;
+      context.moveTo(left + cellSize * .08, top + cellSize * driftOffset);
       context.quadraticCurveTo(
         left + cellSize * (.46 + (variation - .5) * .12),
-        top + cellSize * (offset - .12),
-        left + cellSize * .92,
-        top + cellSize * (offset + .02),
+        top + cellSize * (driftOffset - .12),
+        left + cellSize * (.78 + variation * .14),
+        top + cellSize * (driftOffset + .02),
       );
       context.stroke();
     }
