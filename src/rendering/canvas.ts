@@ -1724,7 +1724,7 @@ function drawInteriorArchitecture(
     context.rect(left, top, width, height);
     context.clip();
 
-    const verticalRun = height > cellSize * 1.1 && width < cellSize * .8;
+    const verticalRun = height > width * 1.5 && width < cellSize * .8;
     const gradient = verticalRun
       ? context.createLinearGradient(left, top, left + width, top)
       : context.createLinearGradient(left, top, left, top + height);
@@ -2156,9 +2156,9 @@ function drawInteriorArchitecture(
       );
     }
 
-    // Finish vertical L corners after every facade/network layer. Their
-    // outside quadrant otherwise retains fragments from the centred wall
-    // ribbon and looks broken even when the run bounds themselves are correct.
+    // Redraw every simple corner from one shared orthogonal model after all
+    // wall layers. Mixing ribbons, front facades and side facades otherwise
+    // leaves each orientation with a different notch, post or overlap.
     for (let y = 0; y < grid.length; y += 1) {
       for (let x = 0; x < grid[y].length; x += 1) {
         if (!isWall(x, y)) continue;
@@ -2171,101 +2171,158 @@ function drawInteriorArchitecture(
 
         const left = x * cellSize;
         const top = y * cellSize;
-        const outerToRight = joinsWest;
-        const cornerX = left + cellSize * (outerToRight ? .71 : .29);
-        const cornerY = top + cellSize * .34;
-        const lowerCorner = joinsNorth;
-        const outerLeft = outerToRight ? cornerX : left;
-        const outerRight = outerToRight ? left + cellSize : cornerX;
-        const outerTop = lowerCorner ? cornerY : top;
-        const outerBottom = lowerCorner ? top + cellSize : cornerY;
+        const horizontalX = joinsWest ? x - 1 : x + 1;
+        const frontFacing = isRoomFloor(horizontalX, y + 1);
+        const backFacing = isRoomFloor(horizontalX, y - 1);
+        const horizontalTop = frontFacing ? .27 : .29;
+        const horizontalBottom = frontFacing ? 1 : backFacing ? .78 : .71;
+        const sideLeft = .29;
+        const sideRight = .71;
+        const points = joinsNorth && joinsWest
+          ? [
+            [sideLeft, 0], [sideRight, 0],
+            [sideRight, horizontalBottom], [0, horizontalBottom],
+            [0, horizontalTop], [sideLeft, horizontalTop],
+          ]
+          : joinsNorth && joinsEast
+            ? [
+              [sideLeft, 0], [sideRight, 0],
+              [sideRight, horizontalTop], [1, horizontalTop],
+              [1, horizontalBottom], [sideLeft, horizontalBottom],
+            ]
+            : joinsSouth && joinsWest
+              ? [
+                [0, horizontalTop], [sideRight, horizontalTop],
+                [sideRight, 1], [sideLeft, 1],
+                [sideLeft, horizontalBottom], [0, horizontalBottom],
+              ]
+              : [
+                [sideLeft, horizontalTop], [1, horizontalTop],
+                [1, horizontalBottom], [sideRight, horizontalBottom],
+                [sideRight, 1], [sideLeft, 1],
+              ];
 
-        if (!lowerCorner) {
-          // Upper corners need a compact junction post where the horizontal
-          // facade meets the vertical side. Filling the outside quadrant makes
-          // a detached nub; this post stays within the side wall's true width.
-          const postLeft = left + cellSize * .29;
-          const postTop = top + cellSize * .27;
-          const postWidth = cellSize * .42;
-          const postHeight = cellSize * .73;
-          const capGradient = context.createLinearGradient(
-            postLeft,
-            postTop,
-            postLeft,
-            top + cellSize,
-          );
-          capGradient.addColorStop(0, style.wallHighlight);
-          capGradient.addColorStop(.22, style.wallAlt);
-          capGradient.addColorStop(1, style.wall);
-          context.fillStyle = capGradient;
-          context.fillRect(
-            postLeft,
-            postTop,
-            postWidth,
-            postHeight,
-          );
-
-          const outerX = outerToRight ? postLeft + postWidth : postLeft;
-          context.save();
-          context.strokeStyle = style.wallEdge;
-          context.lineWidth = Math.max(1, cellSize * .045);
-          context.lineCap = "butt";
-          context.lineJoin = "miter";
+        // Erase every earlier corner fragment, then paint one continuous shape.
+        drawTilesetArchitectureUnderlay(x, y);
+        const traceCorner = () => {
           context.beginPath();
-          context.moveTo(outerX, postTop);
-          context.lineTo(outerX, top + cellSize);
-          context.stroke();
-          context.strokeStyle = style.wallHighlight;
-          context.lineWidth = Math.max(.6, cellSize * .018);
-          context.beginPath();
-          context.moveTo(postLeft, postTop);
-          context.lineTo(postLeft + postWidth, postTop);
-          context.stroke();
-          context.restore();
-          continue;
-        }
-
+          context.moveTo(
+            left + points[0][0] * cellSize,
+            top + points[0][1] * cellSize,
+          );
+          for (let index = 1; index < points.length; index += 1) {
+            context.lineTo(
+              left + points[index][0] * cellSize,
+              top + points[index][1] * cellSize,
+            );
+          }
+          context.closePath();
+        };
+        // Reuse the same material passes as the neighbouring runs. A flat
+        // corner gradient makes stone courses, timber planks and metal seams
+        // stop abruptly at every turn even when the silhouette is correct.
         context.save();
-        context.beginPath();
-        context.rect(
-          outerLeft,
-          outerTop,
-          outerRight - outerLeft,
-          outerBottom - outerTop,
-        );
+        traceCorner();
         context.clip();
-        if (!drawFloorTile(left, top)) {
-          context.fillStyle = style.roomTints[0];
-          context.fillRect(left, top, cellSize, cellSize);
+        drawWallFacade(
+          left + sideLeft * cellSize,
+          top,
+          (sideRight - sideLeft) * cellSize,
+          cellSize,
+          x,
+          y,
+        );
+        if (frontFacing) {
+          const facadeTop = top + cellSize * .34;
+          drawWallFacade(left, facadeTop, cellSize, cellSize * .66, x, y);
+          const copingTop = top + cellSize * .27;
+          const copingHeight = cellSize * .12;
+          context.fillStyle = style.wallAlt;
+          context.fillRect(left, copingTop, cellSize, copingHeight);
+          context.fillStyle = style.wallHighlight;
+          context.fillRect(left, copingTop, cellSize, Math.max(1, cellSize * .035));
+          context.fillStyle = "rgba(17, 13, 19, .42)";
+          context.fillRect(
+            left,
+            copingTop + copingHeight - Math.max(1, cellSize * .035),
+            cellSize,
+            Math.max(1, cellSize * .035),
+          );
+        } else {
+          drawWallFacade(
+            left,
+            top + horizontalTop * cellSize,
+            cellSize,
+            (horizontalBottom - horizontalTop) * cellSize,
+            x,
+            y,
+          );
         }
         context.restore();
 
-        // Two unbroken orthogonal edges make the intended L explicit. Keep
-        // them square and shadow-free so no bevel or halo can reintroduce a
-        // false diagonal at small tile sizes.
+        // Outline only exposed edges. Connection edges remain unstroked so the
+        // corner joins neighbouring runs without tile-by-tile separators.
+        // Consecutive exposed edges must share one path: stroking every edge
+        // separately leaves two butt caps at the turn and creates the tiny
+        // posts that used to protrude from exterior map corners.
+        const exposedEdges = points.map((first, index) => {
+          const second = points[(index + 1) % points.length];
+          return !(
+            (joinsWest && first[0] === 0 && second[0] === 0) ||
+            (joinsEast && first[0] === 1 && second[0] === 1) ||
+            (joinsNorth && first[1] === 0 && second[1] === 0) ||
+            (joinsSouth && first[1] === 1 && second[1] === 1)
+          );
+        });
+        const outsideVertical = joinsNorth
+          ? grid[y + 1]?.[x]?.terrain
+          : grid[y - 1]?.[x]?.terrain;
+        const outsideHorizontal = joinsWest
+          ? grid[y]?.[x + 1]?.terrain
+          : grid[y]?.[x - 1]?.terrain;
+        const isOutside = (
+          terrain: Grid[number][number]["terrain"] | undefined,
+        ) =>
+          terrain === undefined || terrain === Terrain.Void ||
+          (mode === "ship" && terrain === Terrain.Water);
+        const exteriorCorner = isOutside(outsideVertical) &&
+          isOutside(outsideHorizontal);
         context.save();
+        if (exteriorCorner) {
+          // Canvas strokes straddle their path. On a convex outer corner the
+          // outer half otherwise survives on the void underlay as a small
+          // coloured spur. Keep the complete join, but clip it inward.
+          traceCorner();
+          context.clip();
+        }
         context.strokeStyle = style.wallEdge;
-        context.lineWidth = Math.max(1, cellSize * .045);
+        context.lineWidth = exteriorCorner
+          ? Math.max(1.5, cellSize * .09)
+          : Math.max(1, cellSize * .045);
         context.lineCap = "butt";
         context.lineJoin = "miter";
+        context.miterLimit = 2;
         context.beginPath();
-        context.moveTo(outerToRight ? left + cellSize : left, cornerY);
-        context.lineTo(cornerX, cornerY);
-        context.lineTo(cornerX, lowerCorner ? top + cellSize : top);
-        context.stroke();
-
-        context.strokeStyle = style.wallHighlight;
-        context.lineWidth = Math.max(.6, cellSize * .018);
-        const highlightInset = cellSize * .035;
-        context.beginPath();
-        context.moveTo(
-          outerToRight ? left + cellSize : left,
-          cornerY + (lowerCorner ? -highlightInset : highlightInset),
-        );
-        context.lineTo(
-          cornerX + (outerToRight ? -highlightInset : highlightInset),
-          cornerY + (lowerCorner ? -highlightInset : highlightInset),
-        );
+        const firstBreak = exposedEdges.findIndex((exposed) => !exposed);
+        const startIndex = firstBreak < 0 ? 0 : (firstBreak + 1) % points.length;
+        let pathOpen = false;
+        for (let offset = 0; offset < points.length; offset += 1) {
+          const index = (startIndex + offset) % points.length;
+          const first = points[index];
+          const second = points[(index + 1) % points.length];
+          if (!exposedEdges[index]) {
+            pathOpen = false;
+            continue;
+          }
+          if (!pathOpen) {
+            context.moveTo(
+              left + first[0] * cellSize,
+              top + first[1] * cellSize,
+            );
+            pathOpen = true;
+          }
+          context.lineTo(left + second[0] * cellSize, top + second[1] * cellSize);
+        }
         context.stroke();
         context.restore();
       }
