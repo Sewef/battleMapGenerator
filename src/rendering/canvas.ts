@@ -1430,10 +1430,10 @@ function drawTerrainLayers(
       context.drawImage(
         createOuterMaskShadow(
           mask,
-          Math.max(2, cellSize * .09),
-          Math.max(3, cellSize * .15),
-          Math.max(2, cellSize * .09),
-          "rgba(18, 20, 18, .34)",
+          Math.max(3, cellSize * .1),
+          Math.max(7, cellSize * .34),
+          Math.max(3, cellSize * .13),
+          "rgba(18, 16, 15, .56)",
         ),
         0,
         0,
@@ -1441,9 +1441,9 @@ function drawTerrainLayers(
     }
     context.drawImage(layer, 0, 0);
     if (terrain === Terrain.Cliff) {
-      const sideDepth = Math.max(2, cellSize * .12);
+      const sideDepth = Math.max(3, cellSize * .16);
       const sideBlur = Math.max(1, cellSize * .045);
-      const lowerBlur = Math.max(2, cellSize * .085);
+      const lowerBlur = Math.max(2, cellSize * .075);
 
       context.drawImage(
         createMaskEdge(
@@ -1451,7 +1451,7 @@ function drawTerrainLayers(
           sideDepth,
           0,
           sideBlur,
-          "rgba(28, 30, 27, .14)",
+          "rgba(78, 75, 68, .12)",
         ),
         0,
         0,
@@ -1462,7 +1462,7 @@ function drawTerrainLayers(
           -sideDepth,
           0,
           sideBlur,
-          "rgba(24, 26, 23, .38)",
+          "rgba(33, 25, 23, .5)",
         ),
         0,
         0,
@@ -1471,9 +1471,9 @@ function drawTerrainLayers(
         createMaskEdge(
           mask,
           0,
-          -Math.max(5, cellSize * .3),
-          lowerBlur,
-          "rgba(20, 22, 20, .48)",
+          -Math.max(9, cellSize * .55),
+          Math.max(2, lowerBlur * 1.15),
+          "rgba(42, 27, 25, .7)",
         ),
         0,
         0,
@@ -1482,9 +1482,9 @@ function drawTerrainLayers(
         createMaskEdge(
           mask,
           0,
-          -Math.max(4, cellSize * .18),
+          -Math.max(6, cellSize * .3),
           Math.max(1, cellSize * .04),
-          "rgba(18, 20, 18, .72)",
+          "rgba(27, 19, 19, .88)",
         ),
         0,
         0,
@@ -3648,8 +3648,8 @@ function createCliffRockFace(
     radius: number,
     variation: number,
   ) => {
-    const radiusX = radius * (.78 + variation * .34);
-    const radiusY = radius * (1.08 - variation * .2);
+    const radiusX = radius * (1.08 + variation * .3);
+    const radiusY = radius * (.52 + variation * .16);
     faceContext.fillStyle = "rgba(22, 25, 23, .42)";
     faceContext.beginPath();
     faceContext.ellipse(
@@ -3688,34 +3688,14 @@ function createCliffRockFace(
       const top = y * cellSize;
 
       if (!isCliff(x, y + 1)) {
-        for (let index = 0; index < 5; index += 1) {
-          const variation = terrainVariation(x * 5 + index, y, 1601);
+        // Loose stones belong at the foot of the face. Keeping them small and
+        // partially clipped by the mask avoids making them float mid-slope.
+        for (let index = 0; index < 6; index += 1) {
+          const variation = terrainVariation(x * 6 + index, y, 1601);
           drawRock(
-            left + cellSize * (index + .5) / 5,
-            top + cellSize * (.88 + (variation - .5) * .055),
-            cellSize * (.13 + variation * .025),
-            variation,
-          );
-        }
-      }
-      if (!isCliff(x - 1, y)) {
-        for (let index = 0; index < 4; index += 1) {
-          const variation = terrainVariation(x, y * 4 + index, 1663);
-          drawRock(
-            left + cellSize * (.1 + (variation - .5) * .04),
-            top + cellSize * (index + .5) / 4,
-            cellSize * (.1 + variation * .018),
-            variation,
-          );
-        }
-      }
-      if (!isCliff(x + 1, y)) {
-        for (let index = 0; index < 4; index += 1) {
-          const variation = terrainVariation(x, y * 4 + index, 1721);
-          drawRock(
-            left + cellSize * (.9 + (variation - .5) * .04),
-            top + cellSize * (index + .5) / 4,
-            cellSize * (.105 + variation * .018),
+            left + cellSize * (index + .5) / 6,
+            top + cellSize * (.965 + (variation - .5) * .025),
+            cellSize * (.075 + variation * .018),
             variation,
           );
         }
