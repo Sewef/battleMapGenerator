@@ -1013,9 +1013,9 @@ async function owlBearRockAssets(
   const names = (count: number, footprint: string) =>
     Array.from({ length: count }, (_, index) => `${family}_${index + 1}_${footprint}.png`);
   const paths = {
-    oneByOne: names(56, "1x1"),
-    oneByTwo: names(12, "1x2"),
-    twoByOne: names(4, "2x1"),
+    oneByOne: names(16, "1x1"),
+    oneByTwo: names(9, "1x2"),
+    twoByOne: names(3, "2x1"),
     twoByTwo: names(14, "2x2"),
   };
   const load = (names: string[]) => Promise.all(names.map((name) =>

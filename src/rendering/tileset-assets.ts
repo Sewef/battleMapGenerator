@@ -236,11 +236,11 @@ const lengthImages = (
 
 const rockFamilyImages = (family: "rock" | "rock_light" | "rock_dark" |
   "rock_desert" | "rock_snow") => ({
-  oneByOne: Array.from({ length: 56 }, (_, index) =>
+  oneByOne: Array.from({ length: 16 }, (_, index) =>
     deferredImage(lpc(`rock/${family}_${index + 1}_1x1.png`))),
-  oneByTwo: Array.from({ length: 12 }, (_, index) =>
+  oneByTwo: Array.from({ length: 9 }, (_, index) =>
     deferredImage(lpc(`rock/${family}_${index + 1}_1x2.png`))),
-  twoByOne: Array.from({ length: 4 }, (_, index) =>
+  twoByOne: Array.from({ length: 3 }, (_, index) =>
     deferredImage(lpc(`rock/${family}_${index + 1}_2x1.png`))),
   twoByTwo: Array.from({ length: 14 }, (_, index) =>
     deferredImage(lpc(`rock/${family}_${index + 1}_2x2.png`))),
