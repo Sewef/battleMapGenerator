@@ -1,5 +1,5 @@
 import { PRESETS } from "../domain/biomes";
-import type { LandscapeMode } from "../domain/map";
+import { Terrain, TERRAIN_RULES, type LandscapeMode, type TerrainKind } from "../domain/map";
 
 export const PARAMETER_FIELDS = [
   { id: "water", key: "waterWeight", label: "Water / lava", min: 0, max: 200, step: 10, percent: true, group: "terrain" },
@@ -63,6 +63,22 @@ const PRESET_GROUPS = [
   },
 ] as const;
 
+const EDITOR_TERRAINS: TerrainKind[] = [
+  Terrain.Ground,
+  Terrain.Difficult,
+  Terrain.Water,
+  Terrain.Ice,
+  Terrain.Lava,
+  Terrain.Beach,
+  Terrain.Cliff,
+  Terrain.Ravine,
+  Terrain.Void,
+  Terrain.Road,
+  Terrain.Bridge,
+  Terrain.Wall,
+  Terrain.Door,
+];
+
 export function renderApp(root: HTMLElement) {
   root.innerHTML = `
     <main class="shell">
@@ -97,11 +113,12 @@ export function renderApp(root: HTMLElement) {
 
       <section class="workspace">
         <aside class="controls">
-          <div class="panel-heading">
-            <span>Settings</span>
-            <button id="reset" class="text-button" type="button">Reset</button>
+          <div class="controls-tabs" role="tablist" aria-label="Map tools">
+            <button id="generation-tab" class="controls-tab active" type="button" role="tab" aria-selected="true" aria-controls="generation-settings" data-controls-tab="generation">Generation</button>
+            <button id="terrain-editor-tab" class="controls-tab" type="button" role="tab" aria-selected="false" aria-controls="terrain-editor-settings" data-controls-tab="terrain">Terrain editor</button>
+            <button id="props-editor-tab" class="controls-tab" type="button" role="tab" aria-selected="false" aria-controls="props-editor-settings" data-controls-tab="props">Props editor</button>
           </div>
-
+          <section class="controls-view generation-settings" id="generation-settings" role="tabpanel" aria-labelledby="generation-tab">
           <label class="field">
             <span>Seed</span>
             <span class="seed-row">
@@ -138,8 +155,52 @@ export function renderApp(root: HTMLElement) {
             `).join("")}
           </div>
           `).join("")}
+          <div class="generation-actions">
+            <button id="reset" class="download-button" type="button">Reset</button>
 
           <button id="generate" class="primary-button" type="button">Generate map <span>→</span></button>
+          </div>
+          </section>
+
+          <section class="controls-view editor-settings" id="terrain-editor-settings" hidden role="tabpanel" aria-labelledby="terrain-editor-tab">
+            <div class="editor-terrain-list" role="group" aria-label="Terrain brush">
+              ${EDITOR_TERRAINS.map((terrain) => `
+                <button class="editor-terrain-button" type="button" data-editor-terrain="${terrain}">
+                  <i class="swatch ${terrain}" aria-hidden="true"></i>
+                  <span>${TERRAIN_RULES[terrain].label}</span>
+                </button>
+              `).join("")}
+            </div>
+            <div class="editor-tool-options">
+              <label class="editor-select-field">
+                <span>Brush</span>
+                <select id="editor-brush-size">
+                  <option value="1">1 cell</option>
+                  <option value="3">3 cells</option>
+                  <option value="5">5 cells</option>
+                </select>
+              </label>
+              <label class="editor-select-field">
+                <span>Cliff level</span>
+                <select id="editor-elevation">
+                  <option value="1">Low</option>
+                  <option value="2">Mid</option>
+                  <option value="3">High</option>
+                </select>
+              </label>
+              <button id="editor-undo" class="download-button" type="button" disabled>Undo</button>
+            </div>
+            <button id="editor-done" class="download-button" type="button">Done</button>
+          </section>
+
+          <section class="controls-view props-editor-settings" id="props-editor-settings" hidden role="tabpanel" aria-labelledby="props-editor-tab">
+            <div class="props-editor-empty">
+              <p class="eyebrow">Props editor</p>
+              <h3>Coming next</h3>
+              <p>Trees, rocks and interior props stay untouched for now.</p>
+            </div>
+            <button id="props-editor-done" class="download-button" type="button">Done</button>
+          </section>
         </aside>
 
         <div class="map-panel">

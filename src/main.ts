@@ -6,9 +6,12 @@ import {
   isInteriorMode,
   Obstacle,
   PRESETS,
+  Terrain,
   type Grid,
   type Preset,
+  type TerrainKind,
   type TerrainOptions,
+  type Tile,
 } from "./generator";
 import {
   drawGrid,
@@ -31,6 +34,8 @@ import {
 const randomSeed = () =>
   `${["moor", "mist", "oak", "flint", "dawn"][Math.floor(Math.random() * 5)]}-${Math.floor(1000 + Math.random() * 9000)}`;
 
+type ControlsTab = "generation" | "terrain" | "props";
+
 renderApp(document.querySelector<HTMLDivElement>("#app")!);
 
 const previewCanvas = document.querySelector<HTMLCanvasElement>("#map")!;
@@ -52,6 +57,28 @@ const treePropPreview =
   document.querySelector<HTMLElement>("#custom-tree-preview")!;
 const rockPropPreview =
   document.querySelector<HTMLElement>("#custom-rock-preview")!;
+const controlsTabButtons = [
+  ...document.querySelectorAll<HTMLButtonElement>("[data-controls-tab]"),
+];
+const generationSettingsPanel =
+  document.querySelector<HTMLElement>("#generation-settings")!;
+const terrainEditorSettingsPanel =
+  document.querySelector<HTMLElement>("#terrain-editor-settings")!;
+const propsEditorSettingsPanel =
+  document.querySelector<HTMLElement>("#props-editor-settings")!;
+const editorBrushSizeInput =
+  document.querySelector<HTMLSelectElement>("#editor-brush-size")!;
+const editorElevationInput =
+  document.querySelector<HTMLSelectElement>("#editor-elevation")!;
+const editorUndoButton =
+  document.querySelector<HTMLButtonElement>("#editor-undo")!;
+const editorDoneButton =
+  document.querySelector<HTMLButtonElement>("#editor-done")!;
+const propsEditorDoneButton =
+  document.querySelector<HTMLButtonElement>("#props-editor-done")!;
+const editorTerrainButtons = [
+  ...document.querySelectorAll<HTMLButtonElement>("[data-editor-terrain]"),
+];
 const owlbearStatus =
   document.querySelector<HTMLParagraphElement>("#owlbear-status")!;
 const owlbearDynamicFogInput =
@@ -115,6 +142,16 @@ let lastTilesetWarning = "";
 let tilesetTerrainReadyLogged = false;
 let tilesetPropsReadyLogged = false;
 const hiddenLegendItems = new Set<string>();
+const editableTerrains = new Set<TerrainKind>(
+  Object.values(Terrain) as TerrainKind[],
+);
+let activeControlsTab: ControlsTab = "generation";
+let activeEditorTerrain: TerrainKind = Terrain.Ground;
+let editorUndoGrid: Grid | undefined;
+let editorStrokeBackup: Grid | undefined;
+let editorPointerId: number | undefined;
+let editorStrokeChanged = false;
+let lastPaintedCellKey = "";
 let owlbearExportCache: {
   key: string;
   scene: Awaited<ReturnType<typeof createOwlbearSceneJson>>;
@@ -210,7 +247,8 @@ function renderMap(grid: Grid, targetCanvas = previewCanvas, cellSize?: number) 
     pixelRatio: targetCanvas === previewCanvas ? undefined : 1,
     updateInterface: targetCanvas === previewCanvas,
     hiddenItems: hiddenLegendItems,
-    showGrid: previewGridInput.checked,
+    showGrid: previewGridInput.checked ||
+      (targetCanvas === previewCanvas && activeControlsTab === "terrain"),
     useTileset,
     tilesetImage: tilesetReady() ? tilesetImage : undefined,
     tilesetTerrain: tilesetReady() ? tilesetTerrain : undefined,
@@ -251,6 +289,7 @@ function generate() {
   generatedOptions = currentGenerationOptions();
   currentGrid = generateTerrain(generatedOptions);
   mapRevision += 1;
+  clearEditorUndo();
   renderMap(currentGrid);
 }
 
@@ -262,6 +301,204 @@ function scheduleGeneration() {
     pendingGenerationFrame = undefined;
     generate();
   });
+}
+
+function cloneGrid(grid: Grid): Grid {
+  return grid.map((row) => row.map((tile) => ({ ...tile })));
+}
+
+function clearEditorUndo() {
+  editorUndoGrid = undefined;
+  editorStrokeBackup = undefined;
+  editorPointerId = undefined;
+  editorStrokeChanged = false;
+  lastPaintedCellKey = "";
+  editorUndoButton.disabled = true;
+}
+
+function markMapEdited() {
+  mapRevision += 1;
+  owlbearExportCache = undefined;
+}
+
+function isEditableTerrain(value: string | undefined): value is TerrainKind {
+  return Boolean(value && editableTerrains.has(value as TerrainKind));
+}
+
+function terrainBaseHeight(terrain: TerrainKind) {
+  switch (terrain) {
+    case Terrain.Void:
+      return .08;
+    case Terrain.Water:
+    case Terrain.Lava:
+      return .16;
+    case Terrain.Ice:
+    case Terrain.Ravine:
+      return .2;
+    case Terrain.Beach:
+      return .24;
+    case Terrain.Difficult:
+      return .42;
+    case Terrain.Cliff:
+    case Terrain.Wall:
+      return .86;
+    case Terrain.Door:
+      return .48;
+    default:
+      return .32;
+  }
+}
+
+function selectedEditorElevation() {
+  const elevation = Math.round(Number(editorElevationInput.value));
+  return Math.max(1, Math.min(3, Number.isFinite(elevation) ? elevation : 1));
+}
+
+function selectedEditorBrushRadius() {
+  const brushSize = Math.max(1, Math.round(Number(editorBrushSizeInput.value)));
+  return Math.floor(brushSize / 2);
+}
+
+function tilePaintSignature(tile: Tile) {
+  return [
+    tile.terrain,
+    tile.surface ?? "",
+    tile.elevation ?? "",
+    tile.height ?? "",
+    tile.transition ?? "",
+    tile.transitionNormalX ?? "",
+    tile.transitionNormalY ?? "",
+    tile.doorOrientation ?? "",
+  ].join("|");
+}
+
+function clearTerrainTransition(tile: Tile) {
+  delete tile.surface;
+  delete tile.transition;
+  delete tile.transitionNormalX;
+  delete tile.transitionNormalY;
+}
+
+function inferDoorOrientation(x: number, y: number): Tile["doorOrientation"] {
+  const hasVerticalWall =
+    currentGrid[y - 1]?.[x]?.terrain === Terrain.Wall ||
+    currentGrid[y + 1]?.[x]?.terrain === Terrain.Wall;
+  const hasHorizontalWall =
+    currentGrid[y]?.[x - 1]?.terrain === Terrain.Wall ||
+    currentGrid[y]?.[x + 1]?.terrain === Terrain.Wall;
+  if (hasVerticalWall && !hasHorizontalWall) return "vertical";
+  return "horizontal";
+}
+
+function paintTileTerrain(tile: Tile, terrain: TerrainKind, x: number, y: number) {
+  const before = tilePaintSignature(tile);
+  clearTerrainTransition(tile);
+  tile.terrain = terrain;
+  tile.height = terrainBaseHeight(terrain);
+  if (terrain === Terrain.Cliff) {
+    tile.elevation = selectedEditorElevation();
+  } else {
+    delete tile.elevation;
+  }
+  if (terrain === Terrain.Door) {
+    tile.doorOrientation = tile.doorOrientation ?? inferDoorOrientation(x, y);
+  } else {
+    delete tile.doorOrientation;
+  }
+  return tilePaintSignature(tile) !== before;
+}
+
+function canvasCellFromPointer(event: PointerEvent) {
+  if (!currentGrid.length || !currentGrid[0].length) return undefined;
+  const rect = previewCanvas.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return undefined;
+  const columns = currentGrid[0].length;
+  const rows = currentGrid.length;
+  const x = Math.floor(((event.clientX - rect.left) / rect.width) * columns);
+  const y = Math.floor(((event.clientY - rect.top) / rect.height) * rows);
+  if (x < 0 || y < 0 || x >= columns || y >= rows) return undefined;
+  return { x, y };
+}
+
+function applyEditorBrush(centerX: number, centerY: number) {
+  const radius = selectedEditorBrushRadius();
+  let changed = false;
+  for (let y = centerY - radius; y <= centerY + radius; y += 1) {
+    for (let x = centerX - radius; x <= centerX + radius; x += 1) {
+      const tile = currentGrid[y]?.[x];
+      if (!tile) continue;
+      changed = paintTileTerrain(tile, activeEditorTerrain, x, y) || changed;
+    }
+  }
+  if (!changed) return false;
+  markMapEdited();
+  renderMap(currentGrid);
+  return true;
+}
+
+function paintFromPointer(event: PointerEvent) {
+  const cell = canvasCellFromPointer(event);
+  if (!cell) return;
+  const key = `${cell.x}:${cell.y}`;
+  if (key === lastPaintedCellKey) return;
+  lastPaintedCellKey = key;
+  editorStrokeChanged = applyEditorBrush(cell.x, cell.y) || editorStrokeChanged;
+}
+
+function finishEditorStroke(event: PointerEvent) {
+  if (editorPointerId !== event.pointerId) return;
+  if (previewCanvas.hasPointerCapture(event.pointerId)) {
+    previewCanvas.releasePointerCapture(event.pointerId);
+  }
+  if (editorStrokeChanged && editorStrokeBackup) {
+    editorUndoGrid = editorStrokeBackup;
+    editorUndoButton.disabled = false;
+  }
+  editorPointerId = undefined;
+  editorStrokeBackup = undefined;
+  editorStrokeChanged = false;
+  lastPaintedCellKey = "";
+}
+
+function setEditorTerrain(terrain: TerrainKind) {
+  activeEditorTerrain = terrain;
+  for (const button of editorTerrainButtons) {
+    const active = button.dataset.editorTerrain === terrain;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  }
+  editorElevationInput.disabled = terrain !== Terrain.Cliff;
+}
+
+function isControlsTab(value: string | undefined): value is ControlsTab {
+  return value === "generation" || value === "terrain" || value === "props";
+}
+
+function setControlsTab(tab: ControlsTab) {
+  activeControlsTab = tab;
+  generationSettingsPanel.hidden = tab !== "generation";
+  terrainEditorSettingsPanel.hidden = tab !== "terrain";
+  propsEditorSettingsPanel.hidden = tab !== "props";
+  for (const button of controlsTabButtons) {
+    const active = button.dataset.controlsTab === tab;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+    button.tabIndex = active ? 0 : -1;
+  }
+
+  const editingTerrain = tab === "terrain";
+  previewCanvas.classList.toggle("is-editing", editingTerrain);
+  previewCanvas.closest<HTMLElement>(".canvas-wrap")?.classList.toggle(
+    "is-editing",
+    editingTerrain,
+  );
+  if (!editingTerrain) {
+    editorPointerId = undefined;
+    editorStrokeBackup = undefined;
+    editorStrokeChanged = false;
+    lastPaintedCellKey = "";
+  }
+  renderMap(currentGrid);
 }
 
 document.querySelectorAll<HTMLButtonElement>(".preset-card").forEach((button) => {
@@ -291,6 +528,46 @@ document.querySelector("#reset")!.addEventListener("click", () => {
   applyPreset(activePreset);
   generate();
 });
+
+for (const button of editorTerrainButtons) {
+  const terrain = button.dataset.editorTerrain;
+  if (!isEditableTerrain(terrain)) continue;
+  button.addEventListener("click", () => setEditorTerrain(terrain));
+}
+for (const button of controlsTabButtons) {
+  const tab = button.dataset.controlsTab;
+  if (!isControlsTab(tab)) continue;
+  button.addEventListener("click", () => setControlsTab(tab));
+}
+editorDoneButton.addEventListener("click", () => setControlsTab("generation"));
+propsEditorDoneButton.addEventListener("click", () => setControlsTab("generation"));
+previewCanvas.addEventListener("pointerdown", (event) => {
+  if (activeControlsTab !== "terrain" || event.button !== 0 || !currentGrid.length) {
+    return;
+  }
+  event.preventDefault();
+  editorPointerId = event.pointerId;
+  editorStrokeBackup = cloneGrid(currentGrid);
+  editorStrokeChanged = false;
+  lastPaintedCellKey = "";
+  previewCanvas.setPointerCapture(event.pointerId);
+  paintFromPointer(event);
+});
+previewCanvas.addEventListener("pointermove", (event) => {
+  if (activeControlsTab !== "terrain" || editorPointerId !== event.pointerId) return;
+  event.preventDefault();
+  paintFromPointer(event);
+});
+previewCanvas.addEventListener("pointerup", finishEditorStroke);
+previewCanvas.addEventListener("pointercancel", finishEditorStroke);
+editorUndoButton.addEventListener("click", () => {
+  if (!editorUndoGrid) return;
+  currentGrid = cloneGrid(editorUndoGrid);
+  clearEditorUndo();
+  markMapEdited();
+  renderMap(currentGrid);
+});
+
 function webpRenderOptions(
   includeProps: boolean,
   mode: Preset["mode"] = generatedOptions?.mode ?? activePreset.mode,
@@ -677,5 +954,7 @@ document.querySelectorAll<HTMLButtonElement>("[data-randomize-group]")
   });
 window.addEventListener("resize", () => renderMap(currentGrid));
 
+setEditorTerrain(activeEditorTerrain);
+setControlsTab(activeControlsTab);
 applyPreset(PRESETS[0]);
 generate();
