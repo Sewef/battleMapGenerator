@@ -1,5 +1,7 @@
 import {
   Obstacle,
+  OutdoorProp,
+  OUTDOOR_PROP_RULES,
   Terrain,
   isInteriorMode,
   tileSurface,
@@ -57,6 +59,7 @@ export interface TilesetTerrainImages {
 export interface TilesetPropImages {
   tree1x1: CanvasImageSource;
   tree2x2: CanvasImageSource;
+  lampPost: CanvasImageSource;
   rockFamilies: Record<RockFamily, RockFamilyImages>;
   crate1x1: readonly CanvasImageSource[];
   barrel1x1: CanvasImageSource;
@@ -220,6 +223,11 @@ type RockFamilyImages = {
   oneByTwo: readonly CanvasImageSource[];
   twoByOne: readonly CanvasImageSource[];
   twoByTwo: readonly CanvasImageSource[];
+  twoByThree: readonly CanvasImageSource[];
+  threeByThree: readonly CanvasImageSource[];
+  fourByThree: readonly CanvasImageSource[];
+  fourByFive: readonly CanvasImageSource[];
+  fiveByFour: readonly CanvasImageSource[];
 };
 
 function rockFamilyForMode(mode: LandscapeMode): RockFamily {
@@ -3549,6 +3557,7 @@ function drawInteriorProps(
       const {
         interiorProp: prop,
         interiorPropId,
+        propVariant,
         propOrientation,
         propFacing,
         roomRole: propRoomRole = "",
@@ -3572,7 +3581,7 @@ function drawInteriorProps(
       const vertical = propOrientation === "vertical";
       const syntheticSeat = spaceshipFurniture &&
         (prop === "table" || prop === "chair");
-      const variantIndex = Math.abs(interiorPropId ?? x * 31 + y * 17);
+      const variantIndex = propVariant ?? Math.abs(interiorPropId ?? x * 31 + y * 17);
       const modularHorizontalTable = prop === "table" && propCells.length > 1 &&
         spanHeight === cellSize;
       const modularVerticalTable = prop === "table" && propCells.length > 1 &&
@@ -3753,6 +3762,8 @@ function drawInteriorProps(
         : [];
       const selectedBedAsset = prop !== "bed"
         ? undefined
+        : propVariant !== undefined
+          ? allBedAssets[propVariant % allBedAssets.length]
         : spaceshipFurniture
           ? blueBedAssets[variantIndex % blueBedAssets.length]
           : selectBedAssetDefinition(
@@ -3788,7 +3799,7 @@ function drawInteriorProps(
           : prop === "barrel" ? "barrel_1x1.png"
             : prop === "bucket" ? "bucket_1x1.png"
               : prop === "drawers" ? `drawer_${variantIndex % 3 + 1}_1x1.png`
-                : prop === "shelf" ? `shelf_${variantIndex % 2 + 1}_1x1.png`
+                : prop === "shelf" ? `shelf_${variantIndex % 7 + 1}_1x1.png`
                   : prop === "statue" ? "statue_1x1.png"
                     : prop === "flower_pot" ? `flower_pot_${variantIndex % 3 + 1}_1x1.png`
                       : prop === "bones" ? `bones_${variantIndex % 5 + 1}_1x1.png`
@@ -3826,12 +3837,20 @@ function drawInteriorProps(
         context.save();
         context.imageSmoothingEnabled = Math.abs(scale - Math.round(scale)) > .001;
         context.imageSmoothingQuality = "high";
-        for (const cell of propCells) {
+        if (prop === "wall_chain") {
           const drawTop = layout.anchor === "bottom"
-            ? (cell.y + 1) * cellSize - drawHeight
-            : (cell.y + .5) * cellSize - drawHeight / 2;
-          context.drawImage(tileImage, (cell.x + .5) * cellSize - drawWidth / 2,
+            ? propBottom - drawHeight
+            : centerY - drawHeight / 2;
+          context.drawImage(tileImage, centerX - drawWidth / 2,
             drawTop, drawWidth, drawHeight);
+        } else {
+          for (const cell of propCells) {
+            const drawTop = layout.anchor === "bottom"
+              ? (cell.y + 1) * cellSize - drawHeight
+              : (cell.y + .5) * cellSize - drawHeight / 2;
+            context.drawImage(tileImage, (cell.x + .5) * cellSize - drawWidth / 2,
+              drawTop, drawWidth, drawHeight);
+          }
         }
         context.restore();
         continue;
@@ -4415,6 +4434,154 @@ function drawInteriorProps(
           context.lineTo(centerX + width * .35, centerY);
         }
         context.stroke();
+      }
+    }
+  }
+  context.restore();
+}
+
+function drawCampfirePlaceholder(
+  x: number,
+  y: number,
+  cellSize: number,
+  context: CanvasRenderingContext2D,
+) {
+  const centerX = (x + .5) * cellSize;
+  const centerY = (y + .5) * cellSize;
+  context.save();
+  context.translate(centerX, centerY);
+  applyPropContactShadow(cellSize, context);
+  context.fillStyle = "#3d3127";
+  context.strokeStyle = "#261d18";
+  context.lineWidth = Math.max(1, cellSize * .045);
+  for (const angle of [-.55, .55]) {
+    context.save();
+    context.rotate(angle);
+    context.beginPath();
+    context.roundRect(
+      -cellSize * .34,
+      -cellSize * .075,
+      cellSize * .68,
+      cellSize * .15,
+      cellSize * .055,
+    );
+    context.fill();
+    context.stroke();
+    context.restore();
+  }
+  context.shadowColor = "transparent";
+  context.fillStyle = "#c54e2f";
+  context.beginPath();
+  context.ellipse(0, -cellSize * .035, cellSize * .19, cellSize * .29, 0, 0, Math.PI * 2);
+  context.fill();
+  context.fillStyle = "#f0b65b";
+  context.beginPath();
+  context.ellipse(0, -cellSize * .07, cellSize * .1, cellSize * .18, 0, 0, Math.PI * 2);
+  context.fill();
+  context.fillStyle = "#f6d98a";
+  context.beginPath();
+  context.ellipse(0, -cellSize * .09, cellSize * .045, cellSize * .095, 0, 0, Math.PI * 2);
+  context.fill();
+  context.restore();
+}
+
+function drawLampPostPlaceholder(
+  x: number,
+  y: number,
+  cellSize: number,
+  context: CanvasRenderingContext2D,
+) {
+  const centerX = (x + .5) * cellSize;
+  const centerY = (y + .5) * cellSize;
+  context.save();
+  context.translate(centerX, centerY);
+  applyPropContactShadow(cellSize, context);
+  context.strokeStyle = "#302b24";
+  context.lineCap = "round";
+  context.lineWidth = Math.max(1.4, cellSize * .075);
+  context.beginPath();
+  context.moveTo(0, cellSize * .34);
+  context.lineTo(0, -cellSize * .22);
+  context.stroke();
+  context.lineWidth = Math.max(.8, cellSize * .035);
+  context.beginPath();
+  context.moveTo(-cellSize * .18, cellSize * .36);
+  context.lineTo(cellSize * .18, cellSize * .36);
+  context.stroke();
+  context.shadowColor = "transparent";
+  context.fillStyle = "#f0c66a";
+  context.strokeStyle = "#3a3026";
+  context.lineWidth = Math.max(.8, cellSize * .035);
+  context.beginPath();
+  context.roundRect(
+    -cellSize * .15,
+    -cellSize * .43,
+    cellSize * .3,
+    cellSize * .25,
+    cellSize * .035,
+  );
+  context.fill();
+  context.stroke();
+  context.fillStyle = "rgba(255, 232, 155, .62)";
+  context.beginPath();
+  context.arc(0, -cellSize * .3, cellSize * .075, 0, Math.PI * 2);
+  context.fill();
+  context.restore();
+}
+
+function drawLampPostTileset(
+  image: CanvasImageSource,
+  x: number,
+  y: number,
+  cellSize: number,
+  context: CanvasRenderingContext2D,
+) {
+  const source = imageSourceSize(image);
+  const targetWidth = cellSize;
+  const targetHeight = cellSize * 3;
+  const scale = source
+    ? Math.min(targetWidth / source.width, targetHeight / source.height)
+    : 1;
+  const drawWidth = source ? source.width * scale : targetWidth;
+  const drawHeight = source ? source.height * scale : targetHeight;
+  context.save();
+  context.imageSmoothingEnabled = Math.abs(scale - Math.round(scale)) > .001;
+  context.imageSmoothingQuality = "high";
+  applyPropContactShadow(cellSize, context);
+  context.drawImage(
+    image,
+    (x + .5) * cellSize - drawWidth / 2,
+    (y + 1) * cellSize - drawHeight,
+    drawWidth,
+    drawHeight,
+  );
+  context.restore();
+}
+
+function drawOutdoorProps(
+  grid: Grid,
+  cellSize: number,
+  hiddenItems: ReadonlySet<string>,
+  hiddenOpacity: number,
+  context: CanvasRenderingContext2D,
+  tilesetProps?: TilesetPropImages,
+) {
+  context.save();
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      const prop = grid[y][x].outdoorProp;
+      if (!prop) continue;
+      context.globalAlpha = hiddenItems.has(prop) ? hiddenOpacity : 1;
+      if (prop === OutdoorProp.Campfire) {
+        drawCampfirePlaceholder(x, y, cellSize, context);
+      } else if (prop === OutdoorProp.LampPost) {
+        const lampPostImage = tilesetProps && imageSourceSize(tilesetProps.lampPost)
+          ? tilesetProps.lampPost : undefined;
+        if (lampPostImage) {
+          drawLampPostTileset(lampPostImage, x, y, cellSize, context);
+        } else {
+          drawLampPostPlaceholder(x, y, cellSize, context);
+        }
       }
     }
   }
@@ -6110,6 +6277,31 @@ function drawBuilding(
   context.restore();
 }
 
+function connectedPointGroups(points: Array<{ x: number; y: number }>) {
+  const remaining = new Set(points.map(({ x, y }) => `${x},${y}`));
+  const byKey = new Map(points.map((point) => [`${point.x},${point.y}`, point]));
+  const groups: Array<Array<{ x: number; y: number }>> = [];
+  for (const point of points) {
+    const startKey = `${point.x},${point.y}`;
+    if (!remaining.has(startKey)) continue;
+    const group: Array<{ x: number; y: number }> = [];
+    const stack = [point];
+    remaining.delete(startKey);
+    while (stack.length) {
+      const current = stack.pop()!;
+      group.push(current);
+      for (const [offsetX, offsetY] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const neighborKey = `${current.x + offsetX},${current.y + offsetY}`;
+        const neighbor = byKey.get(neighborKey);
+        if (!neighbor || !remaining.delete(neighborKey)) continue;
+        stack.push(neighbor);
+      }
+    }
+    groups.push(group);
+  }
+  return groups;
+}
+
 function drawRockFormation(
   points: Array<{ x: number; y: number }>,
   size: number,
@@ -6225,6 +6417,25 @@ function completeTwoByTwoOrigin(
   return completeBlock.every((key) => pointKeys.has(key))
     ? { x: minimumX, y: minimumY }
     : undefined;
+}
+
+function completeRectangleOrigin(
+  points: Array<{ x: number; y: number }>,
+  width: number,
+  height: number,
+) {
+  if (points.length !== width * height) return undefined;
+  const minimumX = Math.min(...points.map(({ x }) => x));
+  const minimumY = Math.min(...points.map(({ y }) => y));
+  const pointKeys = new Set(points.map(({ x, y }) => `${x},${y}`));
+  for (let offsetY = 0; offsetY < height; offsetY += 1) {
+    for (let offsetX = 0; offsetX < width; offsetX += 1) {
+      if (!pointKeys.has(`${minimumX + offsetX},${minimumY + offsetY}`)) {
+        return undefined;
+      }
+    }
+  }
+  return { x: minimumX, y: minimumY };
 }
 
 function drawDifficultTerrainDetail(
@@ -6655,10 +6866,6 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     if (mode === "ship-deck") {
       drawSailingShipDeckElevation(grid, cellSize, context);
     }
-    if (!options.hideInteriorProps) {
-      drawInteriorProps(grid, cellSize, mode, context,
-        options.useTileset ? options.tilesetProps : undefined);
-    }
   }
   drawReliefBevels(
     grid,
@@ -6754,13 +6961,18 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   }
   context.globalAlpha = 1;
 
-  if (mode === "ship-deck") {
-    drawSailingShipDeckFeatures(grid, cellSize, context,
-      options.useTileset ? options.tilesetProps : undefined);
+  if (grid.some((row) => row.some((tile) => tile.deckFeature))) {
+    drawSailingShipDeckFeatures(
+      grid,
+      cellSize,
+      context,
+      options.useTileset ? options.tilesetProps : undefined,
+    );
   }
 
   const treeGroups = new Map<number, Array<{ x: number; y: number }>>();
   const buildingGroups = new Map<number, Array<{ x: number; y: number }>>();
+  const manualBuildingPoints: Array<{ x: number; y: number }> = [];
   const rockGroups = new Map<number, Array<{ x: number; y: number }>>();
   for (let y = 0; y < rows; y += 1) {
     for (let x = 0; x < columns; x += 1) {
@@ -6773,9 +6985,13 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
       }
       if (tile.obstacle === Obstacle.Building) {
         const id = tile.obstacleId ?? y * columns + x;
-        const group = buildingGroups.get(id) ?? [];
-        group.push({ x, y });
-        buildingGroups.set(id, group);
+        if (id < 0) {
+          manualBuildingPoints.push({ x, y });
+        } else {
+          const group = buildingGroups.get(id) ?? [];
+          group.push({ x, y });
+          buildingGroups.set(id, group);
+        }
       }
       if (tile.obstacle === Obstacle.Rock) {
         const id = tile.obstacleId ?? y * columns + x;
@@ -6786,6 +7002,9 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
       if (tile.obstacle !== Obstacle.None) {
         counts.set(tile.obstacle, (counts.get(tile.obstacle) ?? 0) + 1);
       }
+      if (tile.outdoorProp) {
+        counts.set(tile.outdoorProp, (counts.get(tile.outdoorProp) ?? 0) + 1);
+      }
     }
   }
   context.globalAlpha =
@@ -6794,7 +7013,38 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   const rockFamily = rockFamilyForMode(mode);
   const rockAssets = options.tilesetProps?.rockFamilies[rockFamily];
   for (const [rockId, points] of rockGroups) {
-    const rockVariant = Math.abs(rockId);
+    const firstRockPoint = points[0];
+    const rockVariant = grid[firstRockPoint.y][firstRockPoint.x].propVariant ?? Math.abs(rockId);
+    if (rockId < 0 && useImageProps && !options.customProps?.rock && rockAssets) {
+      const largeRockAssets = [
+        { width: 5, height: 4, variants: rockAssets.fiveByFour },
+        { width: 4, height: 5, variants: rockAssets.fourByFive },
+        { width: 4, height: 3, variants: rockAssets.fourByThree },
+        { width: 3, height: 3, variants: rockAssets.threeByThree },
+        { width: 2, height: 3, variants: rockAssets.twoByThree },
+        { width: 2, height: 2, variants: rockAssets.twoByTwo },
+        { width: 2, height: 1, variants: rockAssets.twoByOne },
+        { width: 1, height: 2, variants: rockAssets.oneByTwo },
+      ];
+      const matchingRockAsset = largeRockAssets
+        .map((asset) => ({
+          ...asset,
+          origin: completeRectangleOrigin(points, asset.width, asset.height),
+        }))
+        .find(({ origin, variants }) => origin && variants.length > 0);
+      if (matchingRockAsset?.origin) {
+        drawLpcProp(
+          matchingRockAsset.variants[rockVariant % matchingRockAsset.variants.length],
+          matchingRockAsset.origin.x,
+          matchingRockAsset.origin.y,
+          matchingRockAsset.width,
+          matchingRockAsset.height,
+          cellSize,
+          context,
+        );
+        continue;
+      }
+    }
     const largeRockOrigin = completeTwoByTwoOrigin(points);
     if (largeRockOrigin) {
       if (useImageProps && options.customProps?.rock) {
@@ -6894,6 +7144,18 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
       useImageProps ? options.tilesetImage : undefined,
     );
   }
+  for (const points of connectedPointGroups(manualBuildingPoints)) {
+    const id = Math.min(...points.map(({ x, y }) =>
+      grid[y][x].obstacleId ?? y * columns + x));
+    drawBuilding(
+      points,
+      id,
+      cellSize,
+      mode,
+      context,
+      useImageProps ? options.tilesetImage : undefined,
+    );
+  }
   context.globalAlpha = 1;
   context.globalAlpha = hiddenItems.has(Obstacle.Tree) ? hiddenOpacity : 1;
   for (const points of treeGroups.values()) {
@@ -6954,6 +7216,25 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   }
   context.globalAlpha = 1;
 
+  if (!options.hideInteriorProps) {
+    drawInteriorProps(
+      grid,
+      cellSize,
+      mode,
+      context,
+      options.useTileset ? options.tilesetProps : undefined,
+    );
+  }
+
+  drawOutdoorProps(
+    grid,
+    cellSize,
+    hiddenItems,
+    hiddenOpacity,
+    context,
+    options.useTileset ? options.tilesetProps : undefined,
+  );
+
   if (options.stylizedLighting) {
     drawStylizedLighting(
       grid,
@@ -7007,6 +7288,12 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     },
     { key: Obstacle.Building, label: "Building", className: "building", color: "" },
   ].filter(({ key }) => (counts.get(key) ?? 0) > 0);
+  const outdoorPropItems = Object.entries(OUTDOOR_PROP_RULES).map(([kind, rule]) => ({
+    key: kind,
+    label: rule.label,
+    className: kind,
+    color: "",
+  })).filter(({ key }) => (counts.get(key) ?? 0) > 0);
 
   type LegendItem = {
     key: string;
@@ -7039,6 +7326,7 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
 
   document.querySelector("#legend")!.innerHTML =
     renderLegendGroup("Terrain", terrainItems) +
-    renderLegendGroup("Obstacles", obstacleItems);
+    renderLegendGroup("Obstacles", obstacleItems) +
+    renderLegendGroup("Props", outdoorPropItems);
   document.querySelector("#dimensions")!.textContent = `${columns} × ${rows} cells`;
 }

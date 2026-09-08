@@ -21,9 +21,15 @@ export const Obstacle = {
   Building: "building",
 } as const;
 
+export const OutdoorProp = {
+  Campfire: "campfire",
+  LampPost: "lamp_post",
+} as const;
+
 export type TerrainKind = (typeof Terrain)[keyof typeof Terrain];
 export type SurfaceKind = typeof Terrain.Road | typeof Terrain.Bridge;
 export type ObstacleKind = (typeof Obstacle)[keyof typeof Obstacle];
+export type OutdoorPropKind = (typeof OutdoorProp)[keyof typeof OutdoorProp];
 export type LandscapeMode =
   | "countryside"
   | "river"
@@ -105,6 +111,8 @@ export interface Tile {
   surface?: SurfaceKind;
   obstacle: ObstacleKind;
   obstacleId?: number;
+  outdoorProp?: OutdoorPropKind;
+  outdoorPropId?: number;
   elevation?: number;
   height?: number;
   transition?: "slope";
@@ -121,6 +129,7 @@ export interface Tile {
     "drawers" | "shelf" | "statue" | "barrel" | "bucket" | "flower_pot" |
     "bones" | "wall_chain";
   interiorPropId?: number;
+  propVariant?: number;
   propOrientation?: "horizontal" | "vertical";
   propFacing?: "north" | "east" | "south" | "west";
 }
@@ -187,6 +196,14 @@ export const OBSTACLE_RULES: Record<
   [Obstacle.Tree]: { label: "Tree", movement: "blocked", blocksSight: true },
   [Obstacle.Rock]: { label: "Rock", movement: "blocked", blocksSight: false },
   [Obstacle.Building]: { label: "Building", movement: "blocked", blocksSight: true },
+};
+
+export const OUTDOOR_PROP_RULES: Record<
+  OutdoorPropKind,
+  { label: string; movement: "normal" | "blocked"; blocksSight: false }
+> = {
+  [OutdoorProp.Campfire]: { label: "Campfire", movement: "blocked", blocksSight: false },
+  [OutdoorProp.LampPost]: { label: "Lamp post", movement: "blocked", blocksSight: false },
 };
 
 export const INTERIOR_PROP_RULES: Record<

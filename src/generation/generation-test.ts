@@ -5,6 +5,7 @@ import {
   INTERIOR_ROOM_LIMITS,
   INTERIOR_MINIMUM_DIMENSIONS,
   Obstacle,
+  OutdoorProp,
   TERRAIN_RULES,
   Terrain,
   isInteriorMode,
@@ -2661,10 +2662,20 @@ const lightSourceGrid: Grid = [[
     interiorProp: "altar",
     interiorPropId: 3,
   },
+  {
+    terrain: Terrain.Ground,
+    obstacle: Obstacle.None,
+    outdoorProp: OutdoorProp.Campfire,
+  },
+  {
+    terrain: Terrain.Ground,
+    obstacle: Obstacle.None,
+    outdoorProp: OutdoorProp.LampPost,
+  },
   { terrain: Terrain.Lava, obstacle: Obstacle.None },
 ]];
 const lightKinds = new Set(collectMapLightSources(lightSourceGrid).map(({ kind }) => kind));
-for (const kind of ["hearth", "console", "altar", "lava"] as const) {
+for (const kind of ["hearth", "console", "altar", "campfire", "lamp_post", "lava"] as const) {
   assert(lightKinds.has(kind), `light source extraction: missing ${kind}`);
 }
 
@@ -2680,6 +2691,12 @@ const propGrid: Grid = [[
     obstacle: Obstacle.Rock,
     obstacleId: 2,
     height: .3,
+  },
+  {
+    terrain: Terrain.Ground,
+    obstacle: Obstacle.None,
+    outdoorProp: OutdoorProp.Campfire,
+    outdoorPropId: 3,
   },
 ]];
 const propExport = await createOwlbearSceneJson(
@@ -2705,7 +2722,7 @@ const propEntries = Object.entries(propScene.items.shared);
 const propBackground = propEntries.find(([, item]) => item.layer === "MAP");
 assert(propBackground, "prop export: missing map background");
 const exportedProps = propEntries.filter(([, item]) => item.layer === "PROP");
-assert(exportedProps.length === 2, "prop export: expected tree and rock props");
+assert(exportedProps.length === 3, "prop export: expected tree, rock and outdoor props");
 assert(
   exportedProps.every(([, item]) => item.attachedTo === propBackground[0]),
   "prop export: props must be attached to the background",

@@ -1,10 +1,12 @@
 import {
   INTERIOR_PROP_RULES,
   Obstacle,
+  OUTDOOR_PROP_RULES,
   Terrain,
   type Grid,
   type LandscapeMode,
   type ObstacleKind,
+  type OutdoorPropKind,
   type TerrainKind,
   type Tile,
 } from "../domain/map";
@@ -14,6 +16,7 @@ import {
   type MapLightSource,
 } from "../rendering/lighting";
 import {
+  bedAssetDefinitions,
   blueBedAssetDefinitions,
   casualSofaAssetNames,
   interiorAssetPath,
@@ -58,7 +61,15 @@ function publicTilesetAssetUrl(relativePath: string) {
 type ExportedObstacle = {
   kind: Exclude<ObstacleKind, "none">;
   id: number;
+  variant?: number;
   points: Array<{ x: number; y: number }>;
+};
+
+type ExportedOutdoorProp = {
+  kind: OutdoorPropKind;
+  id: number;
+  x: number;
+  y: number;
 };
 
 type PropPlacement = { x: number; y: number; size: 1 | 2 };
@@ -71,6 +82,11 @@ type RockAssetSet = {
   oneByTwo: OwlbearPropAsset[];
   twoByOne: OwlbearPropAsset[];
   twoByTwo: OwlbearPropAsset[];
+  twoByThree: OwlbearPropAsset[];
+  threeByThree: OwlbearPropAsset[];
+  fourByThree: OwlbearPropAsset[];
+  fourByFive: OwlbearPropAsset[];
+  fiveByFour: OwlbearPropAsset[];
 };
 
 export type OwlbearPropAsset = {
@@ -162,6 +178,7 @@ function collectObstacles(grid: Grid): ExportedObstacle[] {
       const obstacle = obstacles.get(key) ?? {
         kind: tile.obstacle,
         id,
+        variant: tile.propVariant,
         points: [],
       };
       obstacle.points.push({ x, y });
@@ -169,6 +186,23 @@ function collectObstacles(grid: Grid): ExportedObstacle[] {
     }
   }
   return [...obstacles.values()];
+}
+
+function collectOutdoorProps(grid: Grid): ExportedOutdoorProp[] {
+  const props: ExportedOutdoorProp[] = [];
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      const tile = grid[y][x];
+      if (!tile.outdoorProp) continue;
+      props.push({
+        kind: tile.outdoorProp,
+        id: tile.outdoorPropId ?? y * grid[y].length + x,
+        x,
+        y,
+      });
+    }
+  }
+  return props;
 }
 
 function collectInteriorProps(grid: Grid): ExportedInteriorProp[] {
@@ -181,6 +215,7 @@ function collectInteriorProps(grid: Grid): ExportedInteriorProp[] {
       const prop = props.get(key) ?? {
         kind: tile.interiorProp,
         id: tile.interiorPropId,
+        variant: tile.propVariant,
         points: [],
         orientation: tile.propOrientation,
         facing: tile.propFacing,
@@ -214,6 +249,25 @@ function propPlacements(points: Array<{ x: number; y: number }>): PropPlacement[
     }
   }
   return placements;
+}
+
+function completeRectangleOrigin(
+  points: Array<{ x: number; y: number }>,
+  width: number,
+  height: number,
+) {
+  if (points.length !== width * height) return undefined;
+  const minimumX = Math.min(...points.map(({ x }) => x));
+  const minimumY = Math.min(...points.map(({ y }) => y));
+  const pointKeys = new Set(points.map(({ x, y }) => `${x},${y}`));
+  for (let offsetY = 0; offsetY < height; offsetY += 1) {
+    for (let offsetX = 0; offsetX < width; offsetX += 1) {
+      if (!pointKeys.has(`${minimumX + offsetX},${minimumY + offsetY}`)) {
+        return undefined;
+      }
+    }
+  }
+  return { x: minimumX, y: minimumY };
 }
 
 function imageItem(
@@ -491,12 +545,15 @@ const LIGHT_SOURCE_NAMES: Record<MapLightSource["kind"], string> = {
   console: "Console",
   altar: "Altar candles",
   lava: "Lava",
+  campfire: "Campfire",
+  lamp_post: "Lamp post",
 };
 
 type InteriorPropKind = NonNullable<Tile["interiorProp"]>;
 type ExportedInteriorProp = {
   kind: InteriorPropKind;
   id: number;
+  variant?: number;
   points: Array<{ x: number; y: number }>;
   orientation?: Tile["propOrientation"];
   facing?: Tile["propFacing"];
@@ -528,12 +585,73 @@ const INTERIOR_PROP_DRAWING_STYLES: Record<
   wall_chain: { fillColor: "#62625f", strokeColor: "#292a29", shapeType: "RECTANGLE" },
 };
 
+const OUTDOOR_PROP_DRAWING_STYLES: Record<
+  OutdoorPropKind,
+  { fillColor: string; strokeColor: string; shapeType: "RECTANGLE" | "CIRCLE" }
+> = {
+  campfire: { fillColor: "#cf5b35", strokeColor: "#3d2a22", shapeType: "CIRCLE" },
+  lamp_post: { fillColor: "#f0c66a", strokeColor: "#3a3026", shapeType: "RECTANGLE" },
+};
+
 function dynamicFogLightMetadata(source: MapLightSource) {
   return {
     attenuationRadius: Math.round(source.attenuationRadius * OWLBEAR_SCENE_DPI),
     sourceRadius: Math.max(1, Math.round(source.sourceRadius * OWLBEAR_SCENE_DPI)),
     falloff: source.falloff,
     lightType: source.lightType,
+  };
+}
+
+function outdoorPropItem(
+  id: string,
+  prop: ExportedOutdoorProp,
+  baseZIndex: number,
+  tieBreaker = 0,
+) {
+  const style = OUTDOOR_PROP_DRAWING_STYLES[prop.kind];
+  const width = prop.kind === "lamp_post"
+    ? OWLBEAR_SCENE_DPI * .38
+    : OWLBEAR_SCENE_DPI * .62;
+  const height = prop.kind === "lamp_post"
+    ? OWLBEAR_SCENE_DPI * .82
+    : OWLBEAR_SCENE_DPI * .62;
+  const center = {
+    x: (prop.x + .5) * OWLBEAR_SCENE_DPI,
+    y: (prop.y + .5) * OWLBEAR_SCENE_DPI,
+  };
+  const position = style.shapeType === "CIRCLE"
+    ? center
+    : { x: center.x - width / 2, y: center.y - height / 2 };
+  return {
+    id,
+    name: `${OUTDOOR_PROP_RULES[prop.kind].label} ${prop.id}`,
+    zIndex: perspectiveZIndex(baseZIndex, prop.y + 1, prop.x + .5, tieBreaker),
+    locked: false,
+    metadata: {
+      "com.terra-map-generator/export": true,
+      "com.terra-map-generator/outdoor-prop": {
+        kind: prop.kind,
+        id: prop.id,
+        footprint: [{ x: prop.x, y: prop.y }],
+      },
+    },
+    position,
+    rotation: 0,
+    scale: { x: 1, y: 1 },
+    type: "SHAPE",
+    visible: true,
+    layer: "PROP",
+    width,
+    height,
+    shapeType: style.shapeType,
+    style: {
+      fillColor: style.fillColor,
+      fillOpacity: prop.kind === "lamp_post" ? .55 : .48,
+      strokeColor: style.strokeColor,
+      strokeOpacity: .9,
+      strokeWidth: 5,
+      strokeDash: [],
+    },
   };
 }
 
@@ -621,7 +739,7 @@ function interiorPropSpriteItems(
   lightSource?: MapLightSource,
   tieBreaker = 0,
 ) {
-  const variant = Math.abs(prop.id);
+  const variant = prop.variant ?? Math.abs(prop.id);
   const rectangle = (() => {
     const minimumX = Math.min(...prop.points.map(({ x }) => x));
     const maximumX = Math.max(...prop.points.map(({ x }) => x));
@@ -659,21 +777,20 @@ function interiorPropSpriteItems(
   const casualSofaNames = upholsteredBench
     ? casualSofaAssetNames((prop.facing ?? "north") as FurnitureFacing)
     : [];
+  const bedFacing = (prop.facing ?? "north") as FurnitureFacing;
+  const doubleBed = prop.points.length === 4;
+  const bedAssets = prop.kind === "bed"
+    ? bedAssetDefinitions(doubleBed, bedFacing)
+    : [];
   const bedAsset = prop.kind === "bed"
-    ? mode === "spaceship"
-      ? (() => {
-        const blueBeds = blueBedAssetDefinitions(
-          prop.points.length === 4,
-          (prop.facing ?? "north") as FurnitureFacing,
-        );
-        return blueBeds[variant % blueBeds.length];
-      })()
-      : selectBedAssetDefinition(
-      prop.points.length === 4,
-      (prop.facing ?? "north") as FurnitureFacing,
-      variant,
-      prop.roomRole,
-    )
+    ? prop.variant !== undefined
+      ? bedAssets[prop.variant % bedAssets.length]
+      : mode === "spaceship"
+        ? (() => {
+          const blueBeds = blueBedAssetDefinitions(doubleBed, bedFacing);
+          return blueBeds[variant % blueBeds.length];
+        })()
+        : selectBedAssetDefinition(doubleBed, bedFacing, variant, prop.roomRole)
     : undefined;
   const assetName = prop.kind === "bed"
     ? bedAsset?.name
@@ -1000,6 +1117,11 @@ async function owlBearRockAssets(
       oneByTwo: [],
       twoByOne: [],
       twoByTwo: [assets.twoByTwo],
+      twoByThree: [],
+      threeByThree: [],
+      fourByThree: [],
+      fourByFive: [],
+      fiveByFour: [],
     };
   }
   const family = mode === "desert-canyon" || mode === "badlands"
@@ -1017,13 +1139,62 @@ async function owlBearRockAssets(
     oneByTwo: names(9, "1x2"),
     twoByOne: names(3, "2x1"),
     twoByTwo: names(14, "2x2"),
+    twoByThree: names(1, "2x3"),
+    threeByThree: names(1, "3x3"),
+    fourByThree: names(2, "4x3"),
+    fourByFive: names(1, "4x5"),
+    fiveByFour: names(1, "5x4"),
   };
   const load = (names: string[]) => Promise.all(names.map((name) =>
     inspectPropAsset(undefined, `/assets/tilesets/lpc/rock/${name}`)));
-  const [oneByOne, oneByTwo, twoByOne, twoByTwo] = await Promise.all([
-    load(paths.oneByOne), load(paths.oneByTwo), load(paths.twoByOne), load(paths.twoByTwo),
+  const [
+    oneByOne,
+    oneByTwo,
+    twoByOne,
+    twoByTwo,
+    twoByThree,
+    threeByThree,
+    fourByThree,
+    fourByFive,
+    fiveByFour,
+  ] = await Promise.all([
+    load(paths.oneByOne),
+    load(paths.oneByTwo),
+    load(paths.twoByOne),
+    load(paths.twoByTwo),
+    load(paths.twoByThree),
+    load(paths.threeByThree),
+    load(paths.fourByThree),
+    load(paths.fourByFive),
+    load(paths.fiveByFour),
   ]);
-  return { oneByOne, oneByTwo, twoByOne, twoByTwo };
+  return {
+    oneByOne,
+    oneByTwo,
+    twoByOne,
+    twoByTwo,
+    twoByThree,
+    threeByThree,
+    fourByThree,
+    fourByFive,
+    fiveByFour,
+  };
+}
+
+function rockVariantsForPlacement(
+  assets: RockAssetSet,
+  width: number,
+  height: number,
+) {
+  if (width === 5 && height === 4) return assets.fiveByFour;
+  if (width === 4 && height === 5) return assets.fourByFive;
+  if (width === 4 && height === 3) return assets.fourByThree;
+  if (width === 3 && height === 3) return assets.threeByThree;
+  if (width === 2 && height === 3) return assets.twoByThree;
+  if (width === 2 && height === 2) return assets.twoByTwo;
+  if (width === 2 && height === 1) return assets.twoByOne;
+  if (width === 1 && height === 2 && assets.oneByTwo.length) return assets.oneByTwo;
+  return assets.oneByOne;
 }
 
 export async function createOwlbearSceneJson(
@@ -1039,6 +1210,7 @@ export async function createOwlbearSceneJson(
   ]);
   type ExportedSceneItem = (
       ReturnType<typeof imageItem> |
+      ReturnType<typeof outdoorPropItem> |
       ReturnType<typeof interiorPropItem> |
       ReturnType<typeof fogItem> |
       ReturnType<typeof fogDoorItem> |
@@ -1091,11 +1263,33 @@ export async function createOwlbearSceneJson(
     ) return;
     if (obstacle.kind === Obstacle.Rock) {
       const sorted = [...obstacle.points].sort((a, b) => a.y - b.y || a.x - b.x);
+      const largeManualRockAssets = [
+        { width: 5, height: 4, variants: rockAssets.fiveByFour },
+        { width: 4, height: 5, variants: rockAssets.fourByFive },
+        { width: 4, height: 3, variants: rockAssets.fourByThree },
+        { width: 3, height: 3, variants: rockAssets.threeByThree },
+        { width: 2, height: 3, variants: rockAssets.twoByThree },
+      ];
+      const largeManualRockPlacement = obstacle.id < 0
+        ? largeManualRockAssets
+          .map((asset) => ({
+            ...asset,
+            origin: completeRectangleOrigin(obstacle.points, asset.width, asset.height),
+          }))
+          .find(({ origin, variants }) => origin && variants.length > 0)
+        : undefined;
       const verticalPair = sorted.length === 2 && sorted[0].x === sorted[1].x &&
         sorted[1].y === sorted[0].y + 1;
       const horizontalPair = sorted.length === 2 && sorted[0].y === sorted[1].y &&
         sorted[1].x === sorted[0].x + 1 && rockAssets.twoByOne.length > 0;
-      const placements = verticalPair
+      const placements = largeManualRockPlacement?.origin
+        ? [{
+          x: largeManualRockPlacement.origin.x,
+          y: largeManualRockPlacement.origin.y,
+          width: largeManualRockPlacement.width,
+          height: largeManualRockPlacement.height,
+        }]
+        : verticalPair
         ? [{ x: sorted[0].x, y: sorted[0].y, width: 1, height: 2 }]
         : horizontalPair
           ? [{ x: sorted[0].x, y: sorted[0].y, width: 2, height: 1 }]
@@ -1103,11 +1297,9 @@ export async function createOwlbearSceneJson(
             x, y, width: size, height: size,
           }));
       placements.forEach(({ x, y, width, height }, pointIndex) => {
-        const variants = width === 2
-          ? height === 2 ? rockAssets.twoByTwo : rockAssets.twoByOne
-          : height === 2 && rockAssets.oneByTwo.length
-            ? rockAssets.oneByTwo : rockAssets.oneByOne;
-        const asset = variants[Math.abs(obstacle.id + pointIndex) % variants.length];
+        const variants = rockVariantsForPlacement(rockAssets, width, height);
+        const variant = obstacle.variant ?? Math.abs(obstacle.id + pointIndex);
+        const asset = variants[variant % variants.length];
         const id = crypto.randomUUID();
         shared[id] = imageItem(
           id,
@@ -1161,6 +1353,13 @@ export async function createOwlbearSceneJson(
       propTieBreaker += 1;
       highestPropZIndex = Math.max(highestPropZIndex, shared[id].zIndex);
     });
+  });
+  collectOutdoorProps(grid).forEach((prop) => {
+    if (hiddenItems.has(prop.kind)) return;
+    const id = crypto.randomUUID();
+    shared[id] = outdoorPropItem(id, prop, baseZIndex, propTieBreaker);
+    highestPropZIndex = Math.max(highestPropZIndex, shared[id].zIndex);
+    propTieBreaker += 1;
   });
 
   const mapLightSources = collectMapLightSources(grid);
@@ -1292,7 +1491,7 @@ export async function createOwlbearSceneJson(
 
     mapLightSources
       .filter((source) => source.interiorPropId === undefined)
-      .filter((source) => source.kind !== "lava" || !hiddenItems.has(Terrain.Lava))
+      .filter((source) => !hiddenItems.has(source.kind))
       .forEach((source, sourceIndex) => {
         const id = crypto.randomUUID();
         shared[id] = lightItem(id, source, sourceIndex, nextPropZIndex);

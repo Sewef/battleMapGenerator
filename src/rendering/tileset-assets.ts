@@ -1,5 +1,5 @@
 import type { TilesetPropImages, TilesetTerrainImages } from "./canvas";
-import { isInteriorMode, type LandscapeMode } from "../domain/map";
+import type { LandscapeMode } from "../domain/map";
 
 export interface InteriorPropSpriteLayout {
   renderWidthCells: number;
@@ -244,6 +244,12 @@ const rockFamilyImages = (family: "rock" | "rock_light" | "rock_dark" |
     deferredImage(lpc(`rock/${family}_${index + 1}_2x1.png`))),
   twoByTwo: Array.from({ length: 14 }, (_, index) =>
     deferredImage(lpc(`rock/${family}_${index + 1}_2x2.png`))),
+  twoByThree: [deferredImage(lpc(`rock/${family}_1_2x3.png`))],
+  threeByThree: [deferredImage(lpc(`rock/${family}_1_3x3.png`))],
+  fourByThree: Array.from({ length: 2 }, (_, index) =>
+    deferredImage(lpc(`rock/${family}_${index + 1}_4x3.png`))),
+  fourByFive: [deferredImage(lpc(`rock/${family}_1_4x5.png`))],
+  fiveByFour: [deferredImage(lpc(`rock/${family}_1_5x4.png`))],
 });
 
 const rockFamilyKey = (mode: LandscapeMode) => {
@@ -310,6 +316,7 @@ export function createTilesetAssets() {
     // Outdoor Bailey tiles.
     tree1x1: image(bailey("tree_1x1.png")),
     tree2x2: image(bailey("tree_2x2.png")),
+    lampPost: image(lpc("lamp_post_1x1.png")),
     rockFamilies: {
       normal: rockFamilyImages("rock"),
       light: rockFamilyImages("rock_light"),
@@ -390,20 +397,21 @@ export function createTilesetAssets() {
     const status = terrainStatus();
     return status.loaded === status.total;
   };
-  const { rockFamilies, tree1x1, tree2x2, ...interiorProps } = props;
+  const { rockFamilies, ...propsWithoutRockFamilies } = props;
+  const propAssetsForMode = (mode: LandscapeMode) => ({
+    ...propsWithoutRockFamilies,
+    rocks: rockFamilies[rockFamilyKey(mode)],
+  });
   const ensurePropsForMode = (mode: LandscapeMode) => {
-    if (isInteriorMode(mode)) activateImages(interiorProps);
-    else activateImages({ tree1x1, tree2x2, rocks: rockFamilies[rockFamilyKey(mode)] });
+    activateImages(propAssetsForMode(mode));
   };
   const propsStatus = (mode: LandscapeMode) => {
     ensurePropsForMode(mode);
-    return isInteriorMode(mode)
-      ? tilesetLoadStatus(interiorProps)
-      : tilesetLoadStatus({ tree1x1, tree2x2, rocks: rockFamilies[rockFamilyKey(mode)] });
+    return tilesetLoadStatus(propAssetsForMode(mode));
   };
   const propsReady = (mode: LandscapeMode) => {
     const status = propsStatus(mode);
-    return status.loaded === status.total;
+    return status.pending === 0;
   };
 
   return {

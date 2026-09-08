@@ -1,5 +1,15 @@
 import { PRESETS } from "../domain/biomes";
-import { Terrain, TERRAIN_RULES, type LandscapeMode, type TerrainKind } from "../domain/map";
+import {
+  DECK_FEATURE_RULES,
+  INTERIOR_PROP_RULES,
+  OBSTACLE_RULES,
+  Obstacle,
+  OUTDOOR_PROP_RULES,
+  Terrain,
+  TERRAIN_RULES,
+  type LandscapeMode,
+  type TerrainKind,
+} from "../domain/map";
 
 export const PARAMETER_FIELDS = [
   { id: "water", key: "waterWeight", label: "Water / lava", min: 0, max: 200, step: 10, percent: true, group: "terrain" },
@@ -77,6 +87,52 @@ const EDITOR_TERRAINS: TerrainKind[] = [
   Terrain.Bridge,
   Terrain.Wall,
   Terrain.Door,
+];
+
+type PropToolCategory = "outdoor" | "interior" | "deck";
+
+const PROP_EDITOR_TOOLS: Array<{
+  value: string;
+  category: PropToolCategory;
+  label: string;
+  swatch: string;
+}> = [
+  {
+    value: `obstacle:${Obstacle.Tree}`,
+    category: "outdoor",
+    label: OBSTACLE_RULES[Obstacle.Tree].label,
+    swatch: "tree",
+  },
+  {
+    value: `obstacle:${Obstacle.Rock}`,
+    category: "outdoor",
+    label: OBSTACLE_RULES[Obstacle.Rock].label,
+    swatch: "rock",
+  },
+  {
+    value: `obstacle:${Obstacle.Building}`,
+    category: "outdoor",
+    label: OBSTACLE_RULES[Obstacle.Building].label,
+    swatch: "building",
+  },
+  ...Object.entries(OUTDOOR_PROP_RULES).map(([kind, rule]) => ({
+    value: `outdoor:${kind}`,
+    category: "outdoor" as const,
+    label: rule.label,
+    swatch: kind,
+  })),
+  ...Object.entries(INTERIOR_PROP_RULES).map(([kind, rule]) => ({
+    value: `interior:${kind}`,
+    category: "interior" as const,
+    label: rule.label,
+    swatch: `prop-${kind}`,
+  })),
+  ...Object.entries(DECK_FEATURE_RULES).map(([kind, rule]) => ({
+    value: `deck:${kind}`,
+    category: "deck" as const,
+    label: rule.label,
+    swatch: `deck-${kind}`,
+  })),
 ];
 
 export function renderApp(root: HTMLElement) {
@@ -194,10 +250,62 @@ export function renderApp(root: HTMLElement) {
           </section>
 
           <section class="controls-view props-editor-settings" id="props-editor-settings" hidden role="tabpanel" aria-labelledby="props-editor-tab">
-            <div class="props-editor-empty">
-              <p class="eyebrow">Props editor</p>
-              <h3>Coming next</h3>
-              <p>Trees, rocks and interior props stay untouched for now.</p>
+            <div class="props-editor-toolbar">
+              <label class="editor-search-field">
+                <span>Search</span>
+                <input id="props-search" type="search" autocomplete="off" spellcheck="false" placeholder="Filter props" />
+              </label>
+              <label class="editor-select-field">
+                <span>Category</span>
+                <select id="props-category">
+                  <option value="outdoor">Outdoor</option>
+                  <option value="interior">Interior</option>
+                  <option value="deck">Deck</option>
+                  <option value="all">All</option>
+                </select>
+              </label>
+            </div>
+            <div class="prop-tool-list" role="group" aria-label="Prop palette">
+              <button class="prop-tool-button active" type="button" data-prop-tool="erase" data-prop-category="all" data-prop-label="erase remove clear">
+                <i class="swatch erase" aria-hidden="true"></i>
+                <span>Erase</span>
+                <small>All</small>
+              </button>
+              ${PROP_EDITOR_TOOLS.map((tool) => `
+                <button class="prop-tool-button" type="button" data-prop-tool="${tool.value}" data-prop-category="${tool.category}" data-prop-label="${tool.label.toLowerCase()} ${tool.value.replace(":", " ")}">
+                  <i class="swatch ${tool.swatch}" aria-hidden="true"></i>
+                  <span>${tool.label}</span>
+                  <small>${tool.category}</small>
+                </button>
+              `).join("")}
+            </div>
+            <p id="props-empty-state" class="props-empty-state" hidden>No matching props.</p>
+            <div class="editor-tool-options props-editor-options">
+              <div class="prop-selection-preview" aria-label="Selected prop preview">
+                <canvas id="prop-selection-preview" aria-hidden="true"></canvas>
+              </div>
+              <label class="editor-select-field">
+                <span>Size</span>
+                <select id="props-size">
+                  <option value="1x1">1 x 1</option>
+                </select>
+              </label>
+              <label class="editor-select-field">
+                <span>Facing</span>
+                <select id="props-facing">
+                  <option value="north">North</option>
+                  <option value="east">East</option>
+                  <option value="south">South</option>
+                  <option value="west">West</option>
+                </select>
+              </label>
+              <label class="editor-select-field prop-variant-field">
+                <span>Variant</span>
+                <select id="props-variant">
+                  <option value="">Random</option>
+                </select>
+              </label>
+              <button id="props-editor-undo" class="download-button" type="button" disabled>Undo</button>
             </div>
             <button id="props-editor-done" class="download-button" type="button">Done</button>
           </section>
@@ -290,7 +398,7 @@ export function renderApp(root: HTMLElement) {
                 <div class="export-variant">
                   <div>
                     <strong>Complete map</strong>
-                    <span>Terrain, buildings, trees and rocks baked into one image.</span>
+                    <span>Terrain, buildings and painted props baked into one image.</span>
                   </div>
                   <div>
                     <button id="copy-webp-with-props" class="download-button" type="button">Copy</button>
@@ -300,7 +408,7 @@ export function renderApp(root: HTMLElement) {
                 <div class="export-variant">
                   <div>
                     <strong>Background only</strong>
-                    <span>Trees and rocks removed; buildings remain part of the map.</span>
+                    <span>Trees, rocks and outdoor placeholders removed; buildings remain part of the map.</span>
                   </div>
                   <div>
                     <button id="copy-webp-background" class="download-button" type="button">Copy</button>
@@ -317,12 +425,12 @@ export function renderApp(root: HTMLElement) {
                 <h3 id="owlbear-title">Owlbear Rodeo</h3>
               </div>
             </div>
-            <p class="export-description">Create a ready-to-import Owlbear token set with the current map as its background and trees and rocks as editable props.</p>
+            <p class="export-description">Create a ready-to-import Owlbear token set with the current map as its background and editable props.</p>
             <ol class="owlbear-instructions">
               <li>Clicking either button renders and uploads the background automatically. The <strong>Export grid</strong> option also applies here.</li>
               <li>Paste the copied JSON directly into an open Owlbear scene, you can also download the JSON file.</li>
               <li>The background stays unlocked for alignment. With scene snapping enabled, move only the map into place: every prop, room outline and door follows it. Lock the map afterwards.</li>
-              <li>Trees and rocks become separate props. Buildings and all other visual effects remain baked into the background.</li>
+              <li>Trees, rocks and outdoor placeholders become separate props. Buildings and visual effects remain baked into the background.</li>
             </ol>
             <label class="grid-option owlbear-fog-option">
               <input id="owlbear-dynamic-fog" type="checkbox" />

@@ -1,5 +1,6 @@
 import {
   Obstacle,
+  OutdoorProp,
   Terrain,
   isInteriorMode,
   tileSurface,
@@ -16,7 +17,13 @@ type LightingProfile = {
   water: string;
 };
 
-export type MapLightKind = "hearth" | "console" | "altar" | "lava";
+export type MapLightKind =
+  | "hearth"
+  | "console"
+  | "altar"
+  | "lava"
+  | "campfire"
+  | "lamp_post";
 
 export type MapLightSource = {
   kind: MapLightKind;
@@ -67,6 +74,22 @@ const lightSourceStyles: Record<
     color: [255, 105, 38],
     intensity: .34,
   },
+  campfire: {
+    attenuationRadius: 4,
+    sourceRadius: .2,
+    falloff: .28,
+    lightType: "SECONDARY",
+    color: [255, 149, 70],
+    intensity: .42,
+  },
+  lamp_post: {
+    attenuationRadius: 3.25,
+    sourceRadius: .12,
+    falloff: .36,
+    lightType: "SECONDARY",
+    color: [255, 205, 122],
+    intensity: .3,
+  },
 };
 
 function mapLightSource(
@@ -104,6 +127,7 @@ function spreadLavaSources(points: Array<{ x: number; y: number }>) {
 export function collectMapLightSources(grid: Grid): MapLightSource[] {
   if (!grid.length || !grid[0].length) return [];
   const propKinds = new Set<MapLightKind>(["hearth", "console", "altar"]);
+  const outdoorLightSources: MapLightSource[] = [];
   const propGroups = new Map<
     string,
     {
@@ -116,6 +140,11 @@ export function collectMapLightSources(grid: Grid): MapLightSource[] {
   for (let y = 0; y < grid.length; y += 1) {
     for (let x = 0; x < grid[y].length; x += 1) {
       const tile = grid[y][x];
+      if (tile.outdoorProp === OutdoorProp.Campfire) {
+        outdoorLightSources.push(mapLightSource("campfire", x + .5, y + .5));
+      } else if (tile.outdoorProp === OutdoorProp.LampPost) {
+        outdoorLightSources.push(mapLightSource("lamp_post", x + .5, y + .32));
+      }
       if (!tile.interiorProp || !propKinds.has(tile.interiorProp as MapLightKind)) continue;
       const kind = tile.interiorProp as MapLightKind;
       const key = `${kind}:${tile.interiorPropId ?? `${x},${y}`}`;
@@ -144,6 +173,7 @@ export function collectMapLightSources(grid: Grid): MapLightSource[] {
     }
     return mapLightSource(kind, x, y, interiorPropId);
   });
+  sources.push(...outdoorLightSources);
 
   const visited = new Set<string>();
   const directions = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
@@ -490,6 +520,7 @@ function drawLocalLightSources(
   includeInteriorPropLights: boolean,
 ) {
   for (const source of collectMapLightSources(grid)) {
+    if (hiddenItems.has(source.kind)) continue;
     if (!includeInteriorPropLights && source.interiorPropId !== undefined) continue;
     const sourceTile = grid[Math.floor(source.y)]?.[Math.floor(source.x)];
     if (!sourceTile || tileVisibility(sourceTile, hiddenItems, hiddenOpacity) <= 0) continue;
