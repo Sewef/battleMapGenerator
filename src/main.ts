@@ -32,13 +32,18 @@ import {
   PARAMETER_FIELDS,
   renderApp,
 } from "./ui/template";
-import { copyWebp, downloadWebp, renderExportCanvas } from "./export/webp";
+import { copyWebp, downloadWebp, encodeWebp, renderExportCanvas } from "./export/webp";
 import { uploadMapCanvas } from "./export/map-image";
 import {
   createOwlbearSceneJson,
   downloadOwlbearJson,
   inspectPropAsset,
 } from "./export/owlbear";
+import {
+  addOwlbearSceneExport,
+  isOwlbearExtensionAvailable,
+  waitForOwlbearExtension,
+} from "./export/owlbear-extension";
 
 const randomSeed = () =>
   `${["moor", "mist", "oak", "flint", "dawn"][Math.floor(Math.random() * 5)]}-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -120,8 +125,20 @@ const editorTerrainButtons = [
 const propToolButtons = [
   ...document.querySelectorAll<HTMLButtonElement>("[data-prop-tool]"),
 ];
+const manifestCopyButton =
+  document.querySelector<HTMLButtonElement>("#copy-owlbear-manifest")!;
+const manifestStatus =
+  document.querySelector<HTMLSpanElement>("#manifest-status")!;
 const owlbearStatus =
   document.querySelector<HTMLParagraphElement>("#owlbear-status")!;
+const owlbearDescription =
+  document.querySelector<HTMLParagraphElement>("#owlbear-description")!;
+const owlbearSiteInstructions =
+  document.querySelector<HTMLOListElement>("#owlbear-site-instructions")!;
+const owlbearExtensionInstructions =
+  document.querySelector<HTMLOListElement>("#owlbear-extension-instructions")!;
+const owlbearHostingNotice =
+  document.querySelector<HTMLElement>("#owlbear-hosting-notice")!;
 const owlbearDynamicFogInput =
   document.querySelector<HTMLInputElement>("#owlbear-dynamic-fog")!;
 const webpStatus =
@@ -144,6 +161,10 @@ const owlbearCopyButton =
   document.querySelector<HTMLButtonElement>("#copy-owlbear")!;
 const owlbearDownloadButton =
   document.querySelector<HTMLButtonElement>("#download-owlbear")!;
+const owlbearImportButton =
+  document.querySelector<HTMLButtonElement>("#import-owlbear")!;
+const owlbearTerrainDownloadButton =
+  document.querySelector<HTMLButtonElement>("#download-owlbear-terrain")!;
 const {
   terrain: tilesetImage,
   terrainTiles: tilesetTerrain,
@@ -204,6 +225,7 @@ let owlbearExportCache: {
   key: string;
   scene: Awaited<ReturnType<typeof createOwlbearSceneJson>>;
 } | undefined;
+let manifestStatusTimeout = 0;
 
 function updateLabels() {
   document.querySelector("#width-value")!.textContent = widthInput.value;
@@ -1422,6 +1444,33 @@ async function copyText(text: string) {
   if (!copied) throw new Error("The browser refused clipboard access.");
 }
 
+async function copyOwlbearManifestUrl() {
+  const previousLabel = manifestCopyButton.textContent;
+  const manifestUrl = new URL("/manifest.json", window.location.origin).href;
+  window.clearTimeout(manifestStatusTimeout);
+  manifestCopyButton.disabled = true;
+  manifestStatus.classList.remove("is-error");
+  manifestStatus.textContent = "";
+  try {
+    await copyText(manifestUrl);
+    manifestStatus.textContent = "Copied";
+    manifestStatusTimeout = window.setTimeout(() => {
+      manifestStatus.textContent = "";
+    }, 3_000);
+  } catch (error) {
+    console.error("[owlbear] Manifest URL copy failed", { error });
+    manifestStatus.classList.add("is-error");
+    manifestStatus.textContent = "Copy failed";
+  } finally {
+    manifestCopyButton.disabled = false;
+    manifestCopyButton.textContent = previousLabel;
+  }
+}
+
+manifestCopyButton.addEventListener("click", () => {
+  void copyOwlbearManifestUrl();
+});
+
 function owlbearExportKey() {
   const mode = generatedOptions?.mode ?? activePreset.mode;
   const useTileset = tilesetEnabledFor(mode);
@@ -1525,16 +1574,101 @@ function bindPropPreview(
   void updatePropPreview(input, preview, kind);
 }
 
-async function runOwlbearExport(action: "copy" | "download") {
-  const activeButton =
-    action === "copy" ? owlbearCopyButton : owlbearDownloadButton;
+function updateOwlbearExtensionControls(available: boolean) {
+  document.body.classList.toggle("is-owlbear-extension", available);
+  owlbearImportButton.hidden = !available;
+  owlbearTerrainDownloadButton.hidden = !available;
+  owlbearCopyButton.hidden = available;
+  owlbearDownloadButton.hidden = available;
+  owlbearSiteInstructions.hidden = available;
+  owlbearExtensionInstructions.hidden = true;
+  owlbearHostingNotice.hidden = available;
+  owlbearDescription.textContent = available
+    ? "Insert the current map and select every created item in the Owlbear scene."
+    : "Create a ready-to-import Owlbear token set with the current map as its background and editable props.";
+}
+
+async function initializeOwlbearExtensionControls() {
+  if (!isOwlbearExtensionAvailable()) {
+    updateOwlbearExtensionControls(false);
+    return;
+  }
+  updateOwlbearExtensionControls(true);
+  try {
+    await waitForOwlbearExtension();
+  } catch {
+    return;
+  }
+  owlbearStatus.textContent = "Owlbear scene integration ready.";
+}
+
+function owlbearTerrainFilename(generation: TerrainOptions) {
+  const safeSeed = generation.seed.replace(/[^a-z0-9_-]+/gi, "-") || "terrain";
+  return `touchgrass-${safeSeed}-${generation.width}x${generation.height}-terrain.webp`;
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.download = filename;
+  link.href = objectUrl;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
+}
+
+function setOwlbearActionDisabled(disabled: boolean) {
+  owlbearCopyButton.disabled = disabled;
+  owlbearDownloadButton.disabled = disabled;
+  owlbearImportButton.disabled = disabled;
+  owlbearTerrainDownloadButton.disabled = disabled;
+}
+
+async function runOwlbearTerrainDownload() {
+  const activeButton = owlbearTerrainDownloadButton;
+  const previousLabel = activeButton.textContent;
+  setOwlbearActionDisabled(true);
+  activeButton.textContent = "Encoding...";
+  owlbearStatus.classList.remove("is-error");
+  owlbearStatus.textContent = "Rendering the terrain background...";
+
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  try {
+    const generation = generatedOptions;
+    if (!generation) throw new Error("Generate a map before exporting.");
+    const canvas = renderExportCanvas(currentGrid, generation.mode, {
+      ...webpRenderOptions(false, generation.mode),
+      cellSize: 48,
+    });
+    const blob = await encodeWebp(canvas);
+    const filename = owlbearTerrainFilename(generation);
+    downloadBlob(blob, filename);
+    owlbearStatus.textContent = "Terrain WebP downloaded.";
+  } catch (error) {
+    console.error("[owlbear] Terrain download failed", { error });
+    owlbearStatus.classList.add("is-error");
+    owlbearStatus.textContent = error instanceof Error
+      ? `Terrain image failed: ${error.message}`
+      : "Terrain image export failed.";
+  } finally {
+    setOwlbearActionDisabled(false);
+    activeButton.textContent = previousLabel;
+  }
+}
+
+async function runOwlbearExport(action: "copy" | "download" | "import") {
+  const activeButton = action === "copy"
+    ? owlbearCopyButton
+    : action === "download"
+      ? owlbearDownloadButton
+      : owlbearImportButton;
   const previousLabel = activeButton.textContent;
   const cacheKey = owlbearExportKey();
   const cachedScene = owlbearExportCache?.key === cacheKey
     ? owlbearExportCache.scene
     : undefined;
-  owlbearCopyButton.disabled = true;
-  owlbearDownloadButton.disabled = true;
+  setOwlbearActionDisabled(true);
   activeButton.textContent = "Preparing…";
   owlbearStatus.classList.remove("is-error");
   owlbearStatus.textContent = cachedScene
@@ -1577,19 +1711,25 @@ async function runOwlbearExport(action: "copy" | "download") {
       await copyText(scene.json);
       owlbearStatus.textContent =
         "JSON copied. Paste it into your Owlbear scene.";
-    } else {
+    } else if (action === "download") {
       downloadOwlbearJson(scene);
       owlbearStatus.textContent =
         "JSON downloaded. Import or paste it into Owlbear.";
+    } else {
+      owlbearStatus.textContent = "Adding map items to the Owlbear scene...";
+      const itemCount = await addOwlbearSceneExport(scene);
+      owlbearStatus.textContent =
+        `${itemCount} Owlbear items added to the current scene.`;
     }
   } catch (error) {
+    console.error("[owlbear] Export action failed", { action, error });
     owlbearStatus.classList.add("is-error");
+    const actionLabel = action === "import" ? "Import" : "Export";
     owlbearStatus.textContent = error instanceof Error
-      ? `Export failed: ${error.message}`
-      : "Owlbear export failed.";
+      ? `${actionLabel} failed: ${error.message}`
+      : `Owlbear ${actionLabel.toLowerCase()} failed.`;
   } finally {
-    owlbearCopyButton.disabled = false;
-    owlbearDownloadButton.disabled = false;
+    setOwlbearActionDisabled(false);
     activeButton.textContent = previousLabel;
   }
 }
@@ -1598,6 +1738,12 @@ owlbearCopyButton.addEventListener("click", () => {
 });
 owlbearDownloadButton.addEventListener("click", () => {
   void runOwlbearExport("download");
+});
+owlbearImportButton.addEventListener("click", () => {
+  void runOwlbearExport("import");
+});
+owlbearTerrainDownloadButton.addEventListener("click", () => {
+  void runOwlbearTerrainDownload();
 });
 bindPropPreview(
   treePropUrlInput,
@@ -1721,5 +1867,6 @@ setEditorTerrain(activeEditorTerrain);
 setPropEditorTool(activePropTool);
 updatePropEditorForMode();
 setControlsTab(activeControlsTab);
+void initializeOwlbearExtensionControls();
 applyPreset(PRESETS[0]);
 generate();

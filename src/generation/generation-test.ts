@@ -2180,7 +2180,7 @@ assert(
   `house fog export: expected ${housePreset.buildingCount} doors`,
 );
 const lightMetadataKey = "rodeo.owlbear.dynamic-fog/light";
-const interiorPropMetadataKey = "com.terra-map-generator/interior-prop";
+const interiorPropMetadataKey = "com.touchgrass/interior-prop";
 const expectedInteriorPropIds = new Set(fogExportGrid.flatMap((row) =>
   row.flatMap((tile) => tile.interiorPropId === undefined ? [] : [tile.interiorPropId])));
 const exportedInteriorProps = fogItems.filter(({ metadata }) =>

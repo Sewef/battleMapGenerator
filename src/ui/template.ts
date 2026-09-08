@@ -142,6 +142,10 @@ export function renderApp(root: HTMLElement) {
         <a class="brand" href="#" aria-label="Touch Grass, home">
           <span class="brand-mark" aria-hidden="true"><img src="/assets/touchgrasslogo.png" alt="" /></span><span>Touch Grass</span>
         </a>
+        <div class="header-actions">
+          <button id="copy-owlbear-manifest" class="manifest-button" type="button">Copy Owlbear manifest</button>
+          <span id="manifest-status" role="status" aria-live="polite"></span>
+        </div>
       </header>
 
       <section class="preset-section">
@@ -340,6 +344,12 @@ export function renderApp(root: HTMLElement) {
                 </label>
               </div>
             </div>
+            <details class="map-content-details">
+              <summary>
+                <span>Layer filters &amp; prop overrides</span>
+                <small>Legend, custom images</small>
+              </summary>
+              <div class="map-content-details-body">
             <details class="custom-prop-settings" id="custom-prop-settings">
               <summary>
                 <span>Custom tree &amp; rock images</span>
@@ -372,6 +382,8 @@ export function renderApp(root: HTMLElement) {
               <div class="legend" id="legend"></div>
               <p class="map-note"><span>◆</span> Click legend items to include or exclude layers everywhere.</p>
             </div>
+              </div>
+            </details>
           </section>
           <section class="export-panel" aria-labelledby="export-title">
             <div class="export-panel-heading">
@@ -425,23 +437,31 @@ export function renderApp(root: HTMLElement) {
                 <h3 id="owlbear-title">Owlbear Rodeo</h3>
               </div>
             </div>
-            <p class="export-description">Create a ready-to-import Owlbear token set with the current map as its background and editable props.</p>
-            <ol class="owlbear-instructions">
-              <li>Clicking either button renders and uploads the background automatically. The <strong>Export grid</strong> option also applies here.</li>
-              <li>Paste the copied JSON directly into an open Owlbear scene, you can also download the JSON file.</li>
+            <p id="owlbear-description" class="export-description">Create a ready-to-import Owlbear token set with the current map as its background and editable props.</p>
+            <ol id="owlbear-site-instructions" class="owlbear-instructions">
+              <li>Copy or download the JSON, then paste it into an open Owlbear scene.</li>
+              <li>The export renders and uploads the background automatically. The <strong>Export grid</strong> option also applies here.</li>
               <li>The background stays unlocked for alignment. With scene snapping enabled, move only the map into place: every prop, room outline and door follows it. Lock the map afterwards.</li>
               <li>Trees, rocks and outdoor placeholders become separate props. Buildings and visual effects remain baked into the background.</li>
+            </ol>
+            <ol id="owlbear-extension-instructions" class="owlbear-instructions" hidden>
+              <li>Add the generated map directly to the current Owlbear scene.</li>
+              <li>The import renders and uploads the background automatically. The <strong>Export grid</strong> option also applies here.</li>
+              <li>All inserted items are selected after import so you can move the map and attached props together.</li>
+              <li>Lock the background once aligned. Trees, rocks and outdoor placeholders remain editable props.</li>
             </ol>
             <label class="grid-option owlbear-fog-option">
               <input id="owlbear-dynamic-fog" type="checkbox" />
               Add Dynamic Fog to terrain, buildings, rooms and doors
             </label>
-            <div class="owlbear-notice">
+            <div id="owlbear-hosting-notice" class="owlbear-notice">
               <strong>Temporary background hosting</strong>
               <p>The uploaded WebP expires after 30 days maximum, so keep the <strong>Background only</strong> download for long-term use.</p>
             </div>
             <div class="owlbear-actions">
               <p id="owlbear-status" role="status" aria-live="polite"></p>
+              <button id="import-owlbear" class="owlbear-primary-button" type="button" hidden>Add to scene</button>
+              <button id="download-owlbear-terrain" class="download-button" type="button" hidden>Download terrain</button>
               <button id="copy-owlbear" class="owlbear-primary-button" type="button">Copy JSON</button>
               <button id="download-owlbear" class="download-button" type="button">Download JSON ↓</button>
             </div>

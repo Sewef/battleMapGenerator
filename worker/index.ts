@@ -13,6 +13,10 @@ export { MapStorageCoordinator };
 type ImageDimensions = { width: number; height: number };
 
 const TILESET_PATH_PREFIX = "/assets/tilesets/";
+const CROSS_ORIGIN_ASSET_PATHS = new Set([
+  "/assets/touchgrasslogo.png",
+  "/manifest.json",
+]);
 
 function storageCoordinator(env: Env) {
   return env.MAP_STORAGE_COORDINATOR.getByName("global-map-storage");
@@ -36,6 +40,35 @@ function tilesetCorsHeaders() {
 }
 
 async function getTilesetAsset(request: Request, env: Env) {
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        ...tilesetCorsHeaders(),
+        "Access-Control-Allow-Headers":
+          request.headers.get("Access-Control-Request-Headers") ?? "*",
+      },
+    });
+  }
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return errorResponse("Method not allowed.", 405, {
+      ...tilesetCorsHeaders(),
+      Allow: "GET, HEAD, OPTIONS",
+    });
+  }
+  const asset = await env.ASSETS.fetch(request);
+  const headers = new Headers(asset.headers);
+  for (const [name, value] of Object.entries(tilesetCorsHeaders())) {
+    headers.set(name, value);
+  }
+  return new Response(asset.body, {
+    status: asset.status,
+    statusText: asset.statusText,
+    headers,
+  });
+}
+
+async function getCrossOriginAsset(request: Request, env: Env) {
   if (request.method === "OPTIONS") {
     return new Response(null, {
       status: 204,
@@ -275,6 +308,9 @@ export default {
     const url = new URL(request.url);
     if (url.pathname.startsWith(TILESET_PATH_PREFIX)) {
       return getTilesetAsset(request, env);
+    }
+    if (CROSS_ORIGIN_ASSET_PATHS.has(url.pathname)) {
+      return getCrossOriginAsset(request, env);
     }
     if (url.pathname === MAP_IMAGE_COLLECTION_PATH) {
       try {

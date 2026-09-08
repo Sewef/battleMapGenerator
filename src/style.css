@@ -15,9 +15,11 @@ button { color: inherit; }
 .status, .eyebrow, .section-label, .preset-group-heading,
 .field > span:first-child, .parameter-heading p, .map-toolbar span,
 .grid-option, .download-button, .custom-prop-settings summary,
+.map-content-details summary,
 .custom-prop-notice, .export-format, #webp-status,
 .owlbear-field > span, .owlbear-field input, .prop-preview small,
 .owlbear-actions #owlbear-status, .owlbear-primary-button,
+.manifest-button, #manifest-status,
 .controls-tab, .editor-terrain-button, .prop-tool-button,
 .editor-select-field > span, .editor-search-field > span,
 .editor-select-field select, .editor-search-field input,
@@ -29,7 +31,9 @@ button { color: inherit; }
 .status, .eyebrow, .section-label, .preset-group-heading,
 .field > span:first-child, .parameter-heading p, .map-toolbar span,
 .grid-option, .download-button, .custom-prop-settings summary,
+.map-content-details summary,
 .owlbear-field > span, .owlbear-primary-button,
+.manifest-button, #manifest-status,
 .controls-tab, .editor-terrain-button, .prop-tool-button,
 .editor-select-field > span, .editor-search-field > span, .legend,
 .legend-item, .legend-toggle, .map-note, .asset-credit {
@@ -41,6 +45,13 @@ button { color: inherit; }
 .brand { display: flex; align-items: center; gap: 11px; color: inherit; text-decoration: none; font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
 .brand-mark { display: block; flex: 0 0 auto; width: 38px; height: 38px; overflow: hidden; border: 2px solid #263736; border-radius: 50%; background: #263736; box-shadow: 0 1px 0 rgba(255,255,255,.35), 0 2px 6px rgba(31,42,40,.16); }
 .brand-mark img { display: block; width: 100%; height: 100%; object-fit: cover; transform: scale(1.45) translateY(-6%); transform-origin: center; }
+.header-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; }
+.manifest-button { min-height: 34px; padding: 0 11px; border: 1px solid #c9c6b8; background: rgba(248,246,237,.72); color: #4e5b54; cursor: pointer; font-size: 9px; font-weight: 600; letter-spacing: .05em; }
+.manifest-button:hover { border-color: #8b9488; background: #f8f6ed; }
+.manifest-button:disabled { opacity: .55; cursor: wait; }
+#manifest-status { min-width: 58px; color: #68716b; font-size: 8px; }
+#manifest-status.is-error { color: #a1472d; }
+body.is-owlbear-extension .header-actions { display: none; }
 .status { letter-spacing: .1em; font-size: 10px; display: flex; align-items: center; gap: 8px; }
 .status span { width: 7px; height: 7px; border-radius: 50%; background: #b45e38; box-shadow: 0 0 0 4px rgba(180,94,56,.12); }
 
@@ -192,7 +203,14 @@ canvas { display: block; max-width: 100%; height: auto !important; box-shadow: 0
 .map-content-heading p:last-child { margin: 5px 0 0; color: #68716b; font-size: 10px; }
 .map-content-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
 .map-content-actions .grid-option { min-height: 34px; padding: 0 10px; border: 1px solid #c8c4b6; background: #f8f6ed; }
-.custom-prop-settings { border-bottom: 1px solid #d0ccbf; }
+.map-content-details { margin-top: 12px; border-top: 1px solid #d0ccbf; border-bottom: 1px solid #d0ccbf; }
+.map-content-details > summary { display: flex; align-items: center; gap: 9px; padding: 11px 2px; color: #59635d; cursor: pointer; list-style: none; font-size: 9px; letter-spacing: .05em; }
+.map-content-details > summary::-webkit-details-marker { display: none; }
+.map-content-details > summary small { margin-left: auto; color: #565c58; font-size: 7px; }
+.map-content-details > summary::after { width: 14px; content: "+"; color: #536b51; font-size: 14px; text-align: center; }
+.map-content-details[open] > summary::after { content: "-"; }
+.map-content-details-body { padding-bottom: 12px; }
+.custom-prop-settings { border-top: 1px solid #d0ccbf; border-bottom: 1px solid #d0ccbf; }
 .custom-prop-settings summary { display: flex; align-items: center; gap: 9px; padding: 11px 2px; color: #59635d; cursor: pointer; list-style: none; font-size: 9px; letter-spacing: .05em; }
 .custom-prop-settings summary::-webkit-details-marker { display: none; }
 .custom-prop-settings summary small { margin-left: auto; color: #565c58; font-size: 7px; }
@@ -284,6 +302,13 @@ canvas.is-editing { cursor: crosshair; touch-action: none; }
 .owlbear-primary-button { padding: 9px 12px; border: 1px solid #536b51; background: #536b51; color: #fff; cursor: pointer; font-size: 9px; font-weight: 600; letter-spacing: .05em; }
 .owlbear-primary-button:hover { background: #40583f; }
 .owlbear-actions button:disabled { opacity: .55; cursor: wait; }
+body.is-owlbear-extension .export-panel { grid-template-columns: 1fr; gap: 0; margin-top: 14px; padding: 14px; }
+body.is-owlbear-extension .export-panel-heading,
+body.is-owlbear-extension .webp-export { display: none; }
+body.is-owlbear-extension .owlbear-export { padding: 14px; }
+body.is-owlbear-extension .owlbear-export .export-description { margin-bottom: 12px; }
+body.is-owlbear-extension .owlbear-fog-option { margin-top: 0; }
+body.is-owlbear-extension .owlbear-actions { flex-wrap: wrap; margin-top: 12px; }
 .map-footer { padding: 14px 0 0; }
 .legend { display: grid; gap: 13px; color: #626b65; }
 .legend-group { display: grid; gap: 7px; }
@@ -345,7 +370,9 @@ canvas.is-editing { cursor: crosshair; touch-action: none; }
 
 @media (max-width: 520px) {
   .shell { width: 100%; padding: 0 12px 24px; }
-  .topbar { height: 64px; }
+  .topbar { gap: 10px; height: 64px; }
+  .manifest-button { max-width: 134px; padding: 0 8px; white-space: normal; }
+  #manifest-status { min-width: 0; font-size: 7px; }
   .hero { padding: 30px 4px; }
   h1 { font-size: 42px; }
   .preset-list { grid-template-columns: 1fr; }

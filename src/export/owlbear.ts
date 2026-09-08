@@ -298,7 +298,7 @@ function imageItem(
     locked,
     zIndex,
     metadata: {
-      "com.terra-map-generator/export": true,
+      "com.touchgrass/export": true,
       ...metadata,
     },
     image: { url, mime, width, height },
@@ -428,7 +428,7 @@ function fogItem(
     name,
     zIndex,
     locked: false,
-    metadata: { "com.terra-map-generator/export": true },
+    metadata: { "com.touchgrass/export": true },
     position: { x: 0, y: 0 },
     rotation: 0,
     scale: { x: 1, y: 1 },
@@ -510,7 +510,7 @@ function fogDoorItem(
     zIndex,
     locked: false,
     metadata: {
-      "com.terra-map-generator/export": true,
+      "com.touchgrass/export": true,
       "rodeo.owlbear.dynamic-fog/doors": [{
         open: false,
         start: { distance: 0, index: 0 },
@@ -628,8 +628,8 @@ function outdoorPropItem(
     zIndex: perspectiveZIndex(baseZIndex, prop.y + 1, prop.x + .5, tieBreaker),
     locked: false,
     metadata: {
-      "com.terra-map-generator/export": true,
-      "com.terra-map-generator/outdoor-prop": {
+      "com.touchgrass/export": true,
+      "com.touchgrass/outdoor-prop": {
         kind: prop.kind,
         id: prop.id,
         footprint: [{ x: prop.x, y: prop.y }],
@@ -698,8 +698,8 @@ function interiorPropItem(
     zIndex,
     locked: false,
     metadata: {
-      "com.terra-map-generator/export": true,
-      "com.terra-map-generator/interior-prop": {
+      "com.touchgrass/export": true,
+      "com.touchgrass/interior-prop": {
         kind: prop.kind,
         id: prop.id,
         orientation: prop.orientation,
@@ -927,7 +927,7 @@ function interiorPropSpriteItems(
     },
     rotation,
     {
-      "com.terra-map-generator/interior-prop": {
+      "com.touchgrass/interior-prop": {
         kind: prop.kind,
         id: prop.id,
         orientation: prop.orientation,
@@ -1235,7 +1235,7 @@ export async function createOwlbearSceneJson(
   }
   shared[mapId] = imageItem(
     mapId,
-    "Terra generated background",
+    "Touch Grass generated background",
     "MAP",
     options.mapImage.url,
     options.mapImage.mime,
@@ -1521,7 +1521,7 @@ export async function createOwlbearSceneJson(
   return {
     json: JSON.stringify(scene),
     filename:
-      `terra-${safeSeed(seed)}-${grid[0].length}x${grid.length}-owlbear.json`,
+      `touchgrass-${safeSeed(seed)}-${grid[0].length}x${grid.length}-owlbear.json`,
   };
 }
 

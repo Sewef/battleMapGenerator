@@ -90,7 +90,7 @@ function mapFilename(
   const columns = grid[0]?.length ?? 0;
   const rows = grid.length;
   const safeSeed = seed.replace(/[^a-z0-9_-]+/gi, "-") || "terrain";
-  return `terra-${safeSeed}-${columns}x${rows}${suffix}.${extension}`;
+  return `touchgrass-${safeSeed}-${columns}x${rows}${suffix}.${extension}`;
 }
 
 export async function downloadWebp(

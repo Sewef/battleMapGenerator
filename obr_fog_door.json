@@ -7,7 +7,7 @@
                 "zIndex": 1786029009020,
                 "locked": false,
                 "metadata": {
-                    "com.terra-map-generator/export": true
+                    "com.touchgrass/export": true
                 },
                 "position": {
                     "x": -5550,
@@ -218,7 +218,7 @@
                 "zIndex": 1786028963222,
                 "locked": false,
                 "metadata": {
-                    "com.terra-map-generator/export": true
+                    "com.touchgrass/export": true
                 },
                 "position": {
                     "x": -5558.330496226684,

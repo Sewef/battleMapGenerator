@@ -31,6 +31,17 @@ npm run build
 npx wrangler dev
 ```
 
+## Owlbear extension
+
+The app also ships an Owlbear Rodeo extension manifest at `/manifest.json`.
+For direct scene imports in local development, use the Worker dev URL, usually
+`http://localhost:8787/manifest.json`. Once deployed, use
+`https://<your-domain>/manifest.json`.
+
+When opened from Owlbear, the export panel shows an **Add to scene** action that
+uploads the rendered background and inserts the generated Owlbear items directly
+into the current scene.
+
 ## Validation
 
 ```bash
