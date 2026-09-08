@@ -1,4 +1,4 @@
-/assets/tilesets/*
+/assets/*
   Access-Control-Allow-Origin: https://www.owlbear.rodeo
   Access-Control-Allow-Methods: GET, HEAD, OPTIONS
   Cross-Origin-Resource-Policy: cross-origin
@@ -6,8 +6,3 @@
 /manifest.json
   Access-Control-Allow-Origin: https://www.owlbear.rodeo
   Access-Control-Allow-Methods: GET, HEAD, OPTIONS
-
-/assets/touchgrasslogo.png
-  Access-Control-Allow-Origin: https://www.owlbear.rodeo
-  Access-Control-Allow-Methods: GET, HEAD, OPTIONS
-  Cross-Origin-Resource-Policy: cross-origin

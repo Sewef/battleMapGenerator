@@ -13,8 +13,7 @@
 		"run_worker_first": [
 			"/api/*",
 			"/manifest.json",
-			"/assets/touchgrasslogo.png",
-			"/assets/tilesets/*"
+			"/assets/*"
 		]
 	},
 	"r2_buckets": [
