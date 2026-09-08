@@ -3,11 +3,11 @@
   "version": "0.1.0",
   "manifest_version": 1,
   "description": "Generate and edit battle maps directly inside Owlbear Rodeo.",
-  "icon": "/assets/touchgrasslogo.png",
+  "icon": "/assets/touchgrasslogo.png?v=20260908",
   "homepage_url": "https://github.com/Sewef/battleMapGenerator",
   "action": {
     "title": "Touch Grass",
-    "icon": "/assets/touchgrasslogo.png",
+    "icon": "/assets/touchgrasslogo.png?v=20260908",
     "popover": "/",
     "width": 1200,
     "height": 820
