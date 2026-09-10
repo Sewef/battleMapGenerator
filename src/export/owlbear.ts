@@ -700,7 +700,7 @@ function outdoorPropItem(
     shapeType: style.shapeType,
     style: {
       fillColor: style.fillColor,
-      fillOpacity: prop.kind === "lamp_post" ? .55 : .48,
+      fillOpacity: 1,
       strokeColor: style.strokeColor,
       strokeOpacity: .9,
       strokeWidth: 5,
@@ -777,7 +777,7 @@ function interiorPropItem(
     shapeType: style.shapeType,
     style: {
       fillColor: style.fillColor,
-      fillOpacity: .42,
+      fillOpacity: 1,
       strokeColor: style.strokeColor,
       strokeOpacity: .9,
       strokeWidth: 5,
@@ -897,7 +897,7 @@ function bedPathItem(
     layer: "PROP",
     style: {
       fillColor: "#cbbd9d",
-      fillOpacity: .42,
+      fillOpacity: 1,
       strokeColor: "#58483a",
       strokeOpacity: .9,
       strokeWidth: 5,
@@ -990,7 +990,7 @@ function statuePathItem(
     layer: "PROP",
     style: {
       fillColor: "#8e918b",
-      fillOpacity: .42,
+      fillOpacity: 1,
       strokeColor: "#484c49",
       strokeOpacity: .9,
       strokeWidth: 5,
