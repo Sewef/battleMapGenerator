@@ -4096,8 +4096,13 @@ function drawInteriorProps(
           ? "rgba(158, 209, 216, .42)"
           : "rgba(236,190,126,.34)";
         context.beginPath();
-        context.moveTo(centerX - width * .32, centerY);
-        context.lineTo(centerX + width * .32, centerY);
+        if (vertical) {
+          context.moveTo(centerX, centerY - height * .32);
+          context.lineTo(centerX, centerY + height * .32);
+        } else {
+          context.moveTo(centerX - width * .32, centerY);
+          context.lineTo(centerX + width * .32, centerY);
+        }
         context.stroke();
       } else if (prop === "chair") {
         const size = cellSize * .43;
@@ -4526,11 +4531,21 @@ function drawInteriorProps(
         context.stroke();
         context.strokeStyle = prop === "altar" ? "#d4c7a1" : "#92978f";
         context.beginPath();
-        context.moveTo(centerX - width * .22, centerY);
-        context.lineTo(centerX + width * .22, centerY);
-        if (prop === "tomb") {
+        if (vertical) {
           context.moveTo(centerX, centerY - height * .22);
           context.lineTo(centerX, centerY + height * .22);
+        } else {
+          context.moveTo(centerX - width * .22, centerY);
+          context.lineTo(centerX + width * .22, centerY);
+        }
+        if (prop === "tomb") {
+          if (vertical) {
+            context.moveTo(centerX - width * .22, centerY);
+            context.lineTo(centerX + width * .22, centerY);
+          } else {
+            context.moveTo(centerX, centerY - height * .22);
+            context.lineTo(centerX, centerY + height * .22);
+          }
         }
         context.stroke();
       } else if (prop === "cabinet") {
