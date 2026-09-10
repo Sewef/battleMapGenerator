@@ -481,8 +481,9 @@ function terrainBaseHeight(terrain: TerrainKind) {
     case Terrain.Difficult:
       return .42;
     case Terrain.Cliff:
-    case Terrain.Wall:
       return .86;
+    case Terrain.Wall:
+      return .82;
     case Terrain.Door:
       return .48;
     default:
@@ -510,6 +511,9 @@ function tilePaintSignature(tile: Tile) {
     tile.transitionNormalX ?? "",
     tile.transitionNormalY ?? "",
     tile.doorOrientation ?? "",
+    tile.roomId ?? "",
+    tile.roomRole ?? "",
+    tilePropsSignature(tile),
   ].join("|");
 }
 
@@ -518,6 +522,11 @@ function clearTerrainTransition(tile: Tile) {
   delete tile.transition;
   delete tile.transitionNormalX;
   delete tile.transitionNormalY;
+}
+
+function clearTileRoom(tile: Tile) {
+  delete tile.roomId;
+  delete tile.roomRole;
 }
 
 function inferDoorOrientation(x: number, y: number): Tile["doorOrientation"] {
@@ -534,6 +543,10 @@ function inferDoorOrientation(x: number, y: number): Tile["doorOrientation"] {
 function paintTileTerrain(tile: Tile, terrain: TerrainKind, x: number, y: number) {
   const before = tilePaintSignature(tile);
   clearTerrainTransition(tile);
+  if (terrain === Terrain.Wall || terrain === Terrain.Door) {
+    clearTilePropFootprint(tile);
+    clearTileRoom(tile);
+  }
   tile.terrain = terrain;
   tile.height = terrainBaseHeight(terrain);
   if (terrain === Terrain.Cliff) {
@@ -542,11 +555,33 @@ function paintTileTerrain(tile: Tile, terrain: TerrainKind, x: number, y: number
     delete tile.elevation;
   }
   if (terrain === Terrain.Door) {
-    tile.doorOrientation = tile.doorOrientation ?? inferDoorOrientation(x, y);
+    tile.doorOrientation = inferDoorOrientation(x, y);
   } else {
     delete tile.doorOrientation;
   }
   return tilePaintSignature(tile) !== before;
+}
+
+function normalizeDoorOrientation(x: number, y: number) {
+  const tile = currentGrid[y]?.[x];
+  if (tile?.terrain !== Terrain.Door) return false;
+  const before = tilePaintSignature(tile);
+  tile.doorOrientation = inferDoorOrientation(x, y);
+  return tilePaintSignature(tile) !== before;
+}
+
+function normalizeBrushDoorOrientations(
+  centerX: number,
+  centerY: number,
+  radius: number,
+) {
+  let changed = false;
+  for (let y = centerY - radius - 1; y <= centerY + radius + 1; y += 1) {
+    for (let x = centerX - radius - 1; x <= centerX + radius + 1; x += 1) {
+      changed = normalizeDoorOrientation(x, y) || changed;
+    }
+  }
+  return changed;
 }
 
 function canvasCellFromPointer(event: PointerEvent) {
@@ -571,6 +606,7 @@ function applyEditorBrush(centerX: number, centerY: number) {
       changed = paintTileTerrain(tile, activeEditorTerrain, x, y) || changed;
     }
   }
+  changed = normalizeBrushDoorOrientations(centerX, centerY, radius) || changed;
   if (!changed) return false;
   markMapEdited();
   renderMap(currentGrid);

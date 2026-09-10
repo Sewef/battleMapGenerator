@@ -11,6 +11,7 @@ import {
 } from "../domain/map";
 import {
   getBiomeObjectStyle,
+  getArchitectureVisualStyle,
   getDifficultTerrainDetailStyle,
   getInteriorVisualStyle,
   getTerrainStyle,
@@ -292,6 +293,8 @@ function drawCustomProp(
 const overlayTerrains = new Set<TerrainKind>([
   Terrain.Road,
   Terrain.Bridge,
+  Terrain.Wall,
+  Terrain.Door,
 ]);
 
 const terrainPaintOrder: TerrainKind[] = [
@@ -1398,7 +1401,7 @@ function drawTerrainLayers(
   tilesetImage: CanvasImageSource | undefined,
   tilesetTerrain: TilesetTerrainImages | undefined,
   context: CanvasRenderingContext2D,
-) {
+): (x: number, y: number) => void {
   const hasTilesetTexture = Boolean(tilesetImage || tilesetTerrain);
   const tilesetPatterns = createTilesetPatterns(
     tilesetImage,
@@ -1411,26 +1414,32 @@ function drawTerrainLayers(
   );
   const terrainFill = (terrain: TerrainKind) =>
     tilesetPatterns.get(terrain) ?? getTerrainStyle(terrain, mode).color;
+  const drawTerrainBackdropCell = (x: number, y: number) => {
+    const tileTerrain = underlyingTerrain(grid, x, y);
+    const terrain = tileTerrain === Terrain.Cliff
+      ? terrainBackdropTerrain(grid, x, y, Terrain.Cliff)
+      : tileTerrain === Terrain.Water
+        ? terrainBackdropTerrain(grid, x, y, Terrain.Water)
+        : tileTerrain === Terrain.Lava
+          ? terrainBackdropTerrain(grid, x, y, Terrain.Lava)
+          : tileTerrain;
+    context.save();
+    context.globalAlpha = hiddenItems.has(terrain) ? hiddenOpacity : 1;
+    context.fillStyle = terrainFill(terrain);
+    context.fillRect(
+      x * cellSize,
+      y * cellSize,
+      cellSize,
+      cellSize,
+    );
+    context.restore();
+  };
   const present = new Set<TerrainKind>();
   for (let y = 0; y < grid.length; y += 1) {
     for (let x = 0; x < grid[y].length; x += 1) {
       const tileTerrain = underlyingTerrain(grid, x, y);
-      const terrain = tileTerrain === Terrain.Cliff
-        ? terrainBackdropTerrain(grid, x, y, Terrain.Cliff)
-        : tileTerrain === Terrain.Water
-          ? terrainBackdropTerrain(grid, x, y, Terrain.Water)
-          : tileTerrain === Terrain.Lava
-            ? terrainBackdropTerrain(grid, x, y, Terrain.Lava)
-            : tileTerrain;
       present.add(tileTerrain);
-      context.globalAlpha = hiddenItems.has(terrain) ? hiddenOpacity : 1;
-      context.fillStyle = terrainFill(terrain);
-      context.fillRect(
-        x * cellSize,
-        y * cellSize,
-        cellSize,
-        cellSize,
-      );
+      drawTerrainBackdropCell(x, y);
     }
   }
   context.globalAlpha = 1;
@@ -1623,6 +1632,7 @@ function drawTerrainLayers(
     }
   }
   context.globalAlpha = 1;
+  return drawTerrainBackdropCell;
 }
 
 const cardinalCellEdges = [
@@ -1671,9 +1681,12 @@ function drawInteriorArchitecture(
   mode: LandscapeMode,
   context: CanvasRenderingContext2D,
   tilesetProps?: TilesetPropImages,
-  useTileset = false,
+  drawFloors = true,
+  drawTerrainBackdropCell?: (x: number, y: number) => void,
 ) {
-  const style = getInteriorVisualStyle(mode);
+  const style = drawFloors
+    ? getInteriorVisualStyle(mode)
+    : getArchitectureVisualStyle(mode);
   if (!style) return;
   const isArchitecture = (x: number, y: number) => {
     const terrain = grid[y]?.[x]?.terrain;
@@ -1698,6 +1711,10 @@ function drawInteriorArchitecture(
   const isRoomFloor = (x: number, y: number) =>
     grid[y]?.[x]?.terrain === Terrain.Ground;
   const drawTilesetArchitectureUnderlay = (x: number, y: number) => {
+    if (!drawFloors) {
+      drawTerrainBackdropCell?.(x, y);
+      return;
+    }
     const left = x * cellSize;
     const top = y * cellSize;
     if (!drawFloorTile(left, top)) {
@@ -1863,6 +1880,7 @@ function drawInteriorArchitecture(
     return runs;
   };
   const isWall = (x: number, y: number) => grid[y]?.[x]?.terrain === Terrain.Wall;
+  const renderWallNetworks = mode !== "ship-deck";
   const vesselInterior = mode === "ship" || mode === "spaceship";
   const isOutsideVessel = (x: number, y: number) => {
     const terrain = grid[y]?.[x]?.terrain;
@@ -1951,7 +1969,7 @@ function drawInteriorArchitecture(
     context.stroke();
     context.restore();
   };
-  const drawTilesetWallNetworks = () => {
+  const drawWallNetworks = () => {
     // Collision remains cell-based, while the visible wall becomes a thinner
     // graph through cell centers. Angles no longer fill their entire cell.
     for (let y = 0; y < grid.length; y += 1) {
@@ -2339,12 +2357,13 @@ function drawInteriorArchitecture(
   };
 
   context.save();
-  for (let y = 0; y < grid.length; y += 1) {
-    for (let x = 0; x < grid[y].length; x += 1) {
-      const tile = grid[y][x];
-      const left = x * cellSize;
-      const top = y * cellSize;
-      if (tile.terrain === Terrain.Ground) {
+  if (drawFloors) {
+    for (let y = 0; y < grid.length; y += 1) {
+      for (let x = 0; x < grid[y].length; x += 1) {
+        const tile = grid[y][x];
+        const left = x * cellSize;
+        const top = y * cellSize;
+        if (tile.terrain !== Terrain.Ground) continue;
         const roomTintIndex = mode === "ship-deck"
           ? 0
           : (tile.roomId ?? 0) % style.roomTints.length;
@@ -2403,8 +2422,8 @@ function drawInteriorArchitecture(
     }
   }
 
-  if (useTileset && mode !== "ship-deck") {
-    drawTilesetWallNetworks();
+  if (renderWallNetworks) {
+    drawWallNetworks();
   } else if (vesselInterior) {
     drawVesselHullApron();
   }
@@ -2501,7 +2520,7 @@ function drawInteriorArchitecture(
         }
         continue;
       }
-      if (useTileset) continue;
+      if (renderWallNetworks) continue;
       const connectedHorizontally = isArchitecture(x - 1, y) ||
         isArchitecture(x + 1, y);
       const connectedVertically = isArchitecture(x, y - 1) ||
@@ -2693,7 +2712,7 @@ function drawInteriorArchitecture(
       const left = x * cellSize;
       const top = y * cellSize;
       const horizontal = tile.doorOrientation === "horizontal";
-      if (useTileset) {
+      if (renderWallNetworks) {
         drawTilesetArchitectureUnderlay(x, y);
         const frontFacing = horizontal && isRoomFloor(x, y + 1);
         if (frontFacing) {
@@ -6840,7 +6859,7 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     }
   }
 
-  drawTerrainLayers(
+  const drawTerrainBackdropCell = drawTerrainLayers(
     grid,
     cellSize,
     mode,
@@ -6854,6 +6873,9 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   );
   if (mode === "sewer") drawSewerMasonry(grid, cellSize, context);
   if (!useTilesetTexture) drawGlobalTexture(width, height, context);
+  const hasArchitecture = grid.some((row) =>
+    row.some((tile) => tile.terrain === Terrain.Wall || tile.terrain === Terrain.Door)
+  );
   if (isInteriorMode(mode)) {
     drawInteriorArchitecture(
       grid,
@@ -6861,7 +6883,8 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
       mode,
       context,
       options.useTileset ? options.tilesetProps : undefined,
-      options.useTileset ?? false,
+      true,
+      drawTerrainBackdropCell,
     );
     if (mode === "ship-deck") {
       drawSailingShipDeckElevation(grid, cellSize, context);
@@ -6960,6 +6983,18 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
     }
   }
   context.globalAlpha = 1;
+
+  if (!isInteriorMode(mode) && hasArchitecture) {
+    drawInteriorArchitecture(
+      grid,
+      cellSize,
+      mode,
+      context,
+      undefined,
+      false,
+      drawTerrainBackdropCell,
+    );
+  }
 
   if (grid.some((row) => row.some((tile) => tile.deckFeature))) {
     drawSailingShipDeckFeatures(

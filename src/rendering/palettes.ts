@@ -216,6 +216,20 @@ const interiorVisualStyles: Partial<Record<LandscapeMode, InteriorVisualStyle>> 
   },
 };
 
+const outdoorWallVisualStyle: InteriorVisualStyle = {
+  floorPattern: "stone",
+  roomTints: ["rgba(233,230,214,.045)"],
+  wall: "#555957",
+  wallAlt: "#383d3c",
+  wallHighlight: "rgba(221,221,204,.14)",
+  wallEdge: "rgba(28,32,32,.52)",
+  wallDetail: "rgba(194,195,182,.15)",
+  door: "#75513a",
+  doorEdge: "#30251f",
+  doorHighlight: "rgba(200,158,104,.3)",
+  hardware: "#aa9266",
+};
+
 type VisualProfile = {
   terrain: Partial<Record<TerrainKind, Omit<TerrainStyle, "label">>>;
   objects: BiomeObjectStyle;
@@ -465,4 +479,8 @@ export function getDifficultTerrainDetailStyle(mode: LandscapeMode) {
 
 export function getInteriorVisualStyle(mode: LandscapeMode) {
   return interiorVisualStyles[mode];
+}
+
+export function getArchitectureVisualStyle(mode: LandscapeMode) {
+  return interiorVisualStyles[mode] ?? outdoorWallVisualStyle;
 }
