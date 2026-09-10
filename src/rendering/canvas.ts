@@ -290,6 +290,25 @@ function drawCustomProp(
   context.restore();
 }
 
+function traceFilledStar(
+  context: CanvasRenderingContext2D,
+  centerX: number,
+  centerY: number,
+  outerRadius: number,
+  innerRadius: number,
+) {
+  context.beginPath();
+  for (let point = 0; point < 10; point += 1) {
+    const radius = point % 2 === 0 ? outerRadius : innerRadius;
+    const angle = -Math.PI / 2 + point * Math.PI / 5;
+    const x = centerX + Math.cos(angle) * radius;
+    const y = centerY + Math.sin(angle) * radius;
+    if (point === 0) context.moveTo(x, y);
+    else context.lineTo(x, y);
+  }
+  context.closePath();
+}
+
 const overlayTerrains = new Set<TerrainKind>([
   Terrain.Road,
   Terrain.Bridge,
@@ -2356,6 +2375,183 @@ function drawInteriorArchitecture(
 
   };
 
+  type DoorRun = {
+    x: number;
+    y: number;
+    length: number;
+    orientation: "horizontal" | "vertical";
+  };
+  const doorRuns = () => {
+    const runs: DoorRun[] = [];
+    for (const run of horizontalWallRuns((x, y) =>
+      grid[y]?.[x]?.terrain === Terrain.Door &&
+      (grid[y][x].doorOrientation ?? "horizontal") === "horizontal")) {
+      runs.push({ ...run, orientation: "horizontal" });
+    }
+    for (const run of verticalWallRuns((x, y) =>
+      grid[y]?.[x]?.terrain === Terrain.Door &&
+      grid[y][x].doorOrientation === "vertical")) {
+      runs.push({ ...run, orientation: "vertical" });
+    }
+    return runs;
+  };
+  const drawNetworkDoorRun = (run: DoorRun) => {
+    for (let offset = 0; offset < run.length; offset += 1) {
+      drawTilesetArchitectureUnderlay(
+        run.x + (run.orientation === "horizontal" ? offset : 0),
+        run.y + (run.orientation === "vertical" ? offset : 0),
+      );
+    }
+
+    const left = run.x * cellSize;
+    const top = run.y * cellSize;
+    const width = (run.orientation === "horizontal" ? run.length : 1) * cellSize;
+    const height = (run.orientation === "vertical" ? run.length : 1) * cellSize;
+    const horizontal = run.orientation === "horizontal";
+    const frontFacing = horizontal && Array.from({ length: run.length }, (_, offset) =>
+      isRoomFloor(run.x + offset, run.y + 1)
+    ).some(Boolean);
+
+    if (frontFacing) {
+      const facadeTop = top + cellSize * .34;
+      const copingTop = top + cellSize * .27;
+      const copingHeight = cellSize * .13;
+      drawWallFacade(left, facadeTop, width, cellSize * .66, run.x, run.y);
+      context.fillStyle = style.wallAlt;
+      context.fillRect(left, copingTop, width, copingHeight);
+      context.fillRect(left, facadeTop, cellSize * .07, cellSize * .66);
+      context.fillRect(left + width - cellSize * .07, facadeTop, cellSize * .07, cellSize * .66);
+      context.fillStyle = style.wallHighlight;
+      context.fillRect(left, copingTop, width, Math.max(1, cellSize * .035));
+      context.fillStyle = style.doorEdge;
+      context.fillRect(
+        left + cellSize * .07,
+        top + cellSize * .39,
+        width - cellSize * .14,
+        cellSize * .61,
+      );
+      context.fillStyle = style.door;
+      traceChamferedRect(
+        left + cellSize * .1,
+        top + cellSize * .43,
+        width - cellSize * .2,
+        cellSize * .57,
+        cellSize * .035,
+      );
+      context.fill();
+      context.strokeStyle = style.doorHighlight;
+      context.lineWidth = Math.max(.7, cellSize * .022);
+      const panelCount = Math.max(2, run.length * 3);
+      for (let panel = 1; panel < panelCount; panel += 1) {
+        const panelX = left + cellSize * .1 + (width - cellSize * .2) * panel / panelCount;
+        context.beginPath();
+        context.moveTo(panelX, top + cellSize * .45);
+        context.lineTo(panelX, top + cellSize);
+        context.stroke();
+      }
+      context.fillStyle = style.hardware;
+      context.beginPath();
+      context.arc(
+        left + width - cellSize * .21,
+        top + cellSize * .7,
+        Math.max(1, cellSize * .04),
+        0,
+        Math.PI * 2,
+      );
+      context.fill();
+      return;
+    }
+
+    const frame = horizontal
+      ? {
+        x: left,
+        y: top + cellSize * .26,
+        width,
+        height: cellSize * .48,
+      }
+      : {
+        x: left + cellSize * .26,
+        y: top,
+        width: cellSize * .48,
+        height,
+      };
+    context.fillStyle = style.wallEdge;
+    context.fillRect(frame.x, frame.y, frame.width, frame.height);
+
+    const leaf = horizontal
+      ? {
+        x: left + cellSize * .04,
+        y: top + cellSize * .34,
+        width: width - cellSize * .08,
+        height: cellSize * .32,
+      }
+      : {
+        x: left + cellSize * .34,
+        y: top + cellSize * .05,
+        width: cellSize * .32,
+        height: height - cellSize * .1,
+      };
+
+    context.fillStyle = style.wallAlt;
+    if (horizontal) {
+      traceChamferedRect(left, top + cellSize * .25, cellSize * .11, cellSize * .5, cellSize * .035);
+      context.fill();
+      traceChamferedRect(left + width - cellSize * .11, top + cellSize * .25, cellSize * .11, cellSize * .5, cellSize * .035);
+      context.fill();
+    } else {
+      traceChamferedRect(left + cellSize * .25, top, cellSize * .5, cellSize * .11, cellSize * .035);
+      context.fill();
+      traceChamferedRect(left + cellSize * .25, top + height - cellSize * .11, cellSize * .5, cellSize * .11, cellSize * .035);
+      context.fill();
+    }
+
+    context.fillStyle = style.door;
+    context.strokeStyle = style.doorEdge;
+    context.lineWidth = Math.max(1, cellSize * .04);
+    traceChamferedRect(leaf.x, leaf.y, leaf.width, leaf.height, cellSize * .035);
+    context.fill();
+    context.stroke();
+
+    context.strokeStyle = style.wallHighlight;
+    context.lineWidth = Math.max(.7, cellSize * .018);
+    context.beginPath();
+    if (horizontal) {
+      context.moveTo(left + cellSize * .1, top + cellSize * .27);
+      context.lineTo(left + cellSize * .1, top + cellSize * .73);
+      context.moveTo(left + width - cellSize * .1, top + cellSize * .27);
+      context.lineTo(left + width - cellSize * .1, top + cellSize * .73);
+    } else {
+      context.moveTo(left + cellSize * .27, top + cellSize * .1);
+      context.lineTo(left + cellSize * .73, top + cellSize * .1);
+      context.moveTo(left + cellSize * .27, top + height - cellSize * .1);
+      context.lineTo(left + cellSize * .73, top + height - cellSize * .1);
+    }
+    context.stroke();
+
+    context.strokeStyle = style.doorHighlight;
+    context.lineWidth = Math.max(.7, cellSize * .02);
+    context.beginPath();
+    if (horizontal) {
+      context.moveTo(leaf.x + cellSize * .08, leaf.y + leaf.height * .5);
+      context.lineTo(leaf.x + leaf.width - cellSize * .08, leaf.y + leaf.height * .5);
+    } else {
+      context.moveTo(leaf.x + leaf.width * .5, leaf.y + cellSize * .08);
+      context.lineTo(leaf.x + leaf.width * .5, leaf.y + leaf.height - cellSize * .08);
+    }
+    context.stroke();
+
+    context.fillStyle = style.hardware;
+    context.beginPath();
+    context.arc(
+      horizontal ? leaf.x + leaf.width - cellSize * .2 : leaf.x + leaf.width * .72,
+      horizontal ? leaf.y + leaf.height * .68 : leaf.y + leaf.height - cellSize * .22,
+      Math.max(1, cellSize * .038),
+      0,
+      Math.PI * 2,
+    );
+    context.fill();
+  };
+
   context.save();
   if (drawFloors) {
     for (let y = 0; y < grid.length; y += 1) {
@@ -2704,6 +2900,12 @@ function drawInteriorArchitecture(
   }
 
   drawVesselHullContour();
+
+  if (renderWallNetworks) {
+    for (const run of doorRuns()) drawNetworkDoorRun(run);
+    context.restore();
+    return;
+  }
 
   for (let y = 0; y < grid.length; y += 1) {
     for (let x = 0; x < grid[y].length; x += 1) {
@@ -4404,11 +4606,23 @@ function drawInteriorProps(
         context.ellipse(centerX, centerY, size / 2, size * .43, 0, 0, Math.PI * 2);
         context.fill();
         context.stroke();
-      } else if (prop === "drawers" || prop === "shelf" || prop === "statue") {
+      } else if (prop === "statue") {
+        const radius = cellSize * .36;
+        context.fillStyle = "#8e918b";
+        context.strokeStyle = "#484c49";
+        context.lineWidth = Math.max(1, cellSize * .045);
+        context.beginPath();
+        context.arc(centerX, centerY, radius, 0, Math.PI * 2);
+        context.fill();
+        context.stroke();
+        context.fillStyle = "#484c49";
+        traceFilledStar(context, centerX, centerY, radius * .98, radius * .42);
+        context.fill();
+      } else if (prop === "drawers" || prop === "shelf") {
         const width = cellSize * .72;
         const height = cellSize * .82;
-        context.fillStyle = prop === "statue" ? "#8e918b" : "#765139";
-        context.strokeStyle = prop === "statue" ? "#484c49" : "#39281f";
+        context.fillStyle = "#765139";
+        context.strokeStyle = "#39281f";
         context.fillRect(centerX - width / 2, centerY - height / 2, width, height);
         context.strokeRect(centerX - width / 2, centerY - height / 2, width, height);
       } else if (prop === "console") {

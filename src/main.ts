@@ -530,12 +530,14 @@ function clearTileRoom(tile: Tile) {
 }
 
 function inferDoorOrientation(x: number, y: number): Tile["doorOrientation"] {
+  const isArchitecture = (tile: Tile | undefined) =>
+    tile?.terrain === Terrain.Wall || tile?.terrain === Terrain.Door;
   const hasVerticalWall =
-    currentGrid[y - 1]?.[x]?.terrain === Terrain.Wall ||
-    currentGrid[y + 1]?.[x]?.terrain === Terrain.Wall;
+    isArchitecture(currentGrid[y - 1]?.[x]) ||
+    isArchitecture(currentGrid[y + 1]?.[x]);
   const hasHorizontalWall =
-    currentGrid[y]?.[x - 1]?.terrain === Terrain.Wall ||
-    currentGrid[y]?.[x + 1]?.terrain === Terrain.Wall;
+    isArchitecture(currentGrid[y]?.[x - 1]) ||
+    isArchitecture(currentGrid[y]?.[x + 1]);
   if (hasVerticalWall && !hasHorizontalWall) return "vertical";
   return "horizontal";
 }

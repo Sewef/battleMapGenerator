@@ -495,15 +495,69 @@ function roomFogContours(grid: Grid) {
     });
 }
 
+type DoorFogRun = {
+  x: number;
+  y: number;
+  length: number;
+  orientation: "horizontal" | "vertical";
+};
+
+function doorFogRuns(grid: Grid) {
+  const runs: DoorFogRun[] = [];
+  for (let y = 0; y < grid.length; y += 1) {
+    let x = 0;
+    while (x < grid[y].length) {
+      const tile = grid[y][x];
+      if (tile.terrain !== Terrain.Door || tile.doorOrientation !== "horizontal") {
+        x += 1;
+        continue;
+      }
+      const start = x;
+      while (
+        x < grid[y].length &&
+        grid[y][x].terrain === Terrain.Door &&
+        grid[y][x].doorOrientation === "horizontal"
+      ) {
+        x += 1;
+      }
+      runs.push({ x: start, y, length: x - start, orientation: "horizontal" });
+    }
+  }
+
+  const width = grid[0]?.length ?? 0;
+  for (let x = 0; x < width; x += 1) {
+    let y = 0;
+    while (y < grid.length) {
+      const tile = grid[y]?.[x];
+      if (tile?.terrain !== Terrain.Door || tile.doorOrientation !== "vertical") {
+        y += 1;
+        continue;
+      }
+      const start = y;
+      while (
+        y < grid.length &&
+        grid[y]?.[x]?.terrain === Terrain.Door &&
+        grid[y][x].doorOrientation === "vertical"
+      ) {
+        y += 1;
+      }
+      runs.push({ x, y: start, length: y - start, orientation: "vertical" });
+    }
+  }
+
+  return runs;
+}
+
 function fogDoorItem(
   id: string,
   x: number,
   y: number,
   orientation: "horizontal" | "vertical",
   zIndex: number,
+  lengthCells = 1,
 ) {
   const horizontal = orientation === "horizontal";
-  const length = OWLBEAR_SCENE_DPI;
+  const length = lengthCells * OWLBEAR_SCENE_DPI;
   return {
     id,
     name: "Door",
@@ -577,7 +631,7 @@ const INTERIOR_PROP_DRAWING_STYLES: Record<
   hearth: { fillColor: "#a95332", strokeColor: "#472b24", shapeType: "RECTANGLE" },
   drawers: { fillColor: "#765139", strokeColor: "#39281f", shapeType: "RECTANGLE" },
   shelf: { fillColor: "#765139", strokeColor: "#39281f", shapeType: "RECTANGLE" },
-  statue: { fillColor: "#8e918b", strokeColor: "#484c49", shapeType: "RECTANGLE" },
+  statue: { fillColor: "#8e918b", strokeColor: "#484c49", shapeType: "CIRCLE" },
   barrel: { fillColor: "#805238", strokeColor: "#3b281f", shapeType: "CIRCLE" },
   bucket: { fillColor: "#555d5d", strokeColor: "#252d2d", shapeType: "CIRCLE" },
   flower_pot: { fillColor: "#9a634b", strokeColor: "#4b3028", shapeType: "CIRCLE" },
@@ -729,6 +783,100 @@ function interiorPropItem(
       strokeWidth: 5,
       strokeDash: [],
     },
+  };
+}
+
+function statuePathCommands(radius: number) {
+  const scale = radius / 60;
+  const kappa = 0.7071067690849304;
+  const starPoints = [
+    [14.7857666015625, -20.3505859375],
+    [0, -58.5],
+    [-14.7857666015625, -20.3505859375],
+    [-55.6368408203125, -18.07763671875],
+    [-23.923828125, 7.7734375],
+    [-34.385498046875, 47.32763671875],
+    [0, 25.1552734375],
+    [34.385498046875, 47.32763671875],
+    [23.923828125, 7.7734375],
+    [55.6368408203125, -18.07763671875],
+    [14.7857666015625, -20.3505859375],
+  ];
+  return [
+    [0, 0, radius],
+    [3, radius, radius, radius, 0, kappa],
+    [3, radius, -radius, 0, -radius, kappa],
+    [3, -radius, -radius, -radius, 0, kappa],
+    [3, -radius, radius, 0, radius, kappa],
+    [5],
+    ...starPoints.map(([x, y], index) => [
+      index === 0 ? 0 : 1,
+      x * scale,
+      y * scale,
+    ]),
+    [5],
+  ];
+}
+
+function statuePathItem(
+  id: string,
+  prop: ExportedInteriorProp,
+  baseZIndex: number,
+  lightSource?: MapLightSource,
+  tieBreaker = 0,
+) {
+  const minimumX = Math.min(...prop.points.map(({ x }) => x));
+  const maximumX = Math.max(...prop.points.map(({ x }) => x));
+  const minimumY = Math.min(...prop.points.map(({ y }) => y));
+  const maximumY = Math.max(...prop.points.map(({ y }) => y));
+  const widthInCells = maximumX - minimumX + 1;
+  const heightInCells = maximumY - minimumY + 1;
+  const position = {
+    x: (minimumX + widthInCells / 2) * OWLBEAR_SCENE_DPI,
+    y: (minimumY + heightInCells / 2) * OWLBEAR_SCENE_DPI,
+  };
+  const radius = Math.max(12, Math.min(widthInCells, heightInCells) * OWLBEAR_SCENE_DPI * .4);
+  const roomSuffix = prop.roomRole ? ` Â· ${prop.roomRole}` : "";
+  return {
+    id,
+    name: `${INTERIOR_PROP_RULES.statue.label} ${prop.id}${roomSuffix}`,
+    zIndex: perspectiveZIndex(
+      baseZIndex,
+      maximumY + 1,
+      minimumX + widthInCells / 2,
+      tieBreaker,
+    ),
+    locked: false,
+    metadata: {
+      "com.touchgrass/export": true,
+      "com.touchgrass/interior-prop": {
+        kind: prop.kind,
+        id: prop.id,
+        orientation: prop.orientation,
+        facing: prop.facing,
+        roomRole: prop.roomRole,
+        footprint: prop.points,
+      },
+      ...(lightSource
+        ? { "rodeo.owlbear.dynamic-fog/light": dynamicFogLightMetadata(lightSource) }
+        : {}),
+    },
+    position,
+    rotation: 0,
+    scale: { x: 1, y: 1 },
+    type: "PATH",
+    visible: true,
+    layer: "PROP",
+    style: {
+      fillColor: "#8e918b",
+      fillOpacity: .42,
+      strokeColor: "#484c49",
+      strokeOpacity: .9,
+      strokeWidth: 5,
+      strokeDash: [],
+    },
+    commands: statuePathCommands(radius),
+    fillRule: "evenodd",
   };
 }
 
@@ -1212,6 +1360,7 @@ export async function createOwlbearSceneJson(
       ReturnType<typeof imageItem> |
       ReturnType<typeof outdoorPropItem> |
       ReturnType<typeof interiorPropItem> |
+      ReturnType<typeof statuePathItem> |
       ReturnType<typeof fogItem> |
       ReturnType<typeof fogDoorItem> |
       ReturnType<typeof lightItem>
@@ -1386,13 +1535,21 @@ export async function createOwlbearSceneJson(
       propTieBreaker += sprites.length;
     } else {
       const id = crypto.randomUUID();
-      shared[id] = interiorPropItem(
-        id,
-        prop,
-        baseZIndex,
-        lightSource,
-        propTieBreaker,
-      );
+      shared[id] = prop.kind === "statue"
+        ? statuePathItem(
+          id,
+          prop,
+          baseZIndex,
+          lightSource,
+          propTieBreaker,
+        )
+        : interiorPropItem(
+          id,
+          prop,
+          baseZIndex,
+          lightSource,
+          propTieBreaker,
+        );
       highestPropZIndex = Math.max(highestPropZIndex, shared[id].zIndex);
       propTieBreaker += 1;
     }
@@ -1438,20 +1595,17 @@ export async function createOwlbearSceneJson(
         );
         nextPropZIndex += 1;
       });
-      for (let y = 0; y < grid.length; y += 1) {
-        for (let x = 0; x < grid[y].length; x += 1) {
-          const tile = grid[y][x];
-          if (tile.terrain !== Terrain.Door || !tile.doorOrientation) continue;
-          const id = crypto.randomUUID();
-          shared[id] = fogDoorItem(
-            id,
-            x,
-            y,
-            tile.doorOrientation,
-            nextPropZIndex,
-          );
-          nextPropZIndex += 1;
-        }
+      for (const door of doorFogRuns(grid)) {
+        const id = crypto.randomUUID();
+        shared[id] = fogDoorItem(
+          id,
+          door.x,
+          door.y,
+          door.orientation,
+          nextPropZIndex,
+          door.length,
+        );
+        nextPropZIndex += 1;
       }
     } else if (!hiddenItems.has(Terrain.Wall)) {
       addFogContours(
@@ -1503,6 +1657,7 @@ export async function createOwlbearSceneJson(
   const height = grid.length * OWLBEAR_SCENE_DPI;
   for (const [id, item] of Object.entries(shared)) {
     if (id === mapId) continue;
+    if (item.attachedTo) continue;
     item.attachedTo = mapId;
     item.disableAttachmentBehavior = [
       "SCALE",
