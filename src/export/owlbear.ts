@@ -786,6 +786,127 @@ function interiorPropItem(
   };
 }
 
+function bedPathCommands(
+  width: number,
+  height: number,
+  facing: Tile["propFacing"] | undefined,
+) {
+  const left = -width / 2;
+  const right = width / 2;
+  const top = -height / 2;
+  const bottom = height / 2;
+  if (facing === "east") {
+    const pillowX = width * .14;
+    return [
+      [0, left, top],
+      [1, right, top],
+      [1, right, bottom],
+      [1, left, bottom],
+      [5],
+      [0, pillowX, top],
+      [1, pillowX, bottom],
+    ];
+  }
+  if (facing === "west") {
+    const pillowX = -width * .14;
+    return [
+      [0, left, top],
+      [1, right, top],
+      [1, right, bottom],
+      [1, left, bottom],
+      [5],
+      [0, pillowX, top],
+      [1, pillowX, bottom],
+    ];
+  }
+  if (facing === "south") {
+    const pillowY = height * .14;
+    return [
+      [0, left, top],
+      [1, right, top],
+      [1, right, bottom],
+      [1, left, bottom],
+      [5],
+      [0, left, pillowY],
+      [1, right, pillowY],
+    ];
+  }
+  const pillowY = -height * .14;
+  return [
+    [0, left, top],
+    [1, right, top],
+    [1, right, bottom],
+    [1, left, bottom],
+    [5],
+    [0, left, pillowY],
+    [1, right, pillowY],
+  ];
+}
+
+function bedPathItem(
+  id: string,
+  prop: ExportedInteriorProp,
+  baseZIndex: number,
+  lightSource?: MapLightSource,
+  tieBreaker = 0,
+) {
+  const minimumX = Math.min(...prop.points.map(({ x }) => x));
+  const maximumX = Math.max(...prop.points.map(({ x }) => x));
+  const minimumY = Math.min(...prop.points.map(({ y }) => y));
+  const maximumY = Math.max(...prop.points.map(({ y }) => y));
+  const widthInCells = maximumX - minimumX + 1;
+  const heightInCells = maximumY - minimumY + 1;
+  const vertical = prop.orientation === "vertical" || heightInCells > widthInCells;
+  const width = Math.max(24, widthInCells * OWLBEAR_SCENE_DPI * (vertical ? .72 : .94));
+  const height = Math.max(24, heightInCells * OWLBEAR_SCENE_DPI * (vertical ? .94 : .72));
+  const position = {
+    x: (minimumX + widthInCells / 2) * OWLBEAR_SCENE_DPI,
+    y: (minimumY + heightInCells / 2) * OWLBEAR_SCENE_DPI,
+  };
+  const zIndex = perspectiveZIndex(
+    baseZIndex,
+    maximumY + 1,
+    minimumX + widthInCells / 2,
+    tieBreaker,
+  );
+  const roomSuffix = prop.roomRole ? ` Â· ${prop.roomRole}` : "";
+  return {
+    id,
+    name: `${INTERIOR_PROP_RULES.bed.label} ${prop.id}${roomSuffix}`,
+    zIndex,
+    locked: false,
+    metadata: {
+      "com.touchgrass/export": true,
+      "com.touchgrass/interior-prop": {
+        kind: prop.kind,
+        id: prop.id,
+        orientation: prop.orientation,
+        facing: prop.facing,
+        roomRole: prop.roomRole,
+        footprint: prop.points,
+      },
+      ...(lightSource
+        ? { "rodeo.owlbear.dynamic-fog/light": dynamicFogLightMetadata(lightSource) }
+        : {}),
+    },
+    position,
+    rotation: 0,
+    scale: { x: 1, y: 1 },
+    type: "PATH",
+    visible: true,
+    layer: "PROP",
+    style: {
+      fillColor: "#cbbd9d",
+      fillOpacity: .42,
+      strokeColor: "#58483a",
+      strokeOpacity: .9,
+      strokeWidth: 5,
+      strokeDash: [],
+    },
+    commands: bedPathCommands(width, height, prop.facing),
+  };
+}
+
 function statuePathCommands(radius: number) {
   const scale = radius / 60;
   const kappa = 0.7071067690849304;
@@ -1360,6 +1481,7 @@ export async function createOwlbearSceneJson(
       ReturnType<typeof imageItem> |
       ReturnType<typeof outdoorPropItem> |
       ReturnType<typeof interiorPropItem> |
+      ReturnType<typeof bedPathItem> |
       ReturnType<typeof statuePathItem> |
       ReturnType<typeof fogItem> |
       ReturnType<typeof fogDoorItem> |
@@ -1535,21 +1657,31 @@ export async function createOwlbearSceneJson(
       propTieBreaker += sprites.length;
     } else {
       const id = crypto.randomUUID();
-      shared[id] = prop.kind === "statue"
-        ? statuePathItem(
-          id,
-          prop,
-          baseZIndex,
-          lightSource,
-          propTieBreaker,
-        )
-        : interiorPropItem(
+      if (prop.kind === "bed") {
+        shared[id] = bedPathItem(
           id,
           prop,
           baseZIndex,
           lightSource,
           propTieBreaker,
         );
+      } else if (prop.kind === "statue") {
+        shared[id] = statuePathItem(
+          id,
+          prop,
+          baseZIndex,
+          lightSource,
+          propTieBreaker,
+        );
+      } else {
+        shared[id] = interiorPropItem(
+          id,
+          prop,
+          baseZIndex,
+          lightSource,
+          propTieBreaker,
+        );
+      }
       highestPropZIndex = Math.max(highestPropZIndex, shared[id].zIndex);
       propTieBreaker += 1;
     }
