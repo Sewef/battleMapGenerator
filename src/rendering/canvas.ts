@@ -2651,6 +2651,7 @@ function drawInteriorArchitecture(
     const width = (run.orientation === "horizontal" ? run.length : 1) * cellSize;
     const height = (run.orientation === "vertical" ? run.length : 1) * cellSize;
     const horizontal = run.orientation === "horizontal";
+    const doubleDoor = run.length === 2;
     const frontFacing = horizontal && Array.from({ length: run.length }, (_, offset) =>
       isRoomFloor(run.x + offset, run.y + 1)
     ).some(Boolean);
@@ -2696,6 +2697,16 @@ function drawInteriorArchitecture(
         cellSize * .035,
       );
       context.fill();
+      if (doubleDoor) {
+        context.strokeStyle = wallDebugActive("door")
+          ? "rgba(255,255,255,.95)"
+          : style.doorEdge;
+        context.lineWidth = Math.max(1, cellSize * .035);
+        context.beginPath();
+        context.moveTo(left + width * .5, leafTop + cellSize * .035);
+        context.lineTo(left + width * .5, top + cellSize - cellSize * .035);
+        context.stroke();
+      }
       context.strokeStyle = wallDebugActive("door")
         ? "rgba(255,255,255,.95)"
         : style.doorHighlight;
@@ -2711,15 +2722,32 @@ function drawInteriorArchitecture(
       context.fillStyle = wallDebugActive("door")
         ? debugWallColors.highlight
         : style.hardware;
-      context.beginPath();
-      context.arc(
-        left + width - cellSize * .21,
-        leafTop + leafHeight * .52,
-        Math.max(1, cellSize * .04),
-        0,
-        Math.PI * 2,
-      );
-      context.fill();
+      if (doubleDoor) {
+        for (const handleX of [
+          left + width * .5 - cellSize * .11,
+          left + width * .5 + cellSize * .11,
+        ]) {
+          context.beginPath();
+          context.arc(
+            handleX,
+            leafTop + leafHeight * .52,
+            Math.max(1, cellSize * .04),
+            0,
+            Math.PI * 2,
+          );
+          context.fill();
+        }
+      } else {
+        context.beginPath();
+        context.arc(
+          left + width - cellSize * .21,
+          leafTop + leafHeight * .52,
+          Math.max(1, cellSize * .04),
+          0,
+          Math.PI * 2,
+        );
+        context.fill();
+      }
       return;
     }
 
@@ -2781,6 +2809,21 @@ function drawInteriorArchitecture(
     traceChamferedRect(leaf.x, leaf.y, leaf.width, leaf.height, cellSize * .035);
     context.fill();
     context.stroke();
+    if (doubleDoor) {
+      context.strokeStyle = wallDebugActive("door")
+        ? debugWallColors.edge
+        : style.doorEdge;
+      context.lineWidth = Math.max(1, cellSize * .035);
+      context.beginPath();
+      if (horizontal) {
+        context.moveTo(leaf.x + leaf.width * .5, leaf.y + cellSize * .035);
+        context.lineTo(leaf.x + leaf.width * .5, leaf.y + leaf.height - cellSize * .035);
+      } else {
+        context.moveTo(leaf.x + cellSize * .035, leaf.y + leaf.height * .5);
+        context.lineTo(leaf.x + leaf.width - cellSize * .035, leaf.y + leaf.height * .5);
+      }
+      context.stroke();
+    }
 
     context.strokeStyle = wallDebugActive("door")
       ? debugWallColors.highlight
@@ -2817,15 +2860,38 @@ function drawInteriorArchitecture(
     context.fillStyle = wallDebugActive("door")
       ? debugWallColors.highlight
       : style.hardware;
-    context.beginPath();
-    context.arc(
-      horizontal ? leaf.x + leaf.width - cellSize * .2 : leaf.x + leaf.width * .72,
-      horizontal ? leaf.y + leaf.height * .68 : leaf.y + leaf.height - cellSize * .22,
-      Math.max(1, cellSize * .038),
-      0,
-      Math.PI * 2,
-    );
-    context.fill();
+    if (doubleDoor) {
+      const handles = horizontal
+        ? [
+          { x: leaf.x + leaf.width * .5 - cellSize * .1, y: leaf.y + leaf.height * .68 },
+          { x: leaf.x + leaf.width * .5 + cellSize * .1, y: leaf.y + leaf.height * .68 },
+        ]
+        : [
+          { x: leaf.x + leaf.width * .72, y: leaf.y + leaf.height * .5 - cellSize * .1 },
+          { x: leaf.x + leaf.width * .72, y: leaf.y + leaf.height * .5 + cellSize * .1 },
+        ];
+      for (const handle of handles) {
+        context.beginPath();
+        context.arc(
+          handle.x,
+          handle.y,
+          Math.max(1, cellSize * .038),
+          0,
+          Math.PI * 2,
+        );
+        context.fill();
+      }
+    } else {
+      context.beginPath();
+      context.arc(
+        horizontal ? leaf.x + leaf.width - cellSize * .2 : leaf.x + leaf.width * .72,
+        horizontal ? leaf.y + leaf.height * .68 : leaf.y + leaf.height - cellSize * .22,
+        Math.max(1, cellSize * .038),
+        0,
+        Math.PI * 2,
+      );
+      context.fill();
+    }
   };
 
   context.save();
