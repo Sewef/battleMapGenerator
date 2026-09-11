@@ -1826,27 +1826,38 @@ function drawInteriorArchitecture(
     const tiledFloor = drawFloorTile(left, top);
     type UnderlayFill = {
       base: string;
+      terrain: TerrainKind;
       tintIndex?: number;
     };
     const isVoidLike = (sampleX: number, sampleY: number) => {
       const terrain = grid[sampleY]?.[sampleX]?.terrain;
       return terrain === undefined || terrain === Terrain.Void;
     };
-    const floorFill = (sampleX: number, sampleY: number): UnderlayFill | undefined => {
+    const terrainFill = (sampleX: number, sampleY: number): UnderlayFill | undefined => {
       const tile = grid[sampleY]?.[sampleX];
-      return tile?.terrain === Terrain.Ground
-        ? {
+      if (!tile || tile.terrain === Terrain.Void || overlayTerrains.has(tile.terrain)) {
+        return undefined;
+      }
+      if (tile.terrain === Terrain.Ground) {
+        return {
           base: getTerrainStyle(Terrain.Ground, mode).color,
+          terrain: Terrain.Ground,
           tintIndex: roomTintIndex(tile.roomId),
-        }
-        : undefined;
+        };
+      }
+      return {
+        base: getTerrainStyle(tile.terrain, mode).color,
+        terrain: tile.terrain,
+      };
     };
     const fallbackFloorFill: UnderlayFill = {
       base: getTerrainStyle(Terrain.Ground, mode).color,
+      terrain: Terrain.Ground,
       tintIndex: fallbackFloorTintIndex(x, y),
     };
     const voidFill: UnderlayFill = {
       base: getTerrainStyle(Terrain.Void, mode).color,
+      terrain: Terrain.Void,
     };
     for (const corner of [
       { dx: -1, dy: -1, offsetX: 0, offsetY: 0 },
@@ -1854,9 +1865,9 @@ function drawInteriorArchitecture(
       { dx: -1, dy: 1, offsetX: 0, offsetY: .5 },
       { dx: 1, dy: 1, offsetX: .5, offsetY: .5 },
     ] as const) {
-      const verticalFill = floorFill(x, y + corner.dy);
-      const horizontalFill = floorFill(x + corner.dx, y);
-      const diagonalFill = floorFill(x + corner.dx, y + corner.dy);
+      const verticalFill = terrainFill(x, y + corner.dy);
+      const horizontalFill = terrainFill(x + corner.dx, y);
+      const diagonalFill = terrainFill(x + corner.dx, y + corner.dy);
       const fill = verticalFill ?? horizontalFill ?? diagonalFill ??
         (
           isVoidLike(x, y + corner.dy) ||
@@ -1865,7 +1876,7 @@ function drawInteriorArchitecture(
             ? voidFill
             : fallbackFloorFill
         );
-      if (tiledFloor && fill !== voidFill) continue;
+      if (tiledFloor && fill.terrain === Terrain.Ground) continue;
 
       const quarterLeft = left + cellSize * corner.offsetX;
       const quarterTop = top + cellSize * corner.offsetY;
@@ -1884,6 +1895,24 @@ function drawInteriorArchitecture(
           cellSize * .5,
           cellSize * .5,
         );
+        if (!tiledFloor && fill.terrain !== Terrain.Void) {
+          const gradient = context.createLinearGradient(
+            left,
+            top,
+            left + cellSize,
+            top + cellSize,
+          );
+          gradient.addColorStop(0, "rgba(255,255,255,.09)");
+          gradient.addColorStop(.48, "rgba(255,255,255,0)");
+          gradient.addColorStop(1, "rgba(19,31,25,.10)");
+          context.fillStyle = gradient;
+          context.fillRect(
+            quarterLeft,
+            quarterTop,
+            cellSize * .5,
+            cellSize * .5,
+          );
+        }
       }
     }
   };
@@ -2037,6 +2066,10 @@ function drawInteriorArchitecture(
   const isWall = (x: number, y: number) => grid[y]?.[x]?.terrain === Terrain.Wall;
   const renderWallNetworks = mode !== "ship-deck";
   const vesselInterior = mode === "ship" || mode === "spaceship";
+  const networkWallCoreWidth = cellSize * .34;
+  const networkWallFacadeWidth = cellSize * .5;
+  const networkWallTopOffset = cellSize * .5 - networkWallCoreWidth * .5;
+  const networkWallBottomOffset = cellSize;
   const isOutsideVessel = (x: number, y: number) => {
     const terrain = grid[y]?.[x]?.terrain;
     return terrain === undefined || terrain === Terrain.Void ||
@@ -2125,93 +2158,95 @@ function drawInteriorArchitecture(
     context.restore();
   };
   const drawWallNetworks = () => {
-    type WallNetworkRect = {
-      left: number;
-      top: number;
-      width: number;
-      height: number;
-      x: number;
-      y: number;
-      kind: "horizontal" | "vertical";
-    };
     const mapWidth = (grid[0]?.length ?? 0) * cellSize;
     const mapHeight = grid.length * cellSize;
-    const sideLeft = .29;
-    const sideRight = .71;
-    const wallRectangles = (x: number, y: number): WallNetworkRect[] => {
-      const left = x * cellSize;
-      const top = y * cellSize;
+    const wallDirections = (x: number, y: number) => {
       const joinsNorth = isArchitecture(x, y - 1);
       const joinsSouth = isArchitecture(x, y + 1);
       const joinsWest = isArchitecture(x - 1, y);
       const joinsEast = isArchitecture(x + 1, y);
-      const frontFacing = isRoomFloor(x, y + 1) ||
-        (joinsWest && isRoomFloor(x - 1, y + 1)) ||
-        (joinsEast && isRoomFloor(x + 1, y + 1));
-      const backFacing = isRoomFloor(x, y - 1) ||
-        (joinsWest && isRoomFloor(x - 1, y - 1)) ||
-        (joinsEast && isRoomFloor(x + 1, y - 1));
-      const sideFacing = isRoomFloor(x - 1, y) || isRoomFloor(x + 1, y);
-      const horizontalTop = frontFacing ? .27 : .29;
-      const horizontalBottom = frontFacing ? 1 : backFacing ? .78 : .71;
-      const hasVertical = joinsNorth || joinsSouth || sideFacing || (!joinsWest && !joinsEast);
-      const hasHorizontal = joinsWest || joinsEast || frontFacing || backFacing ||
-        (!joinsNorth && !joinsSouth);
-      const rectangles: WallNetworkRect[] = [];
-
-      if (hasVertical) {
-        const topRatio = joinsNorth ? 0 : horizontalTop;
-        const bottomRatio = joinsSouth ? 1 : horizontalBottom;
-        rectangles.push({
-          left: left + sideLeft * cellSize,
-          top: top + topRatio * cellSize,
-          width: (sideRight - sideLeft) * cellSize,
-          height: (bottomRatio - topRatio) * cellSize,
-          x,
-          y,
-          kind: "vertical",
-        });
-      }
-      if (hasHorizontal) {
-        const leftRatio = joinsWest ? 0 : sideLeft;
-        const rightRatio = joinsEast ? 1 : sideRight;
-        rectangles.push({
-          left: left + leftRatio * cellSize,
-          top: top + horizontalTop * cellSize,
-          width: (rightRatio - leftRatio) * cellSize,
-          height: (horizontalBottom - horizontalTop) * cellSize,
-          x,
-          y,
-          kind: "horizontal",
-        });
-      }
-      return rectangles.filter(({ width, height }) => width > 0 && height > 0);
+      const floorNorth = isRoomFloor(x, y - 1);
+      const floorSouth = isRoomFloor(x, y + 1);
+      const floorWest = isRoomFloor(x - 1, y);
+      const floorEast = isRoomFloor(x + 1, y);
+      const verticalByFloor = (floorWest || floorEast) && !joinsWest && !joinsEast;
+      const horizontalByFloor = (floorNorth || floorSouth) && !joinsNorth && !joinsSouth;
+      const vertical = joinsNorth || joinsSouth || verticalByFloor;
+      const horizontal = joinsWest || joinsEast || horizontalByFloor ||
+        (!joinsNorth && !joinsSouth && !joinsWest && !joinsEast && !vertical);
+      return {
+        joinsNorth,
+        joinsSouth,
+        joinsWest,
+        joinsEast,
+        horizontal,
+        vertical,
+      };
     };
-    const traceWallMask = () => {
-      context.beginPath();
+    const traceWallLines = (
+      target: CanvasRenderingContext2D,
+      direction: "horizontal" | "vertical",
+      offsetY = 0,
+    ) => {
+      target.beginPath();
       for (let y = 0; y < grid.length; y += 1) {
         for (let x = 0; x < grid[y].length; x += 1) {
           if (!isWall(x, y)) continue;
-          for (const rect of wallRectangles(x, y)) {
-            context.rect(rect.left, rect.top, rect.width, rect.height);
+          const directions = wallDirections(x, y);
+          if (!directions[direction]) continue;
+
+          const left = x * cellSize;
+          const top = y * cellSize;
+          const centerX = left + cellSize * .5;
+          const centerY = top + cellSize * .5;
+          if (direction === "horizontal") {
+            const isolated = !directions.joinsWest && !directions.joinsEast;
+            const startX = isolated || directions.joinsWest ? left : centerX;
+            const endX = isolated || directions.joinsEast ? left + cellSize : centerX;
+            if (startX === endX) continue;
+            target.moveTo(startX, centerY + offsetY);
+            target.lineTo(endX, centerY + offsetY);
+          } else {
+            const isolated = !directions.joinsNorth && !directions.joinsSouth;
+            const startY = isolated || directions.joinsNorth
+              ? top
+              : top + networkWallTopOffset;
+            const endY = isolated || directions.joinsSouth
+              ? top + cellSize
+              : top + networkWallBottomOffset;
+            if (startY === endY) continue;
+            target.moveTo(centerX, startY);
+            target.lineTo(centerX, endY);
           }
         }
       }
+    };
+    const strokeWallLines = (
+      target: CanvasRenderingContext2D,
+      direction: "horizontal" | "vertical",
+      lineWidth: number,
+      offsetY = 0,
+    ) => {
+      target.lineCap = "butt";
+      target.lineJoin = "miter";
+      target.lineWidth = lineWidth;
+      traceWallLines(target, direction, offsetY);
+      target.stroke();
     };
     const createWallMask = () => {
       const mask = document.createElement("canvas");
       mask.width = Math.ceil(mapWidth);
       mask.height = Math.ceil(mapHeight);
       const maskContext = mask.getContext("2d")!;
-      maskContext.fillStyle = "#000";
-      for (let y = 0; y < grid.length; y += 1) {
-        for (let x = 0; x < grid[y].length; x += 1) {
-          if (!isWall(x, y)) continue;
-          for (const rect of wallRectangles(x, y)) {
-            maskContext.fillRect(rect.left, rect.top, rect.width, rect.height);
-          }
-        }
-      }
+      maskContext.strokeStyle = "#000";
+      strokeWallLines(maskContext, "horizontal", networkWallCoreWidth);
+      strokeWallLines(maskContext, "vertical", networkWallCoreWidth);
+      strokeWallLines(
+        maskContext,
+        "horizontal",
+        networkWallFacadeWidth,
+        cellSize * .25,
+      );
       return mask;
     };
     const wallMask = createWallMask();
@@ -2226,30 +2261,31 @@ function drawInteriorArchitecture(
       context.drawImage(shadow, 0, 0);
     };
     const drawNetworkSurface = () => {
-      context.save();
-      traceWallMask();
-      context.clip();
-      context.fillStyle = style.wall;
-      context.fillRect(0, 0, mapWidth, mapHeight);
+      const layer = document.createElement("canvas");
+      layer.width = Math.ceil(mapWidth);
+      layer.height = Math.ceil(mapHeight);
+      const layerContext = layer.getContext("2d")!;
+      layerContext.fillStyle = style.wall;
+      layerContext.fillRect(0, 0, mapWidth, mapHeight);
 
-      context.strokeStyle = style.wallDetail;
-      context.lineWidth = Math.max(.65, cellSize * .022);
+      layerContext.strokeStyle = style.wallDetail;
+      layerContext.lineWidth = Math.max(.65, cellSize * .022);
       const courseHeight = style.floorPattern === "wood"
         ? cellSize * .26
         : cellSize * .3;
       if (style.floorPattern === "metal") {
         for (let seamY = cellSize * .42; seamY < mapHeight; seamY += cellSize * .42) {
-          context.beginPath();
-          context.moveTo(0, seamY);
-          context.lineTo(mapWidth, seamY);
-          context.stroke();
+          layerContext.beginPath();
+          layerContext.moveTo(0, seamY);
+          layerContext.lineTo(mapWidth, seamY);
+          layerContext.stroke();
         }
       } else {
         for (let courseY = courseHeight; courseY < mapHeight; courseY += courseHeight) {
-          context.beginPath();
-          context.moveTo(0, courseY);
-          context.lineTo(mapWidth, courseY);
-          context.stroke();
+          layerContext.beginPath();
+          layerContext.moveTo(0, courseY);
+          layerContext.lineTo(mapWidth, courseY);
+          layerContext.stroke();
         }
         const jointSpacing = style.floorPattern === "wood"
           ? cellSize * 1.35
@@ -2259,74 +2295,42 @@ function drawInteriorArchitecture(
           const courseBottom = Math.min(mapHeight, courseTop + courseHeight);
           const offset = course % 2 ? jointSpacing * .5 : 0;
           for (let joint = offset; joint < mapWidth; joint += jointSpacing) {
-            context.beginPath();
-            context.moveTo(joint, courseTop + cellSize * .025);
-            context.lineTo(joint, courseBottom - cellSize * .025);
-            context.stroke();
+            layerContext.beginPath();
+            layerContext.moveTo(joint, courseTop + cellSize * .025);
+            layerContext.lineTo(joint, courseBottom - cellSize * .025);
+            layerContext.stroke();
           }
           course += 1;
         }
       }
 
-      context.restore();
+      layerContext.globalCompositeOperation = "destination-in";
+      layerContext.drawImage(wallMask, 0, 0);
+      context.drawImage(layer, 0, 0);
     };
     const drawNetworkEdges = () => {
-      context.save();
-      context.strokeStyle = style.wallEdge;
-      context.lineWidth = Math.max(1, cellSize * .045);
-      context.lineCap = "butt";
-      context.lineJoin = "miter";
-      context.beginPath();
-      for (let y = 0; y < grid.length; y += 1) {
-        for (let x = 0; x < grid[y].length; x += 1) {
-          if (!isWall(x, y)) continue;
-          for (const rect of wallRectangles(x, y)) {
-            if (rect.kind === "vertical") {
-              if (!isArchitecture(x, y - 1)) {
-                context.moveTo(rect.left, rect.top);
-                context.lineTo(rect.left + rect.width, rect.top);
-              }
-              if (!isArchitecture(x, y + 1)) {
-                context.moveTo(rect.left, rect.top + rect.height);
-                context.lineTo(rect.left + rect.width, rect.top + rect.height);
-              }
-            } else {
-              if (!isArchitecture(x - 1, y)) {
-                context.moveTo(rect.left, rect.top);
-                context.lineTo(rect.left, rect.top + rect.height);
-              }
-              if (!isArchitecture(x + 1, y)) {
-                context.moveTo(rect.left + rect.width, rect.top);
-                context.lineTo(rect.left + rect.width, rect.top + rect.height);
-              }
-            }
-          }
-        }
-      }
-      context.stroke();
-
-      context.strokeStyle = style.wallHighlight;
-      context.lineWidth = Math.max(.6, cellSize * .02);
-      context.beginPath();
-      for (let y = 0; y < grid.length; y += 1) {
-        for (let x = 0; x < grid[y].length; x += 1) {
-          if (!isWall(x, y)) continue;
-          for (const rect of wallRectangles(x, y)) {
-            if (rect.kind === "vertical" && !isArchitecture(x, y - 1)) {
-              context.moveTo(rect.left, rect.top + cellSize * .035);
-              context.lineTo(rect.left + rect.width, rect.top + cellSize * .035);
-            }
-            if (rect.kind === "horizontal" && !isArchitecture(x - 1, y)) {
-              context.moveTo(rect.left + cellSize * .035, rect.top);
-              context.lineTo(rect.left + cellSize * .035, rect.top + rect.height);
-            }
-          }
-        }
-      }
-      context.stroke();
-      context.restore();
+      const edge = Math.max(1, cellSize * .045);
+      const highlight = Math.max(.75, cellSize * .025);
+      const edgeLayer = document.createElement("canvas");
+      edgeLayer.width = wallMask.width;
+      edgeLayer.height = wallMask.height;
+      const edgeContext = edgeLayer.getContext("2d")!;
+      edgeContext.drawImage(createMaskEdge(wallMask, 0, -edge, 0, style.wallEdge), 0, 0);
+      edgeContext.drawImage(createMaskEdge(wallMask, -edge, 0, 0, style.wallEdge), 0, 0);
+      edgeContext.drawImage(
+        createMaskEdge(wallMask, 0, highlight, 0, style.wallHighlight),
+        0,
+        0,
+      );
+      edgeContext.drawImage(
+        createMaskEdge(wallMask, highlight, 0, 0, style.wallHighlight),
+        0,
+        0,
+      );
+      edgeContext.globalCompositeOperation = "destination-in";
+      edgeContext.drawImage(wallMask, 0, 0);
+      context.drawImage(edgeLayer, 0, 0);
     };
-
     for (let y = 0; y < grid.length; y += 1) {
       for (let x = 0; x < grid[y].length; x += 1) {
         if (isWall(x, y)) drawTilesetArchitectureUnderlay(x, y);
@@ -2378,29 +2382,34 @@ function drawInteriorArchitecture(
     ).some(Boolean);
 
     if (frontFacing) {
-      const facadeTop = top + cellSize * .34;
-      const copingTop = top + cellSize * .27;
-      const copingHeight = cellSize * .13;
-      drawWallFacade(left, facadeTop, width, cellSize * .66, run.x, run.y);
+      const facadeTop = top + networkWallTopOffset;
+      const facadeHeight = cellSize - networkWallTopOffset;
+      const copingTop = top + networkWallTopOffset;
+      const copingHeight = Math.max(1, networkWallCoreWidth * .32);
+      const frameWidth = Math.max(1, cellSize * .07);
+      const leafInsetX = cellSize * .1;
+      const leafTop = facadeTop + Math.max(1, cellSize * .08);
+      const leafHeight = top + cellSize - leafTop;
+      drawWallFacade(left, facadeTop, width, facadeHeight, run.x, run.y);
       context.fillStyle = style.wallAlt;
       context.fillRect(left, copingTop, width, copingHeight);
-      context.fillRect(left, facadeTop, cellSize * .07, cellSize * .66);
-      context.fillRect(left + width - cellSize * .07, facadeTop, cellSize * .07, cellSize * .66);
+      context.fillRect(left, facadeTop, frameWidth, facadeHeight);
+      context.fillRect(left + width - frameWidth, facadeTop, frameWidth, facadeHeight);
       context.fillStyle = style.wallHighlight;
       context.fillRect(left, copingTop, width, Math.max(1, cellSize * .035));
       context.fillStyle = style.doorEdge;
       context.fillRect(
-        left + cellSize * .07,
-        top + cellSize * .39,
-        width - cellSize * .14,
-        cellSize * .61,
+        left + frameWidth,
+        leafTop - cellSize * .04,
+        width - frameWidth * 2,
+        top + cellSize - leafTop + cellSize * .04,
       );
       context.fillStyle = style.door;
       traceChamferedRect(
-        left + cellSize * .1,
-        top + cellSize * .43,
-        width - cellSize * .2,
-        cellSize * .57,
+        left + leafInsetX,
+        leafTop,
+        width - leafInsetX * 2,
+        leafHeight,
         cellSize * .035,
       );
       context.fill();
@@ -2408,9 +2417,9 @@ function drawInteriorArchitecture(
       context.lineWidth = Math.max(.7, cellSize * .022);
       const panelCount = Math.max(2, run.length * 3);
       for (let panel = 1; panel < panelCount; panel += 1) {
-        const panelX = left + cellSize * .1 + (width - cellSize * .2) * panel / panelCount;
+        const panelX = left + leafInsetX + (width - leafInsetX * 2) * panel / panelCount;
         context.beginPath();
-        context.moveTo(panelX, top + cellSize * .45);
+        context.moveTo(panelX, leafTop + cellSize * .02);
         context.lineTo(panelX, top + cellSize);
         context.stroke();
       }
@@ -2418,7 +2427,7 @@ function drawInteriorArchitecture(
       context.beginPath();
       context.arc(
         left + width - cellSize * .21,
-        top + cellSize * .7,
+        leafTop + leafHeight * .52,
         Math.max(1, cellSize * .04),
         0,
         Math.PI * 2,
@@ -2430,14 +2439,14 @@ function drawInteriorArchitecture(
     const frame = horizontal
       ? {
         x: left,
-        y: top + cellSize * .26,
+        y: top + networkWallTopOffset,
         width,
-        height: cellSize * .48,
+        height: cellSize - networkWallTopOffset,
       }
       : {
-        x: left + cellSize * .26,
+        x: left + cellSize * .5 - networkWallCoreWidth * .5,
         y: top,
-        width: cellSize * .48,
+        width: networkWallCoreWidth,
         height,
       };
     context.fillStyle = style.wallEdge;
@@ -2446,27 +2455,27 @@ function drawInteriorArchitecture(
     const leaf = horizontal
       ? {
         x: left + cellSize * .04,
-        y: top + cellSize * .34,
+        y: top + networkWallTopOffset + cellSize * .08,
         width: width - cellSize * .08,
-        height: cellSize * .32,
+        height: cellSize - networkWallTopOffset - cellSize * .08,
       }
       : {
-        x: left + cellSize * .34,
+        x: left + cellSize * .5 - networkWallCoreWidth * .32,
         y: top + cellSize * .05,
-        width: cellSize * .32,
+        width: networkWallCoreWidth * .64,
         height: height - cellSize * .1,
       };
 
     context.fillStyle = style.wallAlt;
     if (horizontal) {
-      traceChamferedRect(left, top + cellSize * .25, cellSize * .11, cellSize * .5, cellSize * .035);
+      traceChamferedRect(left, frame.y, cellSize * .11, frame.height, cellSize * .035);
       context.fill();
-      traceChamferedRect(left + width - cellSize * .11, top + cellSize * .25, cellSize * .11, cellSize * .5, cellSize * .035);
+      traceChamferedRect(left + width - cellSize * .11, frame.y, cellSize * .11, frame.height, cellSize * .035);
       context.fill();
     } else {
-      traceChamferedRect(left + cellSize * .25, top, cellSize * .5, cellSize * .11, cellSize * .035);
+      traceChamferedRect(frame.x, top, frame.width, cellSize * .11, cellSize * .035);
       context.fill();
-      traceChamferedRect(left + cellSize * .25, top + height - cellSize * .11, cellSize * .5, cellSize * .11, cellSize * .035);
+      traceChamferedRect(frame.x, top + height - cellSize * .11, frame.width, cellSize * .11, cellSize * .035);
       context.fill();
     }
 
@@ -2481,10 +2490,10 @@ function drawInteriorArchitecture(
     context.lineWidth = Math.max(.7, cellSize * .018);
     context.beginPath();
     if (horizontal) {
-      context.moveTo(left + cellSize * .1, top + cellSize * .27);
-      context.lineTo(left + cellSize * .1, top + cellSize * .73);
-      context.moveTo(left + width - cellSize * .1, top + cellSize * .27);
-      context.lineTo(left + width - cellSize * .1, top + cellSize * .73);
+      context.moveTo(left + cellSize * .1, frame.y + cellSize * .02);
+      context.lineTo(left + cellSize * .1, top + cellSize);
+      context.moveTo(left + width - cellSize * .1, frame.y + cellSize * .02);
+      context.lineTo(left + width - cellSize * .1, top + cellSize);
     } else {
       context.moveTo(left + cellSize * .27, top + cellSize * .1);
       context.lineTo(left + cellSize * .73, top + cellSize * .1);
