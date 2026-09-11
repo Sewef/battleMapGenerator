@@ -2081,8 +2081,14 @@ function drawInteriorArchitecture(
       // A perpendicular side facade spans 29–71% of its wall cell. End the
       // horizontal facade on that actual outer edge, not on the cell centre;
       // the latter leaves lower corners visibly notched and misaligned.
-      const left = (run.x + (leftTurns ? .29 : leftInset)) * cellSize;
-      const right = (run.x + run.length - (rightTurns ? .29 : rightInset)) * cellSize;
+      const leftCut = leftTerrain === Terrain.Door
+        ? 0
+        : leftTurns ? .29 : leftInset;
+      const rightCut = rightTerrain === Terrain.Door
+        ? 0
+        : rightTurns ? .29 : rightInset;
+      const left = (run.x + leftCut) * cellSize;
+      const right = (run.x + run.length - rightCut) * cellSize;
       return {
         left,
         width: Math.max(0, right - left),
@@ -2104,8 +2110,14 @@ function drawInteriorArchitecture(
       const bottomInset = bottomTerrain === Terrain.Wall
         ? -.29
         : bottomTerrain === Terrain.Door ? 0 : .18;
-      const top = (run.y + (topTurns ? .5 : topInset)) * cellSize;
-      const bottom = (run.y + run.length - (bottomTurns ? .5 : bottomInset)) * cellSize;
+      const topCut = topTerrain === Terrain.Door
+        ? 0
+        : topTurns ? .5 : topInset;
+      const bottomCut = bottomTerrain === Terrain.Door
+        ? 0
+        : bottomTurns ? .5 : bottomInset;
+      const top = (run.y + topCut) * cellSize;
+      const bottom = (run.y + run.length - bottomCut) * cellSize;
       return {
         top,
         height: Math.max(0, bottom - top),
@@ -2199,6 +2211,97 @@ function drawInteriorArchitecture(
         width,
         cellSize * .1,
       );
+    }
+
+    // T and cross junctions are not covered by the simple-corner pass below.
+    // Repaint their centre as one merged wall node so branches that meet doors
+    // keep the same filled volume as ordinary wall junctions.
+    for (let y = 0; y < grid.length; y += 1) {
+      for (let x = 0; x < grid[y].length; x += 1) {
+        if (!isWall(x, y)) continue;
+        const joinsNorth = isArchitecture(x, y - 1);
+        const joinsSouth = isArchitecture(x, y + 1);
+        const joinsWest = isArchitecture(x - 1, y);
+        const joinsEast = isArchitecture(x + 1, y);
+        const connectionCount = Number(joinsNorth) + Number(joinsSouth) +
+          Number(joinsWest) + Number(joinsEast);
+        if (connectionCount < 3) continue;
+
+        const left = x * cellSize;
+        const top = y * cellSize;
+        const frontFacing = isRoomFloor(x, y + 1) ||
+          (joinsWest && isRoomFloor(x - 1, y + 1)) ||
+          (joinsEast && isRoomFloor(x + 1, y + 1));
+        const backFacing = isRoomFloor(x, y - 1) ||
+          (joinsWest && isRoomFloor(x - 1, y - 1)) ||
+          (joinsEast && isRoomFloor(x + 1, y - 1));
+        const horizontalTop = frontFacing ? .27 : .29;
+        const horizontalBottom = frontFacing ? 1 : backFacing ? .78 : .71;
+        const sideLeft = .29;
+        const sideRight = .71;
+
+        drawTilesetArchitectureUnderlay(x, y);
+        context.save();
+        context.beginPath();
+        if (joinsNorth || joinsSouth) {
+          context.rect(
+            left + sideLeft * cellSize,
+            top + (joinsNorth ? 0 : horizontalTop) * cellSize,
+            (sideRight - sideLeft) * cellSize,
+            (joinsSouth ? 1 : horizontalBottom) * cellSize -
+              (joinsNorth ? 0 : horizontalTop) * cellSize,
+          );
+        }
+        if (joinsWest || joinsEast) {
+          context.rect(
+            left + (joinsWest ? 0 : sideLeft) * cellSize,
+            top + horizontalTop * cellSize,
+            (joinsEast ? 1 : sideRight) * cellSize -
+              (joinsWest ? 0 : sideLeft) * cellSize,
+            (horizontalBottom - horizontalTop) * cellSize,
+          );
+        }
+        context.clip();
+        if (joinsNorth || joinsSouth) {
+          drawWallFacade(
+            left + sideLeft * cellSize,
+            top,
+            (sideRight - sideLeft) * cellSize,
+            cellSize,
+            x,
+            y,
+          );
+        }
+        if (joinsWest || joinsEast) {
+          if (frontFacing) {
+            const facadeTop = top + cellSize * .34;
+            drawWallFacade(left, facadeTop, cellSize, cellSize * .66, x, y);
+            const copingTop = top + cellSize * .27;
+            const copingHeight = cellSize * .12;
+            context.fillStyle = style.wallAlt;
+            context.fillRect(left, copingTop, cellSize, copingHeight);
+            context.fillStyle = style.wallHighlight;
+            context.fillRect(left, copingTop, cellSize, Math.max(1, cellSize * .035));
+            context.fillStyle = "rgba(17, 13, 19, .42)";
+            context.fillRect(
+              left,
+              copingTop + copingHeight - Math.max(1, cellSize * .035),
+              cellSize,
+              Math.max(1, cellSize * .035),
+            );
+          } else {
+            drawWallFacade(
+              left,
+              top + horizontalTop * cellSize,
+              cellSize,
+              (horizontalBottom - horizontalTop) * cellSize,
+              x,
+              y,
+            );
+          }
+        }
+        context.restore();
+      }
     }
 
     // Redraw every simple corner from one shared orthogonal model after all
