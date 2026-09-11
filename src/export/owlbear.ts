@@ -1085,6 +1085,129 @@ function bedPathItem(
   };
 }
 
+function rectPathCommands(
+  left: number,
+  top: number,
+  width: number,
+  height: number,
+) {
+  const right = left + width;
+  const bottom = top + height;
+  return [
+    [0, left, top],
+    [1, right, top],
+    [1, right, bottom],
+    [1, left, bottom],
+    [5],
+  ];
+}
+
+function hearthPathCommands(
+  width: number,
+  height: number,
+  facing: Tile["propFacing"] | undefined,
+  vertical: boolean,
+) {
+  const left = -width / 2;
+  const top = -height / 2;
+  const frame = Math.max(3, Math.min(width, height) * .14);
+  const innerLeft = left + frame;
+  const innerTop = top + frame;
+  const innerWidth = width - frame * 2;
+  const innerHeight = height - frame * 2;
+  const wallSide = facing === "north" ? "south"
+    : facing === "east" ? "west"
+      : facing === "south" ? "north"
+        : facing === "west" ? "east"
+          : vertical ? "west" : "south";
+  const blockWidth = wallSide === "west" || wallSide === "east"
+    ? innerWidth * .42
+    : innerWidth * .3;
+  const blockHeight = wallSide === "west" || wallSide === "east"
+    ? innerHeight * .3
+    : innerHeight * .42;
+  const blockLeft = wallSide === "west"
+    ? innerLeft
+    : wallSide === "east"
+      ? innerLeft + innerWidth - blockWidth
+      : -blockWidth / 2;
+  const blockTop = wallSide === "north"
+    ? innerTop
+    : wallSide === "south"
+      ? innerTop + innerHeight - blockHeight
+      : -blockHeight / 2;
+  return [
+    ...rectPathCommands(left, top, width, height),
+    ...rectPathCommands(innerLeft, innerTop, innerWidth, innerHeight),
+    ...rectPathCommands(blockLeft, blockTop, blockWidth, blockHeight),
+  ];
+}
+
+function hearthPathItem(
+  id: string,
+  prop: ExportedInteriorProp,
+  baseZIndex: number,
+  lightSource?: MapLightSource,
+  tieBreaker = 0,
+) {
+  const minimumX = Math.min(...prop.points.map(({ x }) => x));
+  const maximumX = Math.max(...prop.points.map(({ x }) => x));
+  const minimumY = Math.min(...prop.points.map(({ y }) => y));
+  const maximumY = Math.max(...prop.points.map(({ y }) => y));
+  const widthInCells = maximumX - minimumX + 1;
+  const heightInCells = maximumY - minimumY + 1;
+  const vertical = prop.orientation === "vertical" || heightInCells > widthInCells;
+  const width = Math.max(24, widthInCells * OWLBEAR_SCENE_DPI * (vertical ? .66 : .94));
+  const height = Math.max(24, heightInCells * OWLBEAR_SCENE_DPI * (vertical ? .94 : .66));
+  const position = {
+    x: (minimumX + widthInCells / 2) * OWLBEAR_SCENE_DPI,
+    y: (minimumY + heightInCells / 2) * OWLBEAR_SCENE_DPI,
+  };
+  const zIndex = perspectiveZIndex(
+    baseZIndex,
+    maximumY + 1,
+    minimumX + widthInCells / 2,
+    tieBreaker,
+  );
+  const roomSuffix = prop.roomRole ? ` · ${prop.roomRole}` : "";
+  return {
+    id,
+    name: `${INTERIOR_PROP_RULES.hearth.label} ${prop.id}${roomSuffix}`,
+    zIndex,
+    locked: false,
+    metadata: {
+      "com.touchgrass/export": true,
+      "com.touchgrass/interior-prop": {
+        kind: prop.kind,
+        id: prop.id,
+        orientation: prop.orientation,
+        facing: prop.facing,
+        roomRole: prop.roomRole,
+        footprint: prop.points,
+      },
+      ...(lightSource
+        ? { "rodeo.owlbear.dynamic-fog/light": dynamicFogLightMetadata(lightSource) }
+        : {}),
+    },
+    position,
+    rotation: 0,
+    scale: { x: 1, y: 1 },
+    type: "PATH",
+    visible: true,
+    layer: "PROP",
+    style: {
+      fillColor: "#827768",
+      fillOpacity: 1,
+      strokeColor: "#403a35",
+      strokeOpacity: .9,
+      strokeWidth: 5,
+      strokeDash: [],
+    },
+    commands: hearthPathCommands(width, height, prop.facing, vertical),
+    fillRule: "evenodd",
+  };
+}
+
 function statuePathCommands(radius: number) {
   const scale = radius / 60;
   const kappa = 0.7071067690849304;
@@ -1662,6 +1785,7 @@ export async function createOwlbearSceneJson(
       ReturnType<typeof stoolPathItem> |
       ReturnType<typeof benchPathItem> |
       ReturnType<typeof bedPathItem> |
+      ReturnType<typeof hearthPathItem> |
       ReturnType<typeof statuePathItem> |
       ReturnType<typeof fogItem> |
       ReturnType<typeof fogDoorItem> |
@@ -1855,6 +1979,14 @@ export async function createOwlbearSceneJson(
         );
       } else if (prop.kind === "bed") {
         shared[id] = bedPathItem(
+          id,
+          prop,
+          baseZIndex,
+          lightSource,
+          propTieBreaker,
+        );
+      } else if (prop.kind === "hearth") {
+        shared[id] = hearthPathItem(
           id,
           prop,
           baseZIndex,
