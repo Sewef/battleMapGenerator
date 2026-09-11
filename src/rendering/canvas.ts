@@ -1755,6 +1755,67 @@ function drawInteriorArchitecture(
     }
     return 0;
   };
+  const drawFallbackFloorSurface = (
+    x: number,
+    y: number,
+    left: number,
+    top: number,
+    tintIndex: number,
+    drawBase: boolean,
+  ) => {
+    if (drawBase) {
+      context.fillStyle = getTerrainStyle(Terrain.Ground, mode).color;
+      context.fillRect(left, top, cellSize, cellSize);
+    }
+    context.fillStyle = style.roomTints[tintIndex];
+    context.fillRect(left, top, cellSize, cellSize);
+    context.lineWidth = Math.max(.65, cellSize * .018);
+    if (style.floorPattern === "wood") {
+      context.strokeStyle = "rgba(63, 39, 25, .14)";
+      context.beginPath();
+      context.moveTo(left, top + cellSize * .5);
+      context.lineTo(left + cellSize, top + cellSize * .5);
+      context.stroke();
+      const seamOffset = (y % 2 ? .72 : .28) * cellSize;
+      context.strokeStyle = "rgba(248, 220, 166, .12)";
+      context.beginPath();
+      context.moveTo(left + seamOffset, top + cellSize * .08);
+      context.lineTo(left + seamOffset, top + cellSize * .42);
+      context.moveTo(left + cellSize - seamOffset, top + cellSize * .58);
+      context.lineTo(left + cellSize - seamOffset, top + cellSize * .92);
+      context.stroke();
+    } else if (style.floorPattern === "metal") {
+      context.strokeStyle = "rgba(28, 49, 56, .2)";
+      context.strokeRect(
+        left + cellSize * .08,
+        top + cellSize * .08,
+        cellSize * .84,
+        cellSize * .84,
+      );
+      context.fillStyle = "rgba(202, 225, 226, .26)";
+      for (const [offsetX, offsetY] of [[.16, .16], [.84, .16], [.16, .84], [.84, .84]]) {
+        context.beginPath();
+        context.arc(
+          left + cellSize * offsetX,
+          top + cellSize * offsetY,
+          Math.max(.7, cellSize * .025),
+          0,
+          Math.PI * 2,
+        );
+        context.fill();
+      }
+    } else {
+      context.strokeStyle = "rgba(48, 51, 48, .16)";
+      context.strokeRect(left, top, cellSize, cellSize);
+      if (terrainVariation(x, y, 1901) > .64) {
+        context.beginPath();
+        context.moveTo(left + cellSize * .22, top + cellSize * .18);
+        context.lineTo(left + cellSize * .52, top + cellSize * .46);
+        context.lineTo(left + cellSize * .42, top + cellSize * .72);
+        context.stroke();
+      }
+    }
+  };
   const drawTilesetArchitectureUnderlay = (x: number, y: number) => {
     if (!drawFloors) {
       drawTerrainBackdropCell?.(x, y);
@@ -1765,7 +1826,7 @@ function drawInteriorArchitecture(
     const tiledFloor = drawFloorTile(left, top);
     type UnderlayFill = {
       base: string;
-      tint?: string;
+      tintIndex?: number;
     };
     const isVoidLike = (sampleX: number, sampleY: number) => {
       const terrain = grid[sampleY]?.[sampleX]?.terrain;
@@ -1776,13 +1837,13 @@ function drawInteriorArchitecture(
       return tile?.terrain === Terrain.Ground
         ? {
           base: getTerrainStyle(Terrain.Ground, mode).color,
-          tint: style.roomTints[roomTintIndex(tile.roomId)],
+          tintIndex: roomTintIndex(tile.roomId),
         }
         : undefined;
     };
     const fallbackFloorFill: UnderlayFill = {
       base: getTerrainStyle(Terrain.Ground, mode).color,
-      tint: style.roomTints[fallbackFloorTintIndex(x, y)],
+      tintIndex: fallbackFloorTintIndex(x, y),
     };
     const voidFill: UnderlayFill = {
       base: getTerrainStyle(Terrain.Void, mode).color,
@@ -1808,15 +1869,15 @@ function drawInteriorArchitecture(
 
       const quarterLeft = left + cellSize * corner.offsetX;
       const quarterTop = top + cellSize * corner.offsetY;
-      context.fillStyle = fill.base;
-      context.fillRect(
-        quarterLeft,
-        quarterTop,
-        cellSize * .5,
-        cellSize * .5,
-      );
-      if (!tiledFloor && fill.tint) {
-        context.fillStyle = fill.tint;
+      if (!tiledFloor && fill.tintIndex !== undefined) {
+        context.save();
+        context.beginPath();
+        context.rect(quarterLeft, quarterTop, cellSize * .5, cellSize * .5);
+        context.clip();
+        drawFallbackFloorSurface(x, y, left, top, fill.tintIndex, true);
+        context.restore();
+      } else {
+        context.fillStyle = fill.base;
         context.fillRect(
           quarterLeft,
           quarterTop,
@@ -2466,54 +2527,14 @@ function drawInteriorArchitecture(
         if (tile.terrain !== Terrain.Ground) continue;
         const tiledFloor = drawFloorTile(left, top);
         if (!tiledFloor) {
-          context.fillStyle = style.roomTints[fallbackFloorTintIndex(x, y)];
-          context.fillRect(left, top, cellSize, cellSize);
-        }
-        context.lineWidth = Math.max(.65, cellSize * .018);
-        if (!tiledFloor && style.floorPattern === "wood") {
-          context.strokeStyle = "rgba(63, 39, 25, .14)";
-          context.beginPath();
-          context.moveTo(left, top + cellSize * .5);
-          context.lineTo(left + cellSize, top + cellSize * .5);
-          context.stroke();
-          const seamOffset = (y % 2 ? .72 : .28) * cellSize;
-          context.strokeStyle = "rgba(248, 220, 166, .12)";
-          context.beginPath();
-          context.moveTo(left + seamOffset, top + cellSize * .08);
-          context.lineTo(left + seamOffset, top + cellSize * .42);
-          context.moveTo(left + cellSize - seamOffset, top + cellSize * .58);
-          context.lineTo(left + cellSize - seamOffset, top + cellSize * .92);
-          context.stroke();
-        } else if (!tiledFloor && style.floorPattern === "metal") {
-          context.strokeStyle = "rgba(28, 49, 56, .2)";
-          context.strokeRect(
-            left + cellSize * .08,
-            top + cellSize * .08,
-            cellSize * .84,
-            cellSize * .84,
+          drawFallbackFloorSurface(
+            x,
+            y,
+            left,
+            top,
+            fallbackFloorTintIndex(x, y),
+            false,
           );
-          context.fillStyle = "rgba(202, 225, 226, .26)";
-          for (const [offsetX, offsetY] of [[.16, .16], [.84, .16], [.16, .84], [.84, .84]]) {
-            context.beginPath();
-            context.arc(
-              left + cellSize * offsetX,
-              top + cellSize * offsetY,
-              Math.max(.7, cellSize * .025),
-              0,
-              Math.PI * 2,
-            );
-            context.fill();
-          }
-        } else if (!tiledFloor) {
-          context.strokeStyle = "rgba(48, 51, 48, .16)";
-          context.strokeRect(left, top, cellSize, cellSize);
-          if (terrainVariation(x, y, 1901) > .64) {
-            context.beginPath();
-            context.moveTo(left + cellSize * .22, top + cellSize * .18);
-            context.lineTo(left + cellSize * .52, top + cellSize * .46);
-            context.lineTo(left + cellSize * .42, top + cellSize * .72);
-            context.stroke();
-          }
         }
       }
     }
