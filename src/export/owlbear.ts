@@ -871,6 +871,99 @@ function stoolPathItem(
   };
 }
 
+function benchPathCommands(width: number, height: number) {
+  const kappa = 0.7071067690849304;
+  const halfWidth = width / 2;
+  const halfHeight = height / 2;
+  const radius = Math.min(halfHeight, halfWidth);
+  const straightHalfWidth = Math.max(0, halfWidth - radius);
+  const branchX = straightHalfWidth + radius * Math.SQRT1_2;
+  const branchY = radius * Math.SQRT1_2;
+  const branchLength = Math.min(width, height) * .3;
+  return [
+    [0, -straightHalfWidth, -radius],
+    [1, straightHalfWidth, -radius],
+    [3, straightHalfWidth + radius, -radius, straightHalfWidth + radius, 0, kappa],
+    [3, straightHalfWidth + radius, radius, straightHalfWidth, radius, kappa],
+    [1, -straightHalfWidth, radius],
+    [3, -straightHalfWidth - radius, radius, -straightHalfWidth - radius, 0, kappa],
+    [3, -straightHalfWidth - radius, -radius, -straightHalfWidth, -radius, kappa],
+    [5],
+    [0, -branchX, -branchY],
+    [1, -branchX - branchLength, -branchY - branchLength],
+    [0, -branchX, branchY],
+    [1, -branchX - branchLength, branchY + branchLength],
+    [0, branchX, -branchY],
+    [1, branchX + branchLength, -branchY - branchLength],
+    [0, branchX, branchY],
+    [1, branchX + branchLength, branchY + branchLength],
+  ];
+}
+
+function benchPathItem(
+  id: string,
+  prop: ExportedInteriorProp,
+  baseZIndex: number,
+  lightSource?: MapLightSource,
+  tieBreaker = 0,
+) {
+  const minimumX = Math.min(...prop.points.map(({ x }) => x));
+  const maximumX = Math.max(...prop.points.map(({ x }) => x));
+  const minimumY = Math.min(...prop.points.map(({ y }) => y));
+  const maximumY = Math.max(...prop.points.map(({ y }) => y));
+  const widthInCells = maximumX - minimumX + 1;
+  const heightInCells = maximumY - minimumY + 1;
+  const vertical = prop.orientation === "vertical" || heightInCells > widthInCells;
+  const width = Math.max(24, widthInCells * OWLBEAR_SCENE_DPI * (vertical ? .34 : .78));
+  const height = Math.max(24, heightInCells * OWLBEAR_SCENE_DPI * (vertical ? .78 : .34));
+  const position = {
+    x: (minimumX + widthInCells / 2) * OWLBEAR_SCENE_DPI,
+    y: (minimumY + heightInCells / 2) * OWLBEAR_SCENE_DPI,
+  };
+  const zIndex = perspectiveZIndex(
+    baseZIndex,
+    maximumY + 1,
+    minimumX + widthInCells / 2,
+    tieBreaker,
+  );
+  const roomSuffix = prop.roomRole ? ` · ${prop.roomRole}` : "";
+  return {
+    id,
+    name: `Bench ${prop.id}${roomSuffix}`,
+    zIndex,
+    locked: false,
+    metadata: {
+      "com.touchgrass/export": true,
+      "com.touchgrass/interior-prop": {
+        kind: prop.kind,
+        id: prop.id,
+        orientation: prop.orientation,
+        facing: prop.facing,
+        roomRole: prop.roomRole,
+        footprint: prop.points,
+      },
+      ...(lightSource
+        ? { "rodeo.owlbear.dynamic-fog/light": dynamicFogLightMetadata(lightSource) }
+        : {}),
+    },
+    position,
+    rotation: 0,
+    scale: { x: 1, y: 1 },
+    type: "PATH",
+    visible: true,
+    layer: "PROP",
+    style: {
+      fillColor: "#956347",
+      fillOpacity: 1,
+      strokeColor: "#432b20",
+      strokeOpacity: .9,
+      strokeWidth: 5,
+      strokeDash: [],
+    },
+    commands: benchPathCommands(width, height),
+  };
+}
+
 function bedPathCommands(
   width: number,
   height: number,
@@ -1567,6 +1660,7 @@ export async function createOwlbearSceneJson(
       ReturnType<typeof outdoorPropItem> |
       ReturnType<typeof interiorPropItem> |
       ReturnType<typeof stoolPathItem> |
+      ReturnType<typeof benchPathItem> |
       ReturnType<typeof bedPathItem> |
       ReturnType<typeof statuePathItem> |
       ReturnType<typeof fogItem> |
@@ -1745,6 +1839,14 @@ export async function createOwlbearSceneJson(
       const id = crypto.randomUUID();
       if (prop.kind === "chair") {
         shared[id] = stoolPathItem(
+          id,
+          prop,
+          baseZIndex,
+          lightSource,
+          propTieBreaker,
+        );
+      } else if (prop.kind === "bench") {
+        shared[id] = benchPathItem(
           id,
           prop,
           baseZIndex,
