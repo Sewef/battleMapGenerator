@@ -349,7 +349,23 @@ export function renderApp(root: HTMLElement) {
                 <span>Layer filters &amp; prop overrides</span>
                 <small>Legend, custom images</small>
               </summary>
-              <div class="map-content-details-body">
+            <div class="map-content-details-body">
+            <details class="wall-debug-settings">
+              <summary>
+                <span>Wall render debug</span>
+                <small>Preview only</small>
+              </summary>
+              <div class="wall-debug-grid">
+                <label class="grid-option"><input type="checkbox" data-wall-debug="underlay" /><span>Underlay</span></label>
+                <label class="grid-option"><input type="checkbox" data-wall-debug="shadow" /><span>Shadow</span></label>
+                <label class="grid-option"><input type="checkbox" data-wall-debug="surface" /><span>Surface</span></label>
+                <label class="grid-option"><input type="checkbox" data-wall-debug="edge" /><span>Edges</span></label>
+                <label class="grid-option"><input type="checkbox" data-wall-debug="highlight" /><span>Highlights</span></label>
+                <label class="grid-option"><input type="checkbox" data-wall-debug="path" /><span>Paths</span></label>
+                <label class="grid-option"><input type="checkbox" data-wall-debug="junction" /><span>Junctions</span></label>
+                <label class="grid-option"><input type="checkbox" data-wall-debug="door" /><span>Doors</span></label>
+              </div>
+            </details>
             <details class="custom-prop-settings" id="custom-prop-settings">
               <summary>
                 <span>Custom tree &amp; rock images</span>

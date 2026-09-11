@@ -41,6 +41,7 @@ export interface RenderOptions {
   customProps?: CustomPropImages;
   stylizedLighting?: boolean;
   hideInteriorProps?: boolean;
+  wallDebug?: WallDebugOptions;
 }
 
 export interface TilesetTerrainImages {
@@ -105,6 +106,17 @@ export interface TilesetPropImages {
 export interface CustomPropImages {
   tree?: CanvasImageSource;
   rock?: CanvasImageSource;
+}
+
+export interface WallDebugOptions {
+  underlay?: boolean;
+  shadow?: boolean;
+  surface?: boolean;
+  edge?: boolean;
+  highlight?: boolean;
+  path?: boolean;
+  junction?: boolean;
+  door?: boolean;
 }
 
 function imageSourceSize(image: CanvasImageSource) {
@@ -1725,11 +1737,29 @@ function drawInteriorArchitecture(
   tilesetProps?: TilesetPropImages,
   drawFloors = true,
   drawTerrainBackdropCell?: (x: number, y: number) => void,
+  wallDebug: WallDebugOptions = {},
 ) {
   const style = drawFloors
     ? getInteriorVisualStyle(mode)
     : getArchitectureVisualStyle(mode);
   if (!style) return;
+  const debugWallColors = {
+    underlayVoid: "rgba(255, 0, 255, .5)",
+    underlayGround: "rgba(0, 255, 80, .45)",
+    underlayOther: "rgba(0, 220, 255, .45)",
+    shadow: "rgba(0, 0, 255, .65)",
+    surface: "rgba(255, 0, 0, .7)",
+    edge: "rgba(255, 140, 0, .85)",
+    highlight: "rgba(255, 255, 0, .85)",
+    horizontalPath: "rgba(255, 255, 255, .95)",
+    verticalPath: "rgba(0, 255, 255, .95)",
+    facadePath: "rgba(180, 0, 255, .95)",
+    junctionErase: "rgba(255, 0, 180, .8)",
+    doorFrame: "rgba(0, 255, 255, .75)",
+    doorLeaf: "rgba(255, 120, 0, .85)",
+  };
+  const wallDebugActive = (key: keyof WallDebugOptions) =>
+    wallDebug[key] === true;
   const isArchitecture = (x: number, y: number) => {
     const terrain = grid[y]?.[x]?.terrain;
     return terrain === Terrain.Wall || terrain === Terrain.Door;
@@ -1779,8 +1809,8 @@ function drawInteriorArchitecture(
     return 0;
   };
   const drawFallbackFloorPattern = (
-    x: number,
-    y: number,
+    _x: number,
+    _y: number,
     left: number,
     top: number,
   ) => {
@@ -1790,14 +1820,6 @@ function drawInteriorArchitecture(
       context.beginPath();
       context.moveTo(left, top + cellSize * .5);
       context.lineTo(left + cellSize, top + cellSize * .5);
-      context.stroke();
-      const seamOffset = (y % 2 ? .72 : .28) * cellSize;
-      context.strokeStyle = "rgba(248, 220, 166, .12)";
-      context.beginPath();
-      context.moveTo(left + seamOffset, top + cellSize * .08);
-      context.lineTo(left + seamOffset, top + cellSize * .42);
-      context.moveTo(left + cellSize - seamOffset, top + cellSize * .58);
-      context.lineTo(left + cellSize - seamOffset, top + cellSize * .92);
       context.stroke();
     } else if (style.floorPattern === "metal") {
       context.strokeStyle = "rgba(28, 49, 56, .2)";
@@ -1822,7 +1844,7 @@ function drawInteriorArchitecture(
     } else {
       context.strokeStyle = "rgba(48, 51, 48, .16)";
       context.strokeRect(left, top, cellSize, cellSize);
-      if (terrainVariation(x, y, 1901) > .64) {
+      if (terrainVariation(_x, _y, 1901) > .64) {
         context.beginPath();
         context.moveTo(left + cellSize * .22, top + cellSize * .18);
         context.lineTo(left + cellSize * .52, top + cellSize * .46);
@@ -1900,10 +1922,13 @@ function drawInteriorArchitecture(
       const joinsSouth = isArchitecture(x, y + 1);
       const joinsWest = isArchitecture(x - 1, y);
       const joinsEast = isArchitecture(x + 1, y);
-      const verticalByTerrain = (hasUnderlayTerrain(x - 1, y) ||
-        hasUnderlayTerrain(x + 1, y)) && !joinsWest && !joinsEast;
-      const horizontalByTerrain = (hasUnderlayTerrain(x, y - 1) ||
-        hasUnderlayTerrain(x, y + 1)) && !joinsNorth && !joinsSouth;
+      const fullyIsolated = !joinsNorth && !joinsSouth && !joinsWest && !joinsEast;
+      const verticalByTerrain = !fullyIsolated &&
+        (hasUnderlayTerrain(x - 1, y) || hasUnderlayTerrain(x + 1, y)) &&
+        !joinsWest && !joinsEast;
+      const horizontalByTerrain = !fullyIsolated &&
+        (hasUnderlayTerrain(x, y - 1) || hasUnderlayTerrain(x, y + 1)) &&
+        !joinsNorth && !joinsSouth;
       const vertical = joinsNorth || joinsSouth || verticalByTerrain;
       const horizontal = joinsWest || joinsEast || horizontalByTerrain ||
         (!joinsNorth && !joinsSouth && !joinsWest && !joinsEast && !vertical);
@@ -1923,17 +1948,29 @@ function drawInteriorArchitecture(
       context.beginPath();
       context.rect(regionLeft, regionTop, regionWidth, regionHeight);
       context.clip();
+      if (wallDebugActive("underlay")) {
+        context.fillStyle = resolvedFill.terrain === Terrain.Void
+          ? debugWallColors.underlayVoid
+          : resolvedFill.terrain === Terrain.Ground
+            ? debugWallColors.underlayGround
+            : debugWallColors.underlayOther;
+        context.fillRect(regionLeft, regionTop, regionWidth, regionHeight);
+        context.strokeStyle = "rgba(255,255,255,.75)";
+        context.lineWidth = Math.max(1, cellSize * .025);
+        context.strokeRect(regionLeft, regionTop, regionWidth, regionHeight);
+        context.restore();
+        return;
+      }
       if (resolvedFill.tintIndex !== undefined) {
-        if (!drawFloorTile(left, top)) {
-          drawFallbackFloorSurface(
-            x,
-            y,
-            left,
-            top,
-            resolvedFill.tintIndex,
-            true,
-            true,
-          );
+        // Match the real floor rendering: use the tileset sprite when available so
+        // the floor texture keeps flowing under the wall instead of a flat tint.
+        const tiledFloor = drawFloorTile(left, top);
+        if (!tiledFloor) {
+          context.fillStyle = getTerrainStyle(Terrain.Ground, mode).color;
+          context.fillRect(regionLeft, regionTop, regionWidth, regionHeight);
+          context.fillStyle = style.roomTints[resolvedFill.tintIndex];
+          context.fillRect(regionLeft, regionTop, regionWidth, regionHeight);
+          drawFallbackFloorPattern(x, y, left, top);
         }
       } else {
         context.fillStyle = resolvedFill.base;
@@ -1960,12 +1997,22 @@ function drawInteriorArchitecture(
             regionWidth,
             regionHeight,
           );
+          if (
+            resolvedFill.terrain === Terrain.Beach ||
+            resolvedFill.terrain === Terrain.Road ||
+            resolvedFill.terrain === Terrain.Bridge ||
+            resolvedFill.terrain === Terrain.Difficult
+          ) {
+            drawTerrainDetail(grid, x, y, cellSize, mode, context, resolvedFill.terrain);
+          }
         }
       }
       context.restore();
     };
 
-    context.fillStyle = voidFill.base;
+    context.fillStyle = wallDebugActive("underlay")
+      ? debugWallColors.underlayVoid
+      : voidFill.base;
     context.fillRect(left, top, cellSize, cellSize);
 
     const north = terrainFill(x, y - 1);
@@ -2034,8 +2081,17 @@ function drawInteriorArchitecture(
     gradient.addColorStop(0, style.wallHighlight);
     gradient.addColorStop(.12, style.wallAlt);
     gradient.addColorStop(1, style.wall);
-    context.fillStyle = gradient;
+    context.fillStyle = wallDebugActive("door")
+      ? debugWallColors.doorFrame
+      : gradient;
     context.fillRect(left, top, width, height);
+    if (wallDebugActive("door")) {
+      context.strokeStyle = "rgba(255,255,255,.9)";
+      context.lineWidth = Math.max(1, cellSize * .025);
+      context.strokeRect(left, top, width, height);
+      context.restore();
+      return;
+    }
 
     context.strokeStyle = style.wallDetail;
     context.lineWidth = Math.max(.65, cellSize * .022);
@@ -2261,12 +2317,18 @@ function drawInteriorArchitecture(
       const joinsSouth = isArchitecture(x, y + 1);
       const joinsWest = isArchitecture(x - 1, y);
       const joinsEast = isArchitecture(x + 1, y);
+      // A wall tile with no architecture neighbours at all (e.g. a lone corner
+      // chamfer) has no real run direction; force it to the horizontal fallback
+      // below instead of letting both floor heuristics fire and draw a cross.
+      const fullyIsolated = !joinsNorth && !joinsSouth && !joinsWest && !joinsEast;
       const floorNorth = isRoomFloor(x, y - 1);
       const floorSouth = isRoomFloor(x, y + 1);
       const floorWest = isRoomFloor(x - 1, y);
       const floorEast = isRoomFloor(x + 1, y);
-      const verticalByFloor = (floorWest || floorEast) && !joinsWest && !joinsEast;
-      const horizontalByFloor = (floorNorth || floorSouth) && !joinsNorth && !joinsSouth;
+      const verticalByFloor = !fullyIsolated &&
+        (floorWest || floorEast) && !joinsWest && !joinsEast;
+      const horizontalByFloor = !fullyIsolated &&
+        (floorNorth || floorSouth) && !joinsNorth && !joinsSouth;
       const vertical = joinsNorth || joinsSouth || verticalByFloor;
       const horizontal = joinsWest || joinsEast || horizontalByFloor ||
         (!joinsNorth && !joinsSouth && !joinsWest && !joinsEast && !vertical);
@@ -2346,14 +2408,136 @@ function drawInteriorArchitecture(
       return mask;
     };
     const wallMask = createWallMask();
+    const eraseJunctionDetails = (target: CanvasRenderingContext2D) => {
+      const branchClear = Math.max(networkWallFacadeWidth, networkWallCoreWidth) * 1.15;
+      const halfBranchClear = branchClear * .5;
+      for (let y = 0; y < grid.length; y += 1) {
+        for (let x = 0; x < grid[y].length; x += 1) {
+          if (!isWall(x, y)) continue;
+          const directions = wallDirections(x, y);
+          if (!directions.horizontal || !directions.vertical) continue;
+          const left = x * cellSize;
+          const top = y * cellSize;
+          target.fillRect(left, top, cellSize, cellSize);
+          if (directions.joinsNorth) {
+            target.fillRect(
+              left + cellSize * .5 - halfBranchClear,
+              top - cellSize * .5,
+              branchClear,
+              cellSize * .5,
+            );
+          }
+          if (directions.joinsSouth) {
+            target.fillRect(
+              left + cellSize * .5 - halfBranchClear,
+              top + cellSize,
+              branchClear,
+              cellSize * .5,
+            );
+          }
+          if (directions.joinsWest) {
+            target.fillRect(
+              left - cellSize * .5,
+              top + cellSize * .5 - halfBranchClear,
+              cellSize * .5,
+              branchClear,
+            );
+          }
+          if (directions.joinsEast) {
+            target.fillRect(
+              left + cellSize,
+              top + cellSize * .5 - halfBranchClear,
+              cellSize * .5,
+              branchClear,
+            );
+          }
+        }
+      }
+    };
+    const drawJunctionDebugRegions = () => {
+      const branchClear = Math.max(networkWallFacadeWidth, networkWallCoreWidth) * 1.15;
+      const halfBranchClear = branchClear * .5;
+      context.save();
+      context.fillStyle = debugWallColors.junctionErase;
+      context.strokeStyle = "rgba(255,255,255,.95)";
+      context.lineWidth = Math.max(1, cellSize * .025);
+      for (let y = 0; y < grid.length; y += 1) {
+        for (let x = 0; x < grid[y].length; x += 1) {
+          if (!isWall(x, y)) continue;
+          const directions = wallDirections(x, y);
+          if (!directions.horizontal || !directions.vertical) continue;
+          const left = x * cellSize;
+          const top = y * cellSize;
+          const regions = [
+            [left, top, cellSize, cellSize],
+            ...(directions.joinsNorth
+              ? [[
+                left + cellSize * .5 - halfBranchClear,
+                top - cellSize * .5,
+                branchClear,
+                cellSize * .5,
+              ]]
+              : []),
+            ...(directions.joinsSouth
+              ? [[
+                left + cellSize * .5 - halfBranchClear,
+                top + cellSize,
+                branchClear,
+                cellSize * .5,
+              ]]
+              : []),
+            ...(directions.joinsWest
+              ? [[
+                left - cellSize * .5,
+                top + cellSize * .5 - halfBranchClear,
+                cellSize * .5,
+                branchClear,
+              ]]
+              : []),
+            ...(directions.joinsEast
+              ? [[
+                left + cellSize,
+                top + cellSize * .5 - halfBranchClear,
+                cellSize * .5,
+                branchClear,
+              ]]
+              : []),
+          ] as Array<[number, number, number, number]>;
+          for (const [regionLeft, regionTop, regionWidth, regionHeight] of regions) {
+            context.fillRect(regionLeft, regionTop, regionWidth, regionHeight);
+            context.strokeRect(regionLeft, regionTop, regionWidth, regionHeight);
+          }
+        }
+      }
+      context.restore();
+    };
+    const drawNetworkDebugPaths = () => {
+      context.save();
+      context.globalAlpha = 1;
+      context.strokeStyle = debugWallColors.horizontalPath;
+      strokeWallLines(context, "horizontal", Math.max(2, cellSize * .075));
+      context.strokeStyle = debugWallColors.verticalPath;
+      strokeWallLines(context, "vertical", Math.max(2, cellSize * .075));
+      context.strokeStyle = debugWallColors.facadePath;
+      strokeWallLines(
+        context,
+        "horizontal",
+        Math.max(2, cellSize * .075),
+        cellSize * .25,
+      );
+      context.restore();
+    };
     const drawNetworkShadows = () => {
       const shadow = createOuterMaskShadow(
         wallMask,
         cellSize * .055,
         cellSize * .095,
         Math.max(1.5, cellSize * .13),
-        "rgba(10, 9, 13, .32)",
+        wallDebugActive("shadow") ? debugWallColors.shadow : "rgba(10, 9, 13, .32)",
       );
+      const shadowContext = shadow.getContext("2d")!;
+      shadowContext.globalCompositeOperation = "destination-out";
+      eraseJunctionDetails(shadowContext);
       context.drawImage(shadow, 0, 0);
     };
     const drawNetworkSurface = () => {
@@ -2361,44 +2545,10 @@ function drawInteriorArchitecture(
       layer.width = Math.ceil(mapWidth);
       layer.height = Math.ceil(mapHeight);
       const layerContext = layer.getContext("2d")!;
-      layerContext.fillStyle = style.wall;
+      layerContext.fillStyle = wallDebugActive("surface")
+        ? debugWallColors.surface
+        : style.wall;
       layerContext.fillRect(0, 0, mapWidth, mapHeight);
-
-      layerContext.strokeStyle = style.wallDetail;
-      layerContext.lineWidth = Math.max(.65, cellSize * .022);
-      const courseHeight = style.floorPattern === "wood"
-        ? cellSize * .26
-        : cellSize * .3;
-      if (style.floorPattern === "metal") {
-        for (let seamY = cellSize * .42; seamY < mapHeight; seamY += cellSize * .42) {
-          layerContext.beginPath();
-          layerContext.moveTo(0, seamY);
-          layerContext.lineTo(mapWidth, seamY);
-          layerContext.stroke();
-        }
-      } else {
-        for (let courseY = courseHeight; courseY < mapHeight; courseY += courseHeight) {
-          layerContext.beginPath();
-          layerContext.moveTo(0, courseY);
-          layerContext.lineTo(mapWidth, courseY);
-          layerContext.stroke();
-        }
-        const jointSpacing = style.floorPattern === "wood"
-          ? cellSize * 1.35
-          : cellSize * 1.1;
-        let course = 0;
-        for (let courseTop = 0; courseTop < mapHeight; courseTop += courseHeight) {
-          const courseBottom = Math.min(mapHeight, courseTop + courseHeight);
-          const offset = course % 2 ? jointSpacing * .5 : 0;
-          for (let joint = offset; joint < mapWidth; joint += jointSpacing) {
-            layerContext.beginPath();
-            layerContext.moveTo(joint, courseTop + cellSize * .025);
-            layerContext.lineTo(joint, courseBottom - cellSize * .025);
-            layerContext.stroke();
-          }
-          course += 1;
-        }
-      }
 
       layerContext.globalCompositeOperation = "destination-in";
       layerContext.drawImage(wallMask, 0, 0);
@@ -2411,20 +2561,46 @@ function drawInteriorArchitecture(
       edgeLayer.width = wallMask.width;
       edgeLayer.height = wallMask.height;
       const edgeContext = edgeLayer.getContext("2d")!;
-      edgeContext.drawImage(createMaskEdge(wallMask, 0, -edge, 0, style.wallEdge), 0, 0);
-      edgeContext.drawImage(createMaskEdge(wallMask, -edge, 0, 0, style.wallEdge), 0, 0);
+      edgeContext.drawImage(createMaskEdge(
+        wallMask,
+        0,
+        -edge,
+        0,
+        wallDebugActive("edge") ? debugWallColors.edge : style.wallEdge,
+      ), 0, 0);
+      edgeContext.drawImage(createMaskEdge(
+        wallMask,
+        -edge,
+        0,
+        0,
+        wallDebugActive("edge") ? debugWallColors.edge : style.wallEdge,
+      ), 0, 0);
       edgeContext.drawImage(
-        createMaskEdge(wallMask, 0, highlight, 0, style.wallHighlight),
+        createMaskEdge(
+          wallMask,
+          0,
+          highlight,
+          0,
+          wallDebugActive("highlight") ? debugWallColors.highlight : style.wallHighlight,
+        ),
         0,
         0,
       );
       edgeContext.drawImage(
-        createMaskEdge(wallMask, highlight, 0, 0, style.wallHighlight),
+        createMaskEdge(
+          wallMask,
+          highlight,
+          0,
+          0,
+          wallDebugActive("highlight") ? debugWallColors.highlight : style.wallHighlight,
+        ),
         0,
         0,
       );
       edgeContext.globalCompositeOperation = "destination-in";
       edgeContext.drawImage(wallMask, 0, 0);
+      edgeContext.globalCompositeOperation = "destination-out";
+      eraseJunctionDetails(edgeContext);
       context.drawImage(edgeLayer, 0, 0);
     };
     for (let y = 0; y < grid.length; y += 1) {
@@ -2436,6 +2612,8 @@ function drawInteriorArchitecture(
     drawNetworkShadows();
     drawNetworkSurface();
     drawNetworkEdges();
+    if (wallDebugActive("path")) drawNetworkDebugPaths();
+    if (wallDebugActive("junction")) drawJunctionDebugRegions();
     return;
 
   };
@@ -2487,20 +2665,28 @@ function drawInteriorArchitecture(
       const leafTop = facadeTop + Math.max(1, cellSize * .08);
       const leafHeight = top + cellSize - leafTop;
       drawWallFacade(left, facadeTop, width, facadeHeight, run.x, run.y);
-      context.fillStyle = style.wallAlt;
+      context.fillStyle = wallDebugActive("door")
+        ? debugWallColors.doorFrame
+        : style.wallAlt;
       context.fillRect(left, copingTop, width, copingHeight);
       context.fillRect(left, facadeTop, frameWidth, facadeHeight);
       context.fillRect(left + width - frameWidth, facadeTop, frameWidth, facadeHeight);
-      context.fillStyle = style.wallHighlight;
+      context.fillStyle = wallDebugActive("door")
+        ? debugWallColors.highlight
+        : style.wallHighlight;
       context.fillRect(left, copingTop, width, Math.max(1, cellSize * .035));
-      context.fillStyle = style.doorEdge;
+      context.fillStyle = wallDebugActive("door")
+        ? debugWallColors.edge
+        : style.doorEdge;
       context.fillRect(
         left + frameWidth,
         leafTop - cellSize * .04,
         width - frameWidth * 2,
         top + cellSize - leafTop + cellSize * .04,
       );
-      context.fillStyle = style.door;
+      context.fillStyle = wallDebugActive("door")
+        ? debugWallColors.doorLeaf
+        : style.door;
       traceChamferedRect(
         left + leafInsetX,
         leafTop,
@@ -2509,7 +2695,9 @@ function drawInteriorArchitecture(
         cellSize * .035,
       );
       context.fill();
-      context.strokeStyle = style.doorHighlight;
+      context.strokeStyle = wallDebugActive("door")
+        ? "rgba(255,255,255,.95)"
+        : style.doorHighlight;
       context.lineWidth = Math.max(.7, cellSize * .022);
       const panelCount = Math.max(2, run.length * 3);
       for (let panel = 1; panel < panelCount; panel += 1) {
@@ -2519,7 +2707,9 @@ function drawInteriorArchitecture(
         context.lineTo(panelX, top + cellSize);
         context.stroke();
       }
-      context.fillStyle = style.hardware;
+      context.fillStyle = wallDebugActive("door")
+        ? debugWallColors.highlight
+        : style.hardware;
       context.beginPath();
       context.arc(
         left + width - cellSize * .21,
@@ -2545,7 +2735,9 @@ function drawInteriorArchitecture(
         width: networkWallCoreWidth,
         height,
       };
-    context.fillStyle = style.wallEdge;
+    context.fillStyle = wallDebugActive("door")
+      ? debugWallColors.edge
+      : style.wallEdge;
     context.fillRect(frame.x, frame.y, frame.width, frame.height);
 
     const leaf = horizontal
@@ -2562,7 +2754,9 @@ function drawInteriorArchitecture(
         height: height - cellSize * .1,
       };
 
-    context.fillStyle = style.wallAlt;
+    context.fillStyle = wallDebugActive("door")
+      ? debugWallColors.doorFrame
+      : style.wallAlt;
     if (horizontal) {
       traceChamferedRect(left, frame.y, cellSize * .11, frame.height, cellSize * .035);
       context.fill();
@@ -2575,14 +2769,20 @@ function drawInteriorArchitecture(
       context.fill();
     }
 
-    context.fillStyle = style.door;
-    context.strokeStyle = style.doorEdge;
+    context.fillStyle = wallDebugActive("door")
+      ? debugWallColors.doorLeaf
+      : style.door;
+    context.strokeStyle = wallDebugActive("door")
+      ? debugWallColors.edge
+      : style.doorEdge;
     context.lineWidth = Math.max(1, cellSize * .04);
     traceChamferedRect(leaf.x, leaf.y, leaf.width, leaf.height, cellSize * .035);
     context.fill();
     context.stroke();
 
-    context.strokeStyle = style.wallHighlight;
+    context.strokeStyle = wallDebugActive("door")
+      ? debugWallColors.highlight
+      : style.wallHighlight;
     context.lineWidth = Math.max(.7, cellSize * .018);
     context.beginPath();
     if (horizontal) {
@@ -2598,7 +2798,9 @@ function drawInteriorArchitecture(
     }
     context.stroke();
 
-    context.strokeStyle = style.doorHighlight;
+    context.strokeStyle = wallDebugActive("door")
+      ? "rgba(255,255,255,.95)"
+      : style.doorHighlight;
     context.lineWidth = Math.max(.7, cellSize * .02);
     context.beginPath();
     if (horizontal) {
@@ -2610,7 +2812,9 @@ function drawInteriorArchitecture(
     }
     context.stroke();
 
-    context.fillStyle = style.hardware;
+    context.fillStyle = wallDebugActive("door")
+      ? debugWallColors.highlight
+      : style.hardware;
     context.beginPath();
     context.arc(
       horizontal ? leaf.x + leaf.width - cellSize * .2 : leaf.x + leaf.width * .72,
@@ -7027,16 +7231,18 @@ function drawTerrainDetail(
   cellSize: number,
   mode: LandscapeMode,
   context: CanvasRenderingContext2D,
+  terrainOverride?: TerrainKind,
 ) {
   const tile = grid[y][x];
-  if (tile.terrain === Terrain.Beach) {
+  const terrain = terrainOverride ?? tile.terrain;
+  if (terrain === Terrain.Beach) {
     context.fillStyle = "rgba(111, 92, 59, .25)";
     context.beginPath();
     context.arc(x * cellSize + cellSize * .3, y * cellSize + cellSize * .42, Math.max(1, cellSize * .05), 0, Math.PI * 2);
     context.arc(x * cellSize + cellSize * .7, y * cellSize + cellSize * .68, Math.max(1, cellSize * .04), 0, Math.PI * 2);
     context.fill();
-  } else if (tile.terrain === Terrain.Road || tile.terrain === Terrain.Bridge) {
-    context.strokeStyle = tile.terrain === Terrain.Bridge
+  } else if (terrain === Terrain.Road || terrain === Terrain.Bridge) {
+    context.strokeStyle = terrain === Terrain.Bridge
       ? "rgba(238, 221, 180, .5)"
       : "rgba(238, 225, 196, .25)";
     context.lineWidth = Math.max(1, cellSize * .08);
@@ -7052,16 +7258,16 @@ function drawTerrainDetail(
       }
     }
     context.lineWidth = 1;
-  } else if (tile.terrain === Terrain.Difficult) {
+  } else if (terrain === Terrain.Difficult) {
     drawDifficultTerrainDetail(grid, x, y, cellSize, mode, context);
-  } else if (tile.terrain === Terrain.Ravine) {
+  } else if (terrain === Terrain.Ravine) {
     context.strokeStyle = "rgba(35, 37, 31, .55)";
     context.beginPath();
     context.moveTo(x * cellSize + 2, y * cellSize + cellSize * .72);
     context.lineTo(x * cellSize + cellSize * .45, y * cellSize + cellSize * .3);
     context.lineTo((x + 1) * cellSize - 2, y * cellSize + cellSize * .48);
     context.stroke();
-  } else if (tile.terrain === Terrain.Cliff) {
+  } else if (terrain === Terrain.Cliff) {
     context.fillStyle = "rgba(235, 229, 207, .22)";
     context.beginPath();
     context.moveTo(x * cellSize + cellSize * .12, y * cellSize + cellSize * .75);
@@ -7142,6 +7348,7 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
       options.useTileset ? options.tilesetProps : undefined,
       true,
       drawTerrainBackdropCell,
+      options.wallDebug,
     );
     if (mode === "ship-deck") {
       drawSailingShipDeckElevation(grid, cellSize, context);
@@ -7250,6 +7457,7 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
       undefined,
       false,
       drawTerrainBackdropCell,
+      options.wallDebug,
     );
   }
 

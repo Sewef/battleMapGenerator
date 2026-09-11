@@ -420,6 +420,11 @@ function chamferVesselRooms(grid: Grid, random: Random) {
       return grid[y]?.[x]?.terrain === Terrain.Ground &&
         grid[y]?.[x + inwardX]?.roomId === roomId &&
         grid[y + inwardY]?.[x]?.roomId === roomId &&
+        // Both outward sides must already be the room's own perimeter wall,
+        // otherwise the new wall tile only touches one side and sticks out
+        // as a thin spike instead of a flush corner cut.
+        grid[y - inwardY]?.[x]?.terrain === Terrain.Wall &&
+        grid[y]?.[x - inwardX]?.terrain === Terrain.Wall &&
         !touchesDoor(x, y);
     });
     if (!candidates.length) continue;

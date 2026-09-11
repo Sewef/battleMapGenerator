@@ -21,6 +21,7 @@ import {
 import {
   drawGrid,
   type CustomPropImages,
+  type WallDebugOptions,
 } from "./rendering/canvas";
 import {
   bedAssetDefinitions,
@@ -76,6 +77,9 @@ const useTilesetInput =
   document.querySelector<HTMLInputElement>("#use-tileset")!;
 const stylizedLightingInput =
   document.querySelector<HTMLInputElement>("#stylized-lighting")!;
+const wallDebugInputs = [
+  ...document.querySelectorAll<HTMLInputElement>("[data-wall-debug]"),
+];
 const treePropUrlInput =
   document.querySelector<HTMLInputElement>("#custom-tree-url")!;
 const rockPropUrlInput =
@@ -292,6 +296,16 @@ function applyPreset(preset: Preset, useNewSeed = true) {
   updateLabels();
 }
 
+function activeWallDebugOptions(): WallDebugOptions {
+  return wallDebugInputs.reduce<WallDebugOptions>((options, input) => {
+    if (input.checked) {
+      const key = input.dataset.wallDebug as keyof WallDebugOptions | undefined;
+      if (key) options[key] = true;
+    }
+    return options;
+  }, {});
+}
+
 function renderMap(grid: Grid, targetCanvas = previewCanvas, cellSize?: number) {
   ensurePropsForMode(activePreset.mode);
   const useTileset = tilesetEnabledFor(activePreset.mode);
@@ -327,6 +341,7 @@ function renderMap(grid: Grid, targetCanvas = previewCanvas, cellSize?: number) 
     tilesetProps: tilesetPropsReady(activePreset.mode) ? tilesetProps : undefined,
     customProps: useTileset ? activeCustomProps() : undefined,
     stylizedLighting: stylizedLightingInput.checked,
+    wallDebug: targetCanvas === previewCanvas ? activeWallDebugOptions() : undefined,
   });
 }
 
@@ -1805,6 +1820,9 @@ useTilesetInput.addEventListener("change", () => {
   renderPropEditorPreview();
 });
 stylizedLightingInput.addEventListener("change", () => renderMap(currentGrid));
+for (const input of wallDebugInputs) {
+  input.addEventListener("change", () => renderMap(currentGrid));
+}
 collectTilesetImages({ tilesetImage, tilesetTerrain }).forEach((image) => {
   image.addEventListener("load", () => {
     if (!tilesetReady() || tilesetTerrainReadyLogged) return;

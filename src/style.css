@@ -218,6 +218,14 @@ canvas { display: block; max-width: 100%; height: auto !important; box-shadow: 0
 .custom-prop-settings[open] summary::after { content: "−"; }
 .custom-prop-body { padding: 2px 12px 12px; }
 .custom-prop-body > p:first-child { margin: 0 0 10px; color: #68716b; font-size: 9px; }
+.wall-debug-settings { border-top: 1px solid #d0ccbf; }
+.wall-debug-settings summary { display: flex; align-items: center; gap: 9px; padding: 11px 2px; color: #59635d; cursor: pointer; list-style: none; font-size: 9px; letter-spacing: .05em; }
+.wall-debug-settings summary::-webkit-details-marker { display: none; }
+.wall-debug-settings summary small { margin-left: auto; color: #565c58; font-size: 7px; }
+.wall-debug-settings summary::after { width: 14px; content: "+"; color: #536b51; font-size: 14px; text-align: center; }
+.wall-debug-settings[open] summary::after { content: "-"; }
+.wall-debug-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; padding: 2px 0 12px; }
+.wall-debug-grid .grid-option { min-height: 30px; padding: 0 9px; border: 1px solid #c8c4b6; background: #f8f6ed; }
 .custom-prop-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .custom-prop-notice { margin: 10px 0 0; color: #8a644f; font-size: 8px; line-height: 1.5; }
 .editor-settings { gap: 16px; }
