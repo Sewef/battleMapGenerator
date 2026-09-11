@@ -845,6 +845,7 @@ function createTerrainMask(
   width: number,
   height: number,
   includeUnderlying = true,
+  excludeArchitecture = false,
 ) {
   const mask = document.createElement("canvas");
   mask.width = width;
@@ -853,6 +854,12 @@ function createTerrainMask(
   maskContext.fillStyle = "#fff";
   for (let y = 0; y < grid.length; y += 1) {
     for (let x = 0; x < grid[y].length; x += 1) {
+      if (
+        excludeArchitecture &&
+        (grid[y][x].terrain === Terrain.Wall || grid[y][x].terrain === Terrain.Door)
+      ) {
+        continue;
+      }
       const tileTerrain = includeUnderlying
         ? underlyingTerrain(grid, x, y)
         : grid[y][x].terrain;
@@ -1433,8 +1440,16 @@ function drawTerrainLayers(
   );
   const terrainFill = (terrain: TerrainKind) =>
     tilesetPatterns.get(terrain) ?? getTerrainStyle(terrain, mode).color;
-  const drawTerrainBackdropCell = (x: number, y: number) => {
-    const tileTerrain = underlyingTerrain(grid, x, y);
+  const drawTerrainBackdropCell = (
+    x: number,
+    y: number,
+    includeArchitectureUnderlay = true,
+  ) => {
+    const rawTerrain = grid[y]?.[x]?.terrain;
+    const tileTerrain = !includeArchitectureUnderlay &&
+      (rawTerrain === Terrain.Wall || rawTerrain === Terrain.Door)
+        ? Terrain.Void
+        : underlyingTerrain(grid, x, y);
     const terrain = tileTerrain === Terrain.Cliff
       ? terrainBackdropTerrain(grid, x, y, Terrain.Cliff)
       : tileTerrain === Terrain.Water
@@ -1458,14 +1473,22 @@ function drawTerrainLayers(
     for (let x = 0; x < grid[y].length; x += 1) {
       const tileTerrain = underlyingTerrain(grid, x, y);
       present.add(tileTerrain);
-      drawTerrainBackdropCell(x, y);
+      drawTerrainBackdropCell(x, y, false);
     }
   }
   context.globalAlpha = 1;
 
   for (const terrain of terrainPaintOrder) {
     if (!present.has(terrain)) continue;
-    const mask = createTerrainMask(grid, terrain, cellSize, width, height);
+    const mask = createTerrainMask(
+      grid,
+      terrain,
+      cellSize,
+      width,
+      height,
+      true,
+      true,
+    );
     const layer = document.createElement("canvas");
     layer.width = width;
     layer.height = height;
@@ -1755,20 +1778,12 @@ function drawInteriorArchitecture(
     }
     return 0;
   };
-  const drawFallbackFloorSurface = (
+  const drawFallbackFloorPattern = (
     x: number,
     y: number,
     left: number,
     top: number,
-    tintIndex: number,
-    drawBase: boolean,
   ) => {
-    if (drawBase) {
-      context.fillStyle = getTerrainStyle(Terrain.Ground, mode).color;
-      context.fillRect(left, top, cellSize, cellSize);
-    }
-    context.fillStyle = style.roomTints[tintIndex];
-    context.fillRect(left, top, cellSize, cellSize);
     context.lineWidth = Math.max(.65, cellSize * .018);
     if (style.floorPattern === "wood") {
       context.strokeStyle = "rgba(63, 39, 25, .14)";
@@ -1816,6 +1831,24 @@ function drawInteriorArchitecture(
       }
     }
   };
+  const drawFallbackFloorSurface = (
+    x: number,
+    y: number,
+    left: number,
+    top: number,
+    tintIndex: number,
+    drawBase: boolean,
+    drawPattern = true,
+  ) => {
+    if (drawBase) {
+      context.fillStyle = getTerrainStyle(Terrain.Ground, mode).color;
+      context.fillRect(left, top, cellSize, cellSize);
+    }
+    context.fillStyle = style.roomTints[tintIndex];
+    context.fillRect(left, top, cellSize, cellSize);
+    if (!drawPattern) return;
+    drawFallbackFloorPattern(x, y, left, top);
+  };
   const drawTilesetArchitectureUnderlay = (x: number, y: number) => {
     if (!drawFloors) {
       drawTerrainBackdropCell?.(x, y);
@@ -1823,15 +1856,10 @@ function drawInteriorArchitecture(
     }
     const left = x * cellSize;
     const top = y * cellSize;
-    const tiledFloor = drawFloorTile(left, top);
     type UnderlayFill = {
       base: string;
       terrain: TerrainKind;
       tintIndex?: number;
-    };
-    const isVoidLike = (sampleX: number, sampleY: number) => {
-      const terrain = grid[sampleY]?.[sampleX]?.terrain;
-      return terrain === undefined || terrain === Terrain.Void;
     };
     const terrainFill = (sampleX: number, sampleY: number): UnderlayFill | undefined => {
       const tile = grid[sampleY]?.[sampleX];
@@ -1850,52 +1878,72 @@ function drawInteriorArchitecture(
         terrain: tile.terrain,
       };
     };
-    const fallbackFloorFill: UnderlayFill = {
-      base: getTerrainStyle(Terrain.Ground, mode).color,
-      terrain: Terrain.Ground,
-      tintIndex: fallbackFloorTintIndex(x, y),
-    };
     const voidFill: UnderlayFill = {
       base: getTerrainStyle(Terrain.Void, mode).color,
       terrain: Terrain.Void,
     };
-    for (const corner of [
-      { dx: -1, dy: -1, offsetX: 0, offsetY: 0 },
-      { dx: 1, dy: -1, offsetX: .5, offsetY: 0 },
-      { dx: -1, dy: 1, offsetX: 0, offsetY: .5 },
-      { dx: 1, dy: 1, offsetX: .5, offsetY: .5 },
-    ] as const) {
-      const verticalFill = terrainFill(x, y + corner.dy);
-      const horizontalFill = terrainFill(x + corner.dx, y);
-      const diagonalFill = terrainFill(x + corner.dx, y + corner.dy);
-      const fill = verticalFill ?? horizontalFill ?? diagonalFill ??
-        (
-          isVoidLike(x, y + corner.dy) ||
-          isVoidLike(x + corner.dx, y) ||
-          isVoidLike(x + corner.dx, y + corner.dy)
-            ? voidFill
-            : fallbackFloorFill
-        );
-      if (tiledFloor && fill.terrain === Terrain.Ground) continue;
+    const hasUnderlayTerrain = (sampleX: number, sampleY: number) => {
+      const terrain = grid[sampleY]?.[sampleX]?.terrain;
+      return terrain !== undefined &&
+        terrain !== Terrain.Void &&
+        !overlayTerrains.has(terrain);
+    };
+    const architectureDirection = () => {
+      const tile = grid[y]?.[x];
+      if (tile?.terrain === Terrain.Door) {
+        return {
+          horizontal: (tile.doorOrientation ?? "horizontal") === "horizontal",
+          vertical: tile.doorOrientation === "vertical",
+        };
+      }
+      const joinsNorth = isArchitecture(x, y - 1);
+      const joinsSouth = isArchitecture(x, y + 1);
+      const joinsWest = isArchitecture(x - 1, y);
+      const joinsEast = isArchitecture(x + 1, y);
+      const verticalByTerrain = (hasUnderlayTerrain(x - 1, y) ||
+        hasUnderlayTerrain(x + 1, y)) && !joinsWest && !joinsEast;
+      const horizontalByTerrain = (hasUnderlayTerrain(x, y - 1) ||
+        hasUnderlayTerrain(x, y + 1)) && !joinsNorth && !joinsSouth;
+      const vertical = joinsNorth || joinsSouth || verticalByTerrain;
+      const horizontal = joinsWest || joinsEast || horizontalByTerrain ||
+        (!joinsNorth && !joinsSouth && !joinsWest && !joinsEast && !vertical);
+      return { horizontal, vertical };
+    };
+    const direction = architectureDirection();
 
-      const quarterLeft = left + cellSize * corner.offsetX;
-      const quarterTop = top + cellSize * corner.offsetY;
-      if (!tiledFloor && fill.tintIndex !== undefined) {
-        context.save();
-        context.beginPath();
-        context.rect(quarterLeft, quarterTop, cellSize * .5, cellSize * .5);
-        context.clip();
-        drawFallbackFloorSurface(x, y, left, top, fill.tintIndex, true);
-        context.restore();
+    const paintUnderlayRegion = (
+      fill: UnderlayFill | undefined,
+      regionLeft: number,
+      regionTop: number,
+      regionWidth: number,
+      regionHeight: number,
+    ) => {
+      const resolvedFill = fill ?? voidFill;
+      context.save();
+      context.beginPath();
+      context.rect(regionLeft, regionTop, regionWidth, regionHeight);
+      context.clip();
+      if (resolvedFill.tintIndex !== undefined) {
+        if (!drawFloorTile(left, top)) {
+          drawFallbackFloorSurface(
+            x,
+            y,
+            left,
+            top,
+            resolvedFill.tintIndex,
+            true,
+            true,
+          );
+        }
       } else {
-        context.fillStyle = fill.base;
+        context.fillStyle = resolvedFill.base;
         context.fillRect(
-          quarterLeft,
-          quarterTop,
-          cellSize * .5,
-          cellSize * .5,
+          regionLeft,
+          regionTop,
+          regionWidth,
+          regionHeight,
         );
-        if (!tiledFloor && fill.terrain !== Terrain.Void) {
+        if (resolvedFill.terrain !== Terrain.Void) {
           const gradient = context.createLinearGradient(
             left,
             top,
@@ -1907,14 +1955,62 @@ function drawInteriorArchitecture(
           gradient.addColorStop(1, "rgba(19,31,25,.10)");
           context.fillStyle = gradient;
           context.fillRect(
-            quarterLeft,
-            quarterTop,
-            cellSize * .5,
-            cellSize * .5,
+            regionLeft,
+            regionTop,
+            regionWidth,
+            regionHeight,
           );
         }
       }
+      context.restore();
+    };
+
+    context.fillStyle = voidFill.base;
+    context.fillRect(left, top, cellSize, cellSize);
+
+    const north = terrainFill(x, y - 1);
+    const south = terrainFill(x, y + 1);
+    const west = terrainFill(x - 1, y);
+    const east = terrainFill(x + 1, y);
+    if (direction.horizontal && !direction.vertical) {
+      paintUnderlayRegion(north, left, top, cellSize, cellSize * .5);
+      paintUnderlayRegion(south, left, top + cellSize * .5, cellSize, cellSize * .5);
+      return;
     }
+    if (direction.vertical && !direction.horizontal) {
+      paintUnderlayRegion(west, left, top, cellSize * .5, cellSize);
+      paintUnderlayRegion(east, left + cellSize * .5, top, cellSize * .5, cellSize);
+      return;
+    }
+
+    paintUnderlayRegion(
+      terrainFill(x - 1, y - 1) ?? north ?? west,
+      left,
+      top,
+      cellSize * .5,
+      cellSize * .5,
+    );
+    paintUnderlayRegion(
+      terrainFill(x + 1, y - 1) ?? north ?? east,
+      left + cellSize * .5,
+      top,
+      cellSize * .5,
+      cellSize * .5,
+    );
+    paintUnderlayRegion(
+      terrainFill(x - 1, y + 1) ?? south ?? west,
+      left,
+      top + cellSize * .5,
+      cellSize * .5,
+      cellSize * .5,
+    );
+    paintUnderlayRegion(
+      terrainFill(x + 1, y + 1) ?? south ?? east,
+      left + cellSize * .5,
+      top + cellSize * .5,
+      cellSize * .5,
+      cellSize * .5,
+    );
   };
   const drawWallFacade = (
     left: number,
@@ -2543,6 +2639,7 @@ function drawInteriorArchitecture(
             top,
             fallbackFloorTintIndex(x, y),
             false,
+            true,
           );
         }
       }
