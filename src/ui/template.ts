@@ -350,7 +350,7 @@ export function renderApp(root: HTMLElement) {
                 <small>Legend, custom images</small>
               </summary>
             <div class="map-content-details-body">
-            <details class="wall-debug-settings">
+            <details class="wall-debug-settings" hidden>
               <summary>
                 <span>Wall render debug</span>
                 <small>Preview only</small>
