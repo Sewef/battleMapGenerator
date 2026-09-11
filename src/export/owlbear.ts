@@ -786,6 +786,91 @@ function interiorPropItem(
   };
 }
 
+function stoolPathCommands(radius: number) {
+  const kappa = 0.7071067690849304;
+  const branchStart = radius * 1.08;
+  const branchEnd = radius * 1.48;
+  const diagonal = Math.SQRT1_2;
+  return [
+    [0, 0, radius],
+    [3, radius, radius, radius, 0, kappa],
+    [3, radius, -radius, 0, -radius, kappa],
+    [3, -radius, -radius, -radius, 0, kappa],
+    [3, -radius, radius, 0, radius, kappa],
+    [5],
+    [0, -branchStart * diagonal, -branchStart * diagonal],
+    [1, -branchEnd * diagonal, -branchEnd * diagonal],
+    [0, branchStart * diagonal, -branchStart * diagonal],
+    [1, branchEnd * diagonal, -branchEnd * diagonal],
+    [0, -branchStart * diagonal, branchStart * diagonal],
+    [1, -branchEnd * diagonal, branchEnd * diagonal],
+    [0, branchStart * diagonal, branchStart * diagonal],
+    [1, branchEnd * diagonal, branchEnd * diagonal],
+  ];
+}
+
+function stoolPathItem(
+  id: string,
+  prop: ExportedInteriorProp,
+  baseZIndex: number,
+  lightSource?: MapLightSource,
+  tieBreaker = 0,
+) {
+  const minimumX = Math.min(...prop.points.map(({ x }) => x));
+  const maximumX = Math.max(...prop.points.map(({ x }) => x));
+  const minimumY = Math.min(...prop.points.map(({ y }) => y));
+  const maximumY = Math.max(...prop.points.map(({ y }) => y));
+  const widthInCells = maximumX - minimumX + 1;
+  const heightInCells = maximumY - minimumY + 1;
+  const position = {
+    x: (minimumX + widthInCells / 2) * OWLBEAR_SCENE_DPI,
+    y: (minimumY + heightInCells / 2) * OWLBEAR_SCENE_DPI,
+  };
+  const radius = Math.max(14, Math.min(widthInCells, heightInCells) * OWLBEAR_SCENE_DPI * .18);
+  const zIndex = perspectiveZIndex(
+    baseZIndex,
+    maximumY + 1,
+    minimumX + widthInCells / 2,
+    tieBreaker,
+  );
+  const roomSuffix = prop.roomRole ? ` Â· ${prop.roomRole}` : "";
+  return {
+    id,
+    name: `Stool ${prop.id}${roomSuffix}`,
+    zIndex,
+    locked: false,
+    metadata: {
+      "com.touchgrass/export": true,
+      "com.touchgrass/interior-prop": {
+        kind: prop.kind,
+        id: prop.id,
+        orientation: prop.orientation,
+        facing: prop.facing,
+        roomRole: prop.roomRole,
+        footprint: prop.points,
+      },
+      ...(lightSource
+        ? { "rodeo.owlbear.dynamic-fog/light": dynamicFogLightMetadata(lightSource) }
+        : {}),
+    },
+    position,
+    rotation: 0,
+    scale: { x: 1, y: 1 },
+    type: "PATH",
+    visible: true,
+    layer: "PROP",
+    style: {
+      fillColor: "#9b6a47",
+      fillOpacity: 1,
+      strokeColor: "#422b20",
+      strokeOpacity: .9,
+      strokeWidth: 5,
+      strokeDash: [],
+    },
+    commands: stoolPathCommands(radius),
+  };
+}
+
 function bedPathCommands(
   width: number,
   height: number,
@@ -1481,6 +1566,7 @@ export async function createOwlbearSceneJson(
       ReturnType<typeof imageItem> |
       ReturnType<typeof outdoorPropItem> |
       ReturnType<typeof interiorPropItem> |
+      ReturnType<typeof stoolPathItem> |
       ReturnType<typeof bedPathItem> |
       ReturnType<typeof statuePathItem> |
       ReturnType<typeof fogItem> |
@@ -1657,7 +1743,15 @@ export async function createOwlbearSceneJson(
       propTieBreaker += sprites.length;
     } else {
       const id = crypto.randomUUID();
-      if (prop.kind === "bed") {
+      if (prop.kind === "chair") {
+        shared[id] = stoolPathItem(
+          id,
+          prop,
+          baseZIndex,
+          lightSource,
+          propTieBreaker,
+        );
+      } else if (prop.kind === "bed") {
         shared[id] = bedPathItem(
           id,
           prop,
