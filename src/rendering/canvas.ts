@@ -2662,7 +2662,8 @@ function drawInteriorArchitecture(
       const copingHeight = Math.max(1, networkWallCoreWidth * .32);
       const frameWidth = Math.max(1, cellSize * .07);
       const leafInsetX = cellSize * .1;
-      const leafTop = facadeTop + Math.max(1, cellSize * .08);
+      const leafInsetY = Math.max(1, cellSize * .025);
+      const leafTop = facadeTop + leafInsetY;
       const leafHeight = top + cellSize - leafTop;
       drawWallFacade(left, facadeTop, width, facadeHeight, run.x, run.y);
       context.fillStyle = wallDebugActive("door")
@@ -2682,7 +2683,7 @@ function drawInteriorArchitecture(
         left + frameWidth,
         leafTop - cellSize * .04,
         width - frameWidth * 2,
-        top + cellSize - leafTop + cellSize * .04,
+        top + cellSize - leafTop + leafInsetY,
       );
       context.fillStyle = wallDebugActive("door")
         ? debugWallColors.doorLeaf
@@ -2740,18 +2741,19 @@ function drawInteriorArchitecture(
       : style.wallEdge;
     context.fillRect(frame.x, frame.y, frame.width, frame.height);
 
+    const doorInset = Math.max(1, cellSize * .025);
     const leaf = horizontal
       ? {
-        x: left + cellSize * .04,
-        y: top + networkWallTopOffset + cellSize * .08,
-        width: width - cellSize * .08,
-        height: cellSize - networkWallTopOffset - cellSize * .08,
+        x: left + doorInset,
+        y: frame.y + doorInset,
+        width: width - doorInset * 2,
+        height: frame.height - doorInset * 2,
       }
       : {
-        x: left + cellSize * .5 - networkWallCoreWidth * .32,
-        y: top + cellSize * .05,
-        width: networkWallCoreWidth * .64,
-        height: height - cellSize * .1,
+        x: frame.x + doorInset,
+        y: top + doorInset,
+        width: frame.width - doorInset * 2,
+        height: height - doorInset * 2,
       };
 
     context.fillStyle = wallDebugActive("door")
@@ -2791,10 +2793,10 @@ function drawInteriorArchitecture(
       context.moveTo(left + width - cellSize * .1, frame.y + cellSize * .02);
       context.lineTo(left + width - cellSize * .1, top + cellSize);
     } else {
-      context.moveTo(left + cellSize * .27, top + cellSize * .1);
-      context.lineTo(left + cellSize * .73, top + cellSize * .1);
-      context.moveTo(left + cellSize * .27, top + height - cellSize * .1);
-      context.lineTo(left + cellSize * .73, top + height - cellSize * .1);
+      context.moveTo(frame.x + doorInset, top + cellSize * .1);
+      context.lineTo(frame.x + frame.width - doorInset, top + cellSize * .1);
+      context.moveTo(frame.x + doorInset, top + height - cellSize * .1);
+      context.lineTo(frame.x + frame.width - doorInset, top + height - cellSize * .1);
     }
     context.stroke();
 
