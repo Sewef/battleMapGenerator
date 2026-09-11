@@ -1729,6 +1729,32 @@ function drawInteriorArchitecture(
   };
   const isRoomFloor = (x: number, y: number) =>
     grid[y]?.[x]?.terrain === Terrain.Ground;
+  const roomTintIndex = (roomId: number | undefined) => {
+    if (mode === "ship-deck") return 0;
+    const length = style.roomTints.length;
+    return (((roomId ?? 0) % length) + length) % length;
+  };
+  const fallbackFloorTintIndex = (x: number, y: number) => {
+    const tile = grid[y]?.[x];
+    if (tile?.terrain === Terrain.Ground) return roomTintIndex(tile.roomId);
+    const adjacentFloorOffsets = [
+      [0, 1],
+      [0, -1],
+      [-1, 0],
+      [1, 0],
+      [-1, 1],
+      [1, 1],
+      [-1, -1],
+      [1, -1],
+    ] as const;
+    for (const [dx, dy] of adjacentFloorOffsets) {
+      const neighbor = grid[y + dy]?.[x + dx];
+      if (neighbor?.terrain === Terrain.Ground) {
+        return roomTintIndex(neighbor.roomId);
+      }
+    }
+    return 0;
+  };
   const drawTilesetArchitectureUnderlay = (x: number, y: number) => {
     if (!drawFloors) {
       drawTerrainBackdropCell?.(x, y);
@@ -1736,22 +1762,68 @@ function drawInteriorArchitecture(
     }
     const left = x * cellSize;
     const top = y * cellSize;
-    if (!drawFloorTile(left, top)) {
-      context.fillStyle = style.roomTints[0];
-      context.fillRect(left, top, cellSize, cellSize);
-    }
-    context.fillStyle = getTerrainStyle(Terrain.Void, mode).color;
-    if (grid[y - 1]?.[x]?.terrain === Terrain.Void || !grid[y - 1]?.[x]) {
-      context.fillRect(left, top, cellSize, cellSize * .5);
-    }
-    if (grid[y]?.[x + 1]?.terrain === Terrain.Void || !grid[y]?.[x + 1]) {
-      context.fillRect(left + cellSize * .5, top, cellSize * .5, cellSize);
-    }
-    if (grid[y + 1]?.[x]?.terrain === Terrain.Void || !grid[y + 1]?.[x]) {
-      context.fillRect(left, top + cellSize * .5, cellSize, cellSize * .5);
-    }
-    if (grid[y]?.[x - 1]?.terrain === Terrain.Void || !grid[y]?.[x - 1]) {
-      context.fillRect(left, top, cellSize * .5, cellSize);
+    const tiledFloor = drawFloorTile(left, top);
+    type UnderlayFill = {
+      base: string;
+      tint?: string;
+    };
+    const isVoidLike = (sampleX: number, sampleY: number) => {
+      const terrain = grid[sampleY]?.[sampleX]?.terrain;
+      return terrain === undefined || terrain === Terrain.Void;
+    };
+    const floorFill = (sampleX: number, sampleY: number): UnderlayFill | undefined => {
+      const tile = grid[sampleY]?.[sampleX];
+      return tile?.terrain === Terrain.Ground
+        ? {
+          base: getTerrainStyle(Terrain.Ground, mode).color,
+          tint: style.roomTints[roomTintIndex(tile.roomId)],
+        }
+        : undefined;
+    };
+    const fallbackFloorFill: UnderlayFill = {
+      base: getTerrainStyle(Terrain.Ground, mode).color,
+      tint: style.roomTints[fallbackFloorTintIndex(x, y)],
+    };
+    const voidFill: UnderlayFill = {
+      base: getTerrainStyle(Terrain.Void, mode).color,
+    };
+    for (const corner of [
+      { dx: -1, dy: -1, offsetX: 0, offsetY: 0 },
+      { dx: 1, dy: -1, offsetX: .5, offsetY: 0 },
+      { dx: -1, dy: 1, offsetX: 0, offsetY: .5 },
+      { dx: 1, dy: 1, offsetX: .5, offsetY: .5 },
+    ] as const) {
+      const verticalFill = floorFill(x, y + corner.dy);
+      const horizontalFill = floorFill(x + corner.dx, y);
+      const diagonalFill = floorFill(x + corner.dx, y + corner.dy);
+      const fill = verticalFill ?? horizontalFill ?? diagonalFill ??
+        (
+          isVoidLike(x, y + corner.dy) ||
+          isVoidLike(x + corner.dx, y) ||
+          isVoidLike(x + corner.dx, y + corner.dy)
+            ? voidFill
+            : fallbackFloorFill
+        );
+      if (tiledFloor && fill !== voidFill) continue;
+
+      const quarterLeft = left + cellSize * corner.offsetX;
+      const quarterTop = top + cellSize * corner.offsetY;
+      context.fillStyle = fill.base;
+      context.fillRect(
+        quarterLeft,
+        quarterTop,
+        cellSize * .5,
+        cellSize * .5,
+      );
+      if (!tiledFloor && fill.tint) {
+        context.fillStyle = fill.tint;
+        context.fillRect(
+          quarterLeft,
+          quarterTop,
+          cellSize * .5,
+          cellSize * .5,
+        );
+      }
     }
   };
   const drawWallFacade = (
@@ -1761,6 +1833,7 @@ function drawInteriorArchitecture(
     height: number,
     wallX: number,
     wallY: number,
+    endShadow = true,
   ) => {
     if (width <= 0 || height <= 0) return;
     context.save();
@@ -1841,8 +1914,10 @@ function drawInteriorArchitecture(
       }
     }
 
-    context.fillStyle = "rgba(10, 9, 14, .2)";
-    context.fillRect(left, top + height * .9, width, height * .1);
+    if (endShadow) {
+      context.fillStyle = "rgba(10, 9, 14, .2)";
+      context.fillRect(left, top + height * .9, width, height * .1);
+    }
     context.restore();
   };
   const traceChamferedRect = (
@@ -1989,492 +2064,218 @@ function drawInteriorArchitecture(
     context.restore();
   };
   const drawWallNetworks = () => {
-    // Collision remains cell-based, while the visible wall becomes a thinner
-    // graph through cell centers. Angles no longer fill their entire cell.
+    type WallNetworkRect = {
+      left: number;
+      top: number;
+      width: number;
+      height: number;
+      x: number;
+      y: number;
+      kind: "horizontal" | "vertical";
+    };
+    const mapWidth = (grid[0]?.length ?? 0) * cellSize;
+    const mapHeight = grid.length * cellSize;
+    const sideLeft = .29;
+    const sideRight = .71;
+    const wallRectangles = (x: number, y: number): WallNetworkRect[] => {
+      const left = x * cellSize;
+      const top = y * cellSize;
+      const joinsNorth = isArchitecture(x, y - 1);
+      const joinsSouth = isArchitecture(x, y + 1);
+      const joinsWest = isArchitecture(x - 1, y);
+      const joinsEast = isArchitecture(x + 1, y);
+      const frontFacing = isRoomFloor(x, y + 1) ||
+        (joinsWest && isRoomFloor(x - 1, y + 1)) ||
+        (joinsEast && isRoomFloor(x + 1, y + 1));
+      const backFacing = isRoomFloor(x, y - 1) ||
+        (joinsWest && isRoomFloor(x - 1, y - 1)) ||
+        (joinsEast && isRoomFloor(x + 1, y - 1));
+      const sideFacing = isRoomFloor(x - 1, y) || isRoomFloor(x + 1, y);
+      const horizontalTop = frontFacing ? .27 : .29;
+      const horizontalBottom = frontFacing ? 1 : backFacing ? .78 : .71;
+      const hasVertical = joinsNorth || joinsSouth || sideFacing || (!joinsWest && !joinsEast);
+      const hasHorizontal = joinsWest || joinsEast || frontFacing || backFacing ||
+        (!joinsNorth && !joinsSouth);
+      const rectangles: WallNetworkRect[] = [];
+
+      if (hasVertical) {
+        const topRatio = joinsNorth ? 0 : horizontalTop;
+        const bottomRatio = joinsSouth ? 1 : horizontalBottom;
+        rectangles.push({
+          left: left + sideLeft * cellSize,
+          top: top + topRatio * cellSize,
+          width: (sideRight - sideLeft) * cellSize,
+          height: (bottomRatio - topRatio) * cellSize,
+          x,
+          y,
+          kind: "vertical",
+        });
+      }
+      if (hasHorizontal) {
+        const leftRatio = joinsWest ? 0 : sideLeft;
+        const rightRatio = joinsEast ? 1 : sideRight;
+        rectangles.push({
+          left: left + leftRatio * cellSize,
+          top: top + horizontalTop * cellSize,
+          width: (rightRatio - leftRatio) * cellSize,
+          height: (horizontalBottom - horizontalTop) * cellSize,
+          x,
+          y,
+          kind: "horizontal",
+        });
+      }
+      return rectangles.filter(({ width, height }) => width > 0 && height > 0);
+    };
+    const traceWallMask = () => {
+      context.beginPath();
+      for (let y = 0; y < grid.length; y += 1) {
+        for (let x = 0; x < grid[y].length; x += 1) {
+          if (!isWall(x, y)) continue;
+          for (const rect of wallRectangles(x, y)) {
+            context.rect(rect.left, rect.top, rect.width, rect.height);
+          }
+        }
+      }
+    };
+    const createWallMask = () => {
+      const mask = document.createElement("canvas");
+      mask.width = Math.ceil(mapWidth);
+      mask.height = Math.ceil(mapHeight);
+      const maskContext = mask.getContext("2d")!;
+      maskContext.fillStyle = "#000";
+      for (let y = 0; y < grid.length; y += 1) {
+        for (let x = 0; x < grid[y].length; x += 1) {
+          if (!isWall(x, y)) continue;
+          for (const rect of wallRectangles(x, y)) {
+            maskContext.fillRect(rect.left, rect.top, rect.width, rect.height);
+          }
+        }
+      }
+      return mask;
+    };
+    const wallMask = createWallMask();
+    const drawNetworkShadows = () => {
+      const shadow = createOuterMaskShadow(
+        wallMask,
+        cellSize * .055,
+        cellSize * .095,
+        Math.max(1.5, cellSize * .13),
+        "rgba(10, 9, 13, .32)",
+      );
+      context.drawImage(shadow, 0, 0);
+    };
+    const drawNetworkSurface = () => {
+      context.save();
+      traceWallMask();
+      context.clip();
+      context.fillStyle = style.wall;
+      context.fillRect(0, 0, mapWidth, mapHeight);
+
+      context.strokeStyle = style.wallDetail;
+      context.lineWidth = Math.max(.65, cellSize * .022);
+      const courseHeight = style.floorPattern === "wood"
+        ? cellSize * .26
+        : cellSize * .3;
+      if (style.floorPattern === "metal") {
+        for (let seamY = cellSize * .42; seamY < mapHeight; seamY += cellSize * .42) {
+          context.beginPath();
+          context.moveTo(0, seamY);
+          context.lineTo(mapWidth, seamY);
+          context.stroke();
+        }
+      } else {
+        for (let courseY = courseHeight; courseY < mapHeight; courseY += courseHeight) {
+          context.beginPath();
+          context.moveTo(0, courseY);
+          context.lineTo(mapWidth, courseY);
+          context.stroke();
+        }
+        const jointSpacing = style.floorPattern === "wood"
+          ? cellSize * 1.35
+          : cellSize * 1.1;
+        let course = 0;
+        for (let courseTop = 0; courseTop < mapHeight; courseTop += courseHeight) {
+          const courseBottom = Math.min(mapHeight, courseTop + courseHeight);
+          const offset = course % 2 ? jointSpacing * .5 : 0;
+          for (let joint = offset; joint < mapWidth; joint += jointSpacing) {
+            context.beginPath();
+            context.moveTo(joint, courseTop + cellSize * .025);
+            context.lineTo(joint, courseBottom - cellSize * .025);
+            context.stroke();
+          }
+          course += 1;
+        }
+      }
+
+      context.restore();
+    };
+    const drawNetworkEdges = () => {
+      context.save();
+      context.strokeStyle = style.wallEdge;
+      context.lineWidth = Math.max(1, cellSize * .045);
+      context.lineCap = "butt";
+      context.lineJoin = "miter";
+      context.beginPath();
+      for (let y = 0; y < grid.length; y += 1) {
+        for (let x = 0; x < grid[y].length; x += 1) {
+          if (!isWall(x, y)) continue;
+          for (const rect of wallRectangles(x, y)) {
+            if (rect.kind === "vertical") {
+              if (!isArchitecture(x, y - 1)) {
+                context.moveTo(rect.left, rect.top);
+                context.lineTo(rect.left + rect.width, rect.top);
+              }
+              if (!isArchitecture(x, y + 1)) {
+                context.moveTo(rect.left, rect.top + rect.height);
+                context.lineTo(rect.left + rect.width, rect.top + rect.height);
+              }
+            } else {
+              if (!isArchitecture(x - 1, y)) {
+                context.moveTo(rect.left, rect.top);
+                context.lineTo(rect.left, rect.top + rect.height);
+              }
+              if (!isArchitecture(x + 1, y)) {
+                context.moveTo(rect.left + rect.width, rect.top);
+                context.lineTo(rect.left + rect.width, rect.top + rect.height);
+              }
+            }
+          }
+        }
+      }
+      context.stroke();
+
+      context.strokeStyle = style.wallHighlight;
+      context.lineWidth = Math.max(.6, cellSize * .02);
+      context.beginPath();
+      for (let y = 0; y < grid.length; y += 1) {
+        for (let x = 0; x < grid[y].length; x += 1) {
+          if (!isWall(x, y)) continue;
+          for (const rect of wallRectangles(x, y)) {
+            if (rect.kind === "vertical" && !isArchitecture(x, y - 1)) {
+              context.moveTo(rect.left, rect.top + cellSize * .035);
+              context.lineTo(rect.left + rect.width, rect.top + cellSize * .035);
+            }
+            if (rect.kind === "horizontal" && !isArchitecture(x - 1, y)) {
+              context.moveTo(rect.left + cellSize * .035, rect.top);
+              context.lineTo(rect.left + cellSize * .035, rect.top + rect.height);
+            }
+          }
+        }
+      }
+      context.stroke();
+      context.restore();
+    };
+
     for (let y = 0; y < grid.length; y += 1) {
       for (let x = 0; x < grid[y].length; x += 1) {
-        if (isWall(x, y)) {
-          drawTilesetArchitectureUnderlay(x, y);
-        }
+        if (isWall(x, y)) drawTilesetArchitectureUnderlay(x, y);
       }
     }
     drawVesselHullApron();
-
-    const drawNetworkRibbon = (color: string, thickness: number) => {
-      const networkPoint = (x: number, y: number) => ({
-        x: (x + .5) * cellSize,
-        y: (y + .5) * cellSize,
-      });
-      context.save();
-      context.strokeStyle = color;
-      context.fillStyle = color;
-      context.lineWidth = thickness;
-      context.lineCap = "butt";
-      context.lineJoin = "bevel";
-      context.beginPath();
-      for (let y = 0; y < grid.length; y += 1) {
-        for (let x = 0; x < grid[y].length; x += 1) {
-          if (!isWall(x, y)) continue;
-          const center = networkPoint(x, y);
-          for (const { dx, dy } of cardinalCellEdges) {
-            if (!isArchitecture(x + dx, y + dy)) continue;
-            const neighbor = networkPoint(x + dx, y + dy);
-            context.moveTo(center.x, center.y);
-            context.lineTo(neighbor.x, neighbor.y);
-          }
-        }
-      }
-      context.stroke();
-      const half = thickness * .5;
-      for (let y = 0; y < grid.length; y += 1) {
-        for (let x = 0; x < grid[y].length; x += 1) {
-          if (!isWall(x, y)) continue;
-          const center = networkPoint(x, y);
-          const north = isArchitecture(x, y - 1);
-          const east = isArchitecture(x + 1, y);
-          const south = isArchitecture(x, y + 1);
-          const west = isArchitecture(x - 1, y);
-          const connectionCount = Number(north) + Number(east) +
-            Number(south) + Number(west);
-          const rightAngle = connectionCount === 2 &&
-            (north || south) && (east || west);
-          if (rightAngle && north && !south) {
-            // Both butt-ended branches already meet in three quadrants. Leave
-            // the outer fourth quadrant empty on lower corners: this is the
-            // actual square L shape. Upper corners retain their compact node
-            // because their visible cap otherwise looks incomplete.
-            continue;
-          }
-          // Every junction is a compact orthogonal node. Keeping this square
-          // keeps straight runs, ends and T junctions free of tiny seams.
-          context.fillRect(
-            center.x - half,
-            center.y - half,
-            thickness,
-            thickness,
-          );
-        }
-      }
-      context.restore();
-    };
-    drawNetworkRibbon(style.wallEdge, cellSize * .48);
-    drawNetworkRibbon(style.wallAlt, cellSize * .42);
-
-    const horizontalBounds = (run: WallRun) => {
-      // Facades meet the visible edge of a perpendicular ribbon, rather than
-      // extending all the way to its centre. Reaching the centre makes the
-      // facade and side wall overlap across half a cell and produces a bulky
-      // square at L/T junctions.
-      const leftTerrain = grid[run.y]?.[run.x - 1]?.terrain;
-      const rightTerrain = grid[run.y]?.[run.x + run.length]?.terrain;
-      const leftTurns = isArchitecture(run.x, run.y - 1) ||
-        isArchitecture(run.x, run.y + 1);
-      const rightX = run.x + run.length - 1;
-      const rightTurns = isArchitecture(rightX, run.y - 1) ||
-        isArchitecture(rightX, run.y + 1);
-      const leftInset = leftTerrain === Terrain.Wall
-        ? -.29
-        : leftTerrain === Terrain.Door ? 0 : .18;
-      const rightInset = rightTerrain === Terrain.Wall
-        ? -.29
-        : rightTerrain === Terrain.Door ? 0 : .18;
-      // A perpendicular side facade spans 29–71% of its wall cell. End the
-      // horizontal facade on that actual outer edge, not on the cell centre;
-      // the latter leaves lower corners visibly notched and misaligned.
-      const leftCut = leftTerrain === Terrain.Door
-        ? 0
-        : leftTurns ? .29 : leftInset;
-      const rightCut = rightTerrain === Terrain.Door
-        ? 0
-        : rightTurns ? .29 : rightInset;
-      const left = (run.x + leftCut) * cellSize;
-      const right = (run.x + run.length - rightCut) * cellSize;
-      return {
-        left,
-        width: Math.max(0, right - left),
-        leftJoined: leftTerrain === Terrain.Wall || leftTurns,
-        rightJoined: rightTerrain === Terrain.Wall || rightTurns,
-      };
-    };
-    const verticalBounds = (run: WallRun) => {
-      const topTerrain = grid[run.y - 1]?.[run.x]?.terrain;
-      const bottomTerrain = grid[run.y + run.length]?.[run.x]?.terrain;
-      const topTurns = isArchitecture(run.x - 1, run.y) ||
-        isArchitecture(run.x + 1, run.y);
-      const bottomY = run.y + run.length - 1;
-      const bottomTurns = isArchitecture(run.x - 1, bottomY) ||
-        isArchitecture(run.x + 1, bottomY);
-      const topInset = topTerrain === Terrain.Wall
-        ? -.29
-        : topTerrain === Terrain.Door ? 0 : .18;
-      const bottomInset = bottomTerrain === Terrain.Wall
-        ? -.29
-        : bottomTerrain === Terrain.Door ? 0 : .18;
-      const topCut = topTerrain === Terrain.Door
-        ? 0
-        : topTurns ? .5 : topInset;
-      const bottomCut = bottomTerrain === Terrain.Door
-        ? 0
-        : bottomTurns ? .5 : bottomInset;
-      const top = (run.y + topCut) * cellSize;
-      const bottom = (run.y + run.length - bottomCut) * cellSize;
-      return {
-        top,
-        height: Math.max(0, bottom - top),
-        topJoined: topTerrain === Terrain.Wall || topTurns,
-        bottomJoined: bottomTerrain === Terrain.Wall || bottomTurns,
-      };
-    };
-
-    const frontRuns = horizontalWallRuns((x, y) =>
-      isWall(x, y) && isRoomFloor(x, y + 1));
-    for (const run of frontRuns) {
-      const { left, width } = horizontalBounds(run);
-      if (width <= 0) continue;
-      const top = run.y * cellSize;
-      const facadeTop = top + cellSize * .34;
-      const copingTop = top + cellSize * .27;
-      const copingHeight = cellSize * .12;
-      drawWallFacade(
-        left,
-        facadeTop,
-        width,
-        cellSize * .66,
-        run.x,
-        run.y,
-      );
-      context.fillStyle = style.wallAlt;
-      context.fillRect(left, copingTop, width, copingHeight);
-      context.fillStyle = style.wallHighlight;
-      context.fillRect(left, copingTop, width, Math.max(1, cellSize * .035));
-      context.fillStyle = "rgba(17, 13, 19, .42)";
-      context.fillRect(
-        left,
-        copingTop + copingHeight - Math.max(1, cellSize * .035),
-        width,
-        Math.max(1, cellSize * .035),
-      );
-      context.save();
-      context.shadowColor = "rgba(10, 9, 13, .58)";
-      context.shadowBlur = Math.max(1, cellSize * .07);
-      context.shadowOffsetY = cellSize * .07;
-      context.strokeStyle = "rgba(17, 13, 19, .7)";
-      context.lineWidth = Math.max(1, cellSize * .05);
-      context.beginPath();
-      context.moveTo(left, top + cellSize);
-      context.lineTo(left + width, top + cellSize);
-      context.stroke();
-      context.restore();
-    }
-
-    const sideRuns = verticalWallRuns((x, y) =>
-      isWall(x, y) &&
-      !isRoomFloor(x, y + 1) &&
-      (isRoomFloor(x + 1, y) || isRoomFloor(x - 1, y)));
-    for (const run of sideRuns) {
-      const { top, height } = verticalBounds(run);
-      if (height <= 0) continue;
-      const left = (run.x + .29) * cellSize;
-      const width = cellSize * .42;
-      context.save();
-      context.globalAlpha = .8;
-      drawWallFacade(
-        left,
-        top,
-        width,
-        height,
-        run.x,
-        run.y,
-      );
-      context.restore();
-      context.fillStyle = "rgba(15, 13, 20, .2)";
-      context.fillRect(left + cellSize * .34, top, cellSize * .08, height);
-      context.fillStyle = "rgba(255, 238, 210, .08)";
-      context.fillRect(left, top, cellSize * .05, height);
-    }
-
-    for (const run of horizontalWallRuns((x, y) =>
-      isWall(x, y) && !isRoomFloor(x, y + 1) && isRoomFloor(x, y - 1))) {
-      const { left, width } = horizontalBounds(run);
-      if (width <= 0) continue;
-      context.fillStyle = style.wallHighlight;
-      context.fillRect(
-        left,
-        (run.y + .29) * cellSize,
-        width,
-        Math.max(1, cellSize * .03),
-      );
-      context.fillStyle = "rgba(14, 12, 18, .28)";
-      context.fillRect(
-        left,
-        (run.y + .68) * cellSize,
-        width,
-        cellSize * .1,
-      );
-    }
-
-    // T and cross junctions are not covered by the simple-corner pass below.
-    // Repaint their centre as one merged wall node so branches that meet doors
-    // keep the same filled volume as ordinary wall junctions.
-    for (let y = 0; y < grid.length; y += 1) {
-      for (let x = 0; x < grid[y].length; x += 1) {
-        if (!isWall(x, y)) continue;
-        const joinsNorth = isArchitecture(x, y - 1);
-        const joinsSouth = isArchitecture(x, y + 1);
-        const joinsWest = isArchitecture(x - 1, y);
-        const joinsEast = isArchitecture(x + 1, y);
-        const connectionCount = Number(joinsNorth) + Number(joinsSouth) +
-          Number(joinsWest) + Number(joinsEast);
-        if (connectionCount < 3) continue;
-
-        const left = x * cellSize;
-        const top = y * cellSize;
-        const frontFacing = isRoomFloor(x, y + 1) ||
-          (joinsWest && isRoomFloor(x - 1, y + 1)) ||
-          (joinsEast && isRoomFloor(x + 1, y + 1));
-        const backFacing = isRoomFloor(x, y - 1) ||
-          (joinsWest && isRoomFloor(x - 1, y - 1)) ||
-          (joinsEast && isRoomFloor(x + 1, y - 1));
-        const horizontalTop = frontFacing ? .27 : .29;
-        const horizontalBottom = frontFacing ? 1 : backFacing ? .78 : .71;
-        const sideLeft = .29;
-        const sideRight = .71;
-
-        drawTilesetArchitectureUnderlay(x, y);
-        context.save();
-        context.beginPath();
-        if (joinsNorth || joinsSouth) {
-          context.rect(
-            left + sideLeft * cellSize,
-            top + (joinsNorth ? 0 : horizontalTop) * cellSize,
-            (sideRight - sideLeft) * cellSize,
-            (joinsSouth ? 1 : horizontalBottom) * cellSize -
-              (joinsNorth ? 0 : horizontalTop) * cellSize,
-          );
-        }
-        if (joinsWest || joinsEast) {
-          context.rect(
-            left + (joinsWest ? 0 : sideLeft) * cellSize,
-            top + horizontalTop * cellSize,
-            (joinsEast ? 1 : sideRight) * cellSize -
-              (joinsWest ? 0 : sideLeft) * cellSize,
-            (horizontalBottom - horizontalTop) * cellSize,
-          );
-        }
-        context.clip();
-        if (joinsNorth || joinsSouth) {
-          drawWallFacade(
-            left + sideLeft * cellSize,
-            top,
-            (sideRight - sideLeft) * cellSize,
-            cellSize,
-            x,
-            y,
-          );
-        }
-        if (joinsWest || joinsEast) {
-          if (frontFacing) {
-            const facadeTop = top + cellSize * .34;
-            drawWallFacade(left, facadeTop, cellSize, cellSize * .66, x, y);
-            const copingTop = top + cellSize * .27;
-            const copingHeight = cellSize * .12;
-            context.fillStyle = style.wallAlt;
-            context.fillRect(left, copingTop, cellSize, copingHeight);
-            context.fillStyle = style.wallHighlight;
-            context.fillRect(left, copingTop, cellSize, Math.max(1, cellSize * .035));
-            context.fillStyle = "rgba(17, 13, 19, .42)";
-            context.fillRect(
-              left,
-              copingTop + copingHeight - Math.max(1, cellSize * .035),
-              cellSize,
-              Math.max(1, cellSize * .035),
-            );
-          } else {
-            drawWallFacade(
-              left,
-              top + horizontalTop * cellSize,
-              cellSize,
-              (horizontalBottom - horizontalTop) * cellSize,
-              x,
-              y,
-            );
-          }
-        }
-        context.restore();
-      }
-    }
-
-    // Redraw every simple corner from one shared orthogonal model after all
-    // wall layers. Mixing ribbons, front facades and side facades otherwise
-    // leaves each orientation with a different notch, post or overlap.
-    for (let y = 0; y < grid.length; y += 1) {
-      for (let x = 0; x < grid[y].length; x += 1) {
-        if (!isWall(x, y)) continue;
-        const joinsNorth = isArchitecture(x, y - 1);
-        const joinsSouth = isArchitecture(x, y + 1);
-        if (joinsNorth === joinsSouth) continue;
-        const joinsWest = isArchitecture(x - 1, y);
-        const joinsEast = isArchitecture(x + 1, y);
-        if (joinsWest === joinsEast) continue;
-
-        const left = x * cellSize;
-        const top = y * cellSize;
-        const horizontalX = joinsWest ? x - 1 : x + 1;
-        const frontFacing = isRoomFloor(horizontalX, y + 1);
-        const backFacing = isRoomFloor(horizontalX, y - 1);
-        const horizontalTop = frontFacing ? .27 : .29;
-        const horizontalBottom = frontFacing ? 1 : backFacing ? .78 : .71;
-        const sideLeft = .29;
-        const sideRight = .71;
-        const points = joinsNorth && joinsWest
-          ? [
-            [sideLeft, 0], [sideRight, 0],
-            [sideRight, horizontalBottom], [0, horizontalBottom],
-            [0, horizontalTop], [sideLeft, horizontalTop],
-          ]
-          : joinsNorth && joinsEast
-            ? [
-              [sideLeft, 0], [sideRight, 0],
-              [sideRight, horizontalTop], [1, horizontalTop],
-              [1, horizontalBottom], [sideLeft, horizontalBottom],
-            ]
-            : joinsSouth && joinsWest
-              ? [
-                [0, horizontalTop], [sideRight, horizontalTop],
-                [sideRight, 1], [sideLeft, 1],
-                [sideLeft, horizontalBottom], [0, horizontalBottom],
-              ]
-              : [
-                [sideLeft, horizontalTop], [1, horizontalTop],
-                [1, horizontalBottom], [sideRight, horizontalBottom],
-                [sideRight, 1], [sideLeft, 1],
-              ];
-
-        // Erase every earlier corner fragment, then paint one continuous shape.
-        drawTilesetArchitectureUnderlay(x, y);
-        const traceCorner = () => {
-          context.beginPath();
-          context.moveTo(
-            left + points[0][0] * cellSize,
-            top + points[0][1] * cellSize,
-          );
-          for (let index = 1; index < points.length; index += 1) {
-            context.lineTo(
-              left + points[index][0] * cellSize,
-              top + points[index][1] * cellSize,
-            );
-          }
-          context.closePath();
-        };
-        // Reuse the same material passes as the neighbouring runs. A flat
-        // corner gradient makes stone courses, timber planks and metal seams
-        // stop abruptly at every turn even when the silhouette is correct.
-        context.save();
-        traceCorner();
-        context.clip();
-        drawWallFacade(
-          left + sideLeft * cellSize,
-          top,
-          (sideRight - sideLeft) * cellSize,
-          cellSize,
-          x,
-          y,
-        );
-        if (frontFacing) {
-          const facadeTop = top + cellSize * .34;
-          drawWallFacade(left, facadeTop, cellSize, cellSize * .66, x, y);
-          const copingTop = top + cellSize * .27;
-          const copingHeight = cellSize * .12;
-          context.fillStyle = style.wallAlt;
-          context.fillRect(left, copingTop, cellSize, copingHeight);
-          context.fillStyle = style.wallHighlight;
-          context.fillRect(left, copingTop, cellSize, Math.max(1, cellSize * .035));
-          context.fillStyle = "rgba(17, 13, 19, .42)";
-          context.fillRect(
-            left,
-            copingTop + copingHeight - Math.max(1, cellSize * .035),
-            cellSize,
-            Math.max(1, cellSize * .035),
-          );
-        } else {
-          drawWallFacade(
-            left,
-            top + horizontalTop * cellSize,
-            cellSize,
-            (horizontalBottom - horizontalTop) * cellSize,
-            x,
-            y,
-          );
-        }
-        context.restore();
-
-        // Outline only exposed edges. Connection edges remain unstroked so the
-        // corner joins neighbouring runs without tile-by-tile separators.
-        // Consecutive exposed edges must share one path: stroking every edge
-        // separately leaves two butt caps at the turn and creates the tiny
-        // posts that used to protrude from exterior map corners.
-        const exposedEdges = points.map((first, index) => {
-          const second = points[(index + 1) % points.length];
-          return !(
-            (joinsWest && first[0] === 0 && second[0] === 0) ||
-            (joinsEast && first[0] === 1 && second[0] === 1) ||
-            (joinsNorth && first[1] === 0 && second[1] === 0) ||
-            (joinsSouth && first[1] === 1 && second[1] === 1)
-          );
-        });
-        const outsideVertical = joinsNorth
-          ? grid[y + 1]?.[x]?.terrain
-          : grid[y - 1]?.[x]?.terrain;
-        const outsideHorizontal = joinsWest
-          ? grid[y]?.[x + 1]?.terrain
-          : grid[y]?.[x - 1]?.terrain;
-        const isOutside = (
-          terrain: Grid[number][number]["terrain"] | undefined,
-        ) =>
-          terrain === undefined || terrain === Terrain.Void ||
-          (mode === "ship" && terrain === Terrain.Water);
-        const exteriorCorner = isOutside(outsideVertical) &&
-          isOutside(outsideHorizontal);
-        context.save();
-        if (exteriorCorner) {
-          // Canvas strokes straddle their path. On a convex outer corner the
-          // outer half otherwise survives on the void underlay as a small
-          // coloured spur. Keep the complete join, but clip it inward.
-          traceCorner();
-          context.clip();
-        }
-        context.strokeStyle = style.wallEdge;
-        context.lineWidth = exteriorCorner
-          ? Math.max(1.5, cellSize * .09)
-          : Math.max(1, cellSize * .045);
-        context.lineCap = "butt";
-        context.lineJoin = "miter";
-        context.miterLimit = 2;
-        context.beginPath();
-        const firstBreak = exposedEdges.findIndex((exposed) => !exposed);
-        const startIndex = firstBreak < 0 ? 0 : (firstBreak + 1) % points.length;
-        let pathOpen = false;
-        for (let offset = 0; offset < points.length; offset += 1) {
-          const index = (startIndex + offset) % points.length;
-          const first = points[index];
-          const second = points[(index + 1) % points.length];
-          if (!exposedEdges[index]) {
-            pathOpen = false;
-            continue;
-          }
-          if (!pathOpen) {
-            context.moveTo(
-              left + first[0] * cellSize,
-              top + first[1] * cellSize,
-            );
-            pathOpen = true;
-          }
-          context.lineTo(left + second[0] * cellSize, top + second[1] * cellSize);
-        }
-        context.stroke();
-        context.restore();
-      }
-    }
+    drawNetworkShadows();
+    drawNetworkSurface();
+    drawNetworkEdges();
+    return;
 
   };
 
@@ -2663,12 +2464,9 @@ function drawInteriorArchitecture(
         const left = x * cellSize;
         const top = y * cellSize;
         if (tile.terrain !== Terrain.Ground) continue;
-        const roomTintIndex = mode === "ship-deck"
-          ? 0
-          : (tile.roomId ?? 0) % style.roomTints.length;
         const tiledFloor = drawFloorTile(left, top);
         if (!tiledFloor) {
-          context.fillStyle = style.roomTints[roomTintIndex];
+          context.fillStyle = style.roomTints[fallbackFloorTintIndex(x, y)];
           context.fillRect(left, top, cellSize, cellSize);
         }
         context.lineWidth = Math.max(.65, cellSize * .018);
