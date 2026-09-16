@@ -1017,6 +1017,7 @@ function stoolPathItem(
       strokeDash: [],
     },
     commands: stoolPathCommands(radius),
+    fillRule: "nonzero",
   };
 }
 
@@ -1110,6 +1111,7 @@ function benchPathItem(
       strokeDash: [],
     },
     commands: benchPathCommands(width, height),
+    fillRule: "nonzero",
   };
 }
 
@@ -1231,6 +1233,7 @@ function bedPathItem(
       strokeDash: [],
     },
     commands: bedPathCommands(width, height, prop.facing),
+    fillRule: "nonzero",
   };
 }
 

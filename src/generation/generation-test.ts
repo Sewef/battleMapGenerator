@@ -2144,6 +2144,8 @@ const fogScene = JSON.parse(fogExport.json) as {
     shapeType?: string;
     position?: { x: number; y: number };
     endPosition?: { x: number; y: number };
+    commands?: unknown[];
+    fillRule?: string;
     attachedTo?: string;
     disableAttachmentBehavior?: string[];
     metadata?: Record<string, unknown>;
@@ -2209,24 +2211,17 @@ assert(
 );
 for (const item of exportedInteriorProps) {
   assert(
-    item.type === "SHAPE" && item.layer === "PROP" && !item.locked,
+    (item.type === "SHAPE" || item.type === "PATH") &&
+      item.layer === "PROP" &&
+      !item.locked,
     `house fog export: ${item.name} must be a movable prop drawing`,
-  );
-  assert(
-    typeof item.width === "number" && item.width > 0 &&
-      typeof item.height === "number" && item.height > 0,
-    `house fog export: ${item.name} has an invalid drawing footprint`,
-  );
-  assert(
-    item.shapeType === "RECTANGLE" || item.shapeType === "CIRCLE",
-    `house fog export: ${item.name} has an invalid drawing shape`,
   );
   const propMetadata = item.metadata?.[interiorPropMetadataKey] as {
     footprint?: Array<{ x: number; y: number }>;
   };
   assert(propMetadata.footprint?.length,
     `house fog export: ${item.name} has no source footprint`);
-  assert(item.position && item.width && item.height,
+  assert(item.position,
     `house fog export: ${item.name} has no drawing bounds`);
   const minimumX = Math.min(...propMetadata.footprint.map(({ x }) => x));
   const maximumX = Math.max(...propMetadata.footprint.map(({ x }) => x));
@@ -2234,23 +2229,43 @@ for (const item of exportedInteriorProps) {
   const maximumY = Math.max(...propMetadata.footprint.map(({ y }) => y));
   const expectedCenterX = (minimumX + (maximumX - minimumX + 1) / 2) * 150;
   const expectedCenterY = (minimumY + (maximumY - minimumY + 1) / 2) * 150;
-  const circle = item.shapeType === "CIRCLE";
-  const actualCenterX = item.position.x + (circle ? 0 : item.width / 2);
-  const actualCenterY = item.position.y + (circle ? 0 : item.height / 2);
+  const circle = item.type === "SHAPE" && item.shapeType === "CIRCLE";
+  const actualCenterX = item.type === "SHAPE" && !circle
+    ? item.position.x + (item.width ?? 0) / 2
+    : item.position.x;
+  const actualCenterY = item.type === "SHAPE" && !circle
+    ? item.position.y + (item.height ?? 0) / 2
+    : item.position.y;
   assert(
     Math.abs(actualCenterX - expectedCenterX) < .001 &&
       Math.abs(actualCenterY - expectedCenterY) < .001,
     `house fog export: ${item.name} is not centered on its grid footprint`,
   );
-  const drawingLeft = item.position.x - (circle ? item.width / 2 : 0);
-  const drawingTop = item.position.y - (circle ? item.height / 2 : 0);
-  assert(
-    drawingLeft >= minimumX * 150 &&
-      drawingTop >= minimumY * 150 &&
-      drawingLeft + item.width <= (maximumX + 1) * 150 &&
-      drawingTop + item.height <= (maximumY + 1) * 150,
-    `house fog export: ${item.name} extends outside its grid footprint`,
-  );
+  if (item.type === "SHAPE") {
+    assert(
+      typeof item.width === "number" && item.width > 0 &&
+        typeof item.height === "number" && item.height > 0,
+      `house fog export: ${item.name} has an invalid drawing footprint`,
+    );
+    assert(
+      item.shapeType === "RECTANGLE" || item.shapeType === "CIRCLE",
+      `house fog export: ${item.name} has an invalid drawing shape`,
+    );
+    const drawingLeft = item.position.x - (circle ? item.width / 2 : 0);
+    const drawingTop = item.position.y - (circle ? item.height / 2 : 0);
+    assert(
+      drawingLeft >= minimumX * 150 &&
+        drawingTop >= minimumY * 150 &&
+        drawingLeft + item.width <= (maximumX + 1) * 150 &&
+        drawingTop + item.height <= (maximumY + 1) * 150,
+      `house fog export: ${item.name} extends outside its grid footprint`,
+    );
+  } else {
+    assert(item.commands?.length,
+      `house fog export: ${item.name} has no path commands`);
+    assert(typeof item.fillRule === "string" && item.fillRule.length > 0,
+      `house fog export: ${item.name} has no path fill rule`);
+  }
 }
 const exportedLightItems = fogItems.filter(({ metadata }) =>
   metadata?.[lightMetadataKey] !== undefined
@@ -2265,7 +2280,7 @@ for (const item of exportedLightItems) {
   assert(item.layer === "PROP",
     `house fog export: ${item.name} light must stay on the prop layer`);
   if (item.metadata?.[interiorPropMetadataKey] !== undefined) {
-    assert(item.type === "SHAPE",
+    assert(item.type === "SHAPE" || item.type === "PATH",
       `house fog export: ${item.name} must carry light on its prop drawing`);
   } else {
     assert(item.type === "IMAGE",
