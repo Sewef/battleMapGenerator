@@ -91,6 +91,12 @@ const rockPropPreview =
 const controlsTabButtons = [
   ...document.querySelectorAll<HTMLButtonElement>("[data-controls-tab]"),
 ];
+const presetGroupTabButtons = [
+  ...document.querySelectorAll<HTMLButtonElement>("[data-preset-group-tab]"),
+];
+const presetGroupPanels = [
+  ...document.querySelectorAll<HTMLElement>(".preset-group"),
+];
 const generationSettingsPanel =
   document.querySelector<HTMLElement>("#generation-settings")!;
 const terrainEditorSettingsPanel =
@@ -231,6 +237,28 @@ let owlbearExportCache: {
 } | undefined;
 let manifestStatusTimeout = 0;
 
+function setPresetGroupTab(index: number) {
+  presetGroupPanels.forEach((panel, panelIndex) => {
+    const active = panelIndex === index;
+    panel.hidden = !active;
+  });
+  presetGroupTabButtons.forEach((button, buttonIndex) => {
+    const active = buttonIndex === index;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+    button.tabIndex = active ? 0 : -1;
+  });
+}
+
+function setPresetGroupForPreset(presetId: string) {
+  const card = document.querySelector<HTMLElement>(
+    `.preset-card[data-preset="${CSS.escape(presetId)}"]`,
+  );
+  const panel = card?.closest<HTMLElement>(".preset-group");
+  const index = panel ? presetGroupPanels.indexOf(panel) : -1;
+  if (index >= 0) setPresetGroupTab(index);
+}
+
 function updateLabels() {
   document.querySelector("#width-value")!.textContent = widthInput.value;
   document.querySelector("#height-value")!.textContent = heightInput.value;
@@ -293,6 +321,7 @@ function applyPreset(preset: Preset, useNewSeed = true) {
       (card as HTMLElement).dataset.preset === preset.id,
     );
   });
+  setPresetGroupForPreset(preset.id);
   updateLabels();
 }
 
@@ -1290,14 +1319,12 @@ document.querySelectorAll<HTMLButtonElement>(".preset-card").forEach((button) =>
     }
   });
 });
-document.querySelectorAll<HTMLButtonElement>("[data-preset-group]").forEach((button) => {
+for (const button of presetGroupTabButtons) {
   button.addEventListener("click", () => {
-    const group = button.closest<HTMLElement>(".preset-group");
-    const open = !group?.classList.contains("is-open");
-    group?.classList.toggle("is-open", open);
-    button.setAttribute("aria-expanded", String(open));
+    const index = Number(button.dataset.presetGroupTab);
+    if (Number.isInteger(index)) setPresetGroupTab(index);
   });
-});
+}
 
 document.querySelector("#generate")!.addEventListener("click", generate);
 document.querySelector("#randomize")!.addEventListener("click", () => {

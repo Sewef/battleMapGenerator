@@ -136,6 +136,12 @@ const PROP_EDITOR_TOOLS: Array<{
 ];
 
 export function renderApp(root: HTMLElement) {
+  const initialPresetGroupIndex = Math.max(
+    0,
+    PRESET_GROUPS.findIndex((group) =>
+      group.ids.some((id) => id === PRESETS[0].id)
+    ),
+  );
   root.innerHTML = `
     <main class="shell">
       <header class="topbar">
@@ -150,13 +156,20 @@ export function renderApp(root: HTMLElement) {
 
       <section class="preset-section">
         <div class="preset-groups">
-          ${PRESET_GROUPS.map((group) => {
-    const initiallyOpen = group.ids.some((id) => id === PRESETS[0].id);
+          <div class="preset-tabs" role="tablist" aria-label="Map categories">
+            ${PRESET_GROUPS.map((group, index) => {
+    const active = index === initialPresetGroupIndex;
     return `
-            <section class="preset-group${initiallyOpen ? " is-open" : ""}">
-              <button class="preset-group-heading" type="button" aria-expanded="${initiallyOpen}" data-preset-group>
-                <span>${group.label}</span><span aria-hidden="true">⌄</span>
-              </button>
+              <button id="preset-group-tab-${index}" class="preset-group-tab${active ? " active" : ""}" type="button" role="tab" aria-selected="${active}" aria-controls="preset-group-panel-${index}" data-preset-group-tab="${index}">
+                ${group.label}
+              </button>`;
+  }).join("")}
+          </div>
+          <div class="preset-panels">
+            ${PRESET_GROUPS.map((group, index) => {
+    const active = index === initialPresetGroupIndex;
+    return `
+            <section id="preset-group-panel-${index}" class="preset-group" role="tabpanel" aria-labelledby="preset-group-tab-${index}"${active ? "" : " hidden"}>
               <div class="preset-list">
                 ${group.ids.map((id) => PRESETS.find((preset) => preset.id === id)!)
         .map((preset) => `
@@ -168,6 +181,7 @@ export function renderApp(root: HTMLElement) {
               </div>
             </section>`;
   }).join("")}
+          </div>
         </div>
       </section>
 
