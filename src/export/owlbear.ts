@@ -38,7 +38,6 @@ const FOG_TERRAINS = new Set<TerrainKind>([
   Terrain.Road,
   Terrain.Bridge,
   Terrain.Ravine,
-  Terrain.Door,
 ]);
 const FALLBACK_TILESET_ASSET_BASE =
   "https://cdn.jsdelivr.net/gh/Sewef/battleMapGenerator@main/public/assets/tilesets/";
@@ -452,55 +451,170 @@ function fogItem(
   };
 }
 
-function roomFogContours(grid: Grid) {
-  const rooms = new Map<number, { role: string; cells: FogPoint[] }>();
-  for (let y = 0; y < grid.length; y += 1) {
-    for (let x = 0; x < grid[y].length; x += 1) {
-      const current = grid[y][x];
-      const roomId = current.roomId;
-      if (roomId === undefined) continue;
-      const room = rooms.get(roomId) ?? {
-        role: current.roomRole ?? `Room ${roomId + 1}`,
-        cells: [],
-      };
-      room.cells.push({ x, y });
-      rooms.set(roomId, room);
-    }
-  }
-  const maskWidth = grid[0].length * 2 + 2;
-  const maskHeight = grid.length * 2 + 2;
-  return [...rooms.entries()]
-    .sort(([first], [second]) => first - second)
-    .flatMap(([roomId, room]) => {
-      const mask = new Set<string>();
-      for (const cell of room.cells) {
-        for (let y = cell.y * 2; y < cell.y * 2 + 4; y += 1) {
-          for (let x = cell.x * 2; x < cell.x * 2 + 4; x += 1) {
-            mask.add(`${x},${y}`);
-          }
-        }
-      }
-      return traceContours(
-        maskWidth,
-        maskHeight,
-        (x, y) => mask.has(`${x},${y}`),
-      ).map((contour) => ({
-        roomId,
-        role: room.role,
-        contour: contour.map(({ x, y }) => ({
-          x: (x - 1) / 2,
-          y: (y - 1) / 2,
-        })),
-      }));
-    });
-}
-
 type DoorFogRun = {
   x: number;
   y: number;
   length: number;
   orientation: "horizontal" | "vertical";
 };
+
+type FogLineSegment = {
+  start: FogPoint;
+  end: FogPoint;
+  orientation: "horizontal" | "vertical";
+};
+
+function wallFogSegments(grid: Grid) {
+  const segments: FogLineSegment[] = [];
+  const isWall = (x: number, y: number) =>
+    grid[y]?.[x]?.terrain === Terrain.Wall;
+  const isArchitecture = (x: number, y: number) => {
+    const terrain = grid[y]?.[x]?.terrain;
+    return terrain === Terrain.Wall || terrain === Terrain.Door;
+  };
+  const isRoomFloor = (x: number, y: number) =>
+    grid[y]?.[x]?.terrain === Terrain.Ground;
+  const wallDirections = (x: number, y: number) => {
+    const joinsNorth = isArchitecture(x, y - 1);
+    const joinsSouth = isArchitecture(x, y + 1);
+    const joinsWest = isArchitecture(x - 1, y);
+    const joinsEast = isArchitecture(x + 1, y);
+    const fullyIsolated = !joinsNorth && !joinsSouth && !joinsWest && !joinsEast;
+    const floorNorth = isRoomFloor(x, y - 1);
+    const floorSouth = isRoomFloor(x, y + 1);
+    const floorWest = isRoomFloor(x - 1, y);
+    const floorEast = isRoomFloor(x + 1, y);
+    const verticalByFloor = !fullyIsolated &&
+      (floorWest || floorEast) && !joinsWest && !joinsEast;
+    const horizontalByFloor = !fullyIsolated &&
+      (floorNorth || floorSouth) && !joinsNorth && !joinsSouth;
+    const vertical = joinsNorth || joinsSouth || verticalByFloor;
+    const horizontal = joinsWest || joinsEast || horizontalByFloor ||
+      (!joinsNorth && !joinsSouth && !joinsWest && !joinsEast && !vertical);
+    return {
+      joinsNorth,
+      joinsSouth,
+      joinsWest,
+      joinsEast,
+      horizontal,
+      vertical,
+    };
+  };
+  const addSegment = (
+    start: FogPoint,
+    end: FogPoint,
+    orientation: FogLineSegment["orientation"],
+  ) => {
+    if (start.x === end.x && start.y === end.y) return;
+    segments.push({ start, end, orientation });
+  };
+
+  for (let y = 0; y < grid.length; y += 1) {
+    for (let x = 0; x < grid[y].length; x += 1) {
+      if (!isWall(x, y)) continue;
+      const directions = wallDirections(x, y);
+      if (directions.horizontal) {
+        const isolated = !directions.joinsWest && !directions.joinsEast;
+        const startX = isolated || directions.joinsWest ? x : x + .5;
+        const endX = isolated || directions.joinsEast ? x + 1 : x + .5;
+        addSegment(
+          { x: startX, y: y + .5 },
+          { x: endX, y: y + .5 },
+          "horizontal",
+        );
+      }
+      if (directions.vertical) {
+        if (directions.horizontal) {
+          if (directions.joinsNorth) {
+            addSegment(
+              { x: x + .5, y },
+              { x: x + .5, y: y + .5 },
+              "vertical",
+            );
+          }
+          if (directions.joinsSouth) {
+            addSegment(
+              { x: x + .5, y: y + .5 },
+              { x: x + .5, y: y + 1 },
+              "vertical",
+            );
+          }
+        } else {
+          const isolated = !directions.joinsNorth && !directions.joinsSouth;
+          const startY = isolated || directions.joinsNorth ? y : y + .33;
+          const endY = isolated || directions.joinsSouth ? y + 1 : y + 1;
+          addSegment(
+            { x: x + .5, y: startY },
+            { x: x + .5, y: endY },
+            "vertical",
+          );
+        }
+      }
+    }
+  }
+
+  return mergeFogLineSegments(segments);
+}
+
+function mergeFogLineSegments(segments: FogLineSegment[]) {
+  const merged: FogLineSegment[] = [];
+  const same = (first: number, second: number) => Math.abs(first - second) < .0001;
+  const horizontal = segments
+    .filter((segment) => segment.orientation === "horizontal")
+    .map((segment) => ({
+      ...segment,
+      start: {
+        x: Math.min(segment.start.x, segment.end.x),
+        y: segment.start.y,
+      },
+      end: {
+        x: Math.max(segment.start.x, segment.end.x),
+        y: segment.end.y,
+      },
+    }))
+    .sort((a, b) => a.start.y - b.start.y || a.start.x - b.start.x);
+  for (const segment of horizontal) {
+    const previous = merged[merged.length - 1];
+    if (
+      previous?.orientation === "horizontal" &&
+      same(previous.start.y, segment.start.y) &&
+      same(previous.end.x, segment.start.x)
+    ) {
+      previous.end.x = segment.end.x;
+    } else {
+      merged.push(segment);
+    }
+  }
+
+  const vertical = segments
+    .filter((segment) => segment.orientation === "vertical")
+    .map((segment) => ({
+      ...segment,
+      start: {
+        x: segment.start.x,
+        y: Math.min(segment.start.y, segment.end.y),
+      },
+      end: {
+        x: segment.end.x,
+        y: Math.max(segment.start.y, segment.end.y),
+      },
+    }))
+    .sort((a, b) => a.start.x - b.start.x || a.start.y - b.start.y);
+  for (const segment of vertical) {
+    const previous = merged[merged.length - 1];
+    if (
+      previous?.orientation === "vertical" &&
+      same(previous.start.x, segment.start.x) &&
+      same(previous.end.y, segment.start.y)
+    ) {
+      previous.end.y = segment.end.y;
+    } else {
+      merged.push(segment);
+    }
+  }
+
+  return merged;
+}
 
 function doorFogRuns(grid: Grid) {
   const runs: DoorFogRun[] = [];
@@ -546,6 +660,41 @@ function doorFogRuns(grid: Grid) {
   }
 
   return runs;
+}
+
+function fogWallItem(
+  id: string,
+  name: string,
+  segment: FogLineSegment,
+  zIndex: number,
+) {
+  return {
+    id,
+    name,
+    zIndex,
+    locked: false,
+    metadata: { "com.touchgrass/export": true },
+    position: {
+      x: segment.start.x * OWLBEAR_SCENE_DPI,
+      y: segment.start.y * OWLBEAR_SCENE_DPI,
+    },
+    rotation: 0,
+    scale: { x: 1, y: 1 },
+    type: "LINE",
+    visible: true,
+    layer: "FOG",
+    startPosition: { x: 0, y: 0 },
+    endPosition: {
+      x: (segment.end.x - segment.start.x) * OWLBEAR_SCENE_DPI,
+      y: (segment.end.y - segment.start.y) * OWLBEAR_SCENE_DPI,
+    },
+    style: {
+      strokeColor: "#222222",
+      strokeOpacity: 1,
+      strokeWidth: 15,
+      strokeDash: [],
+    },
+  };
 }
 
 function fogDoorItem(
@@ -1788,6 +1937,7 @@ export async function createOwlbearSceneJson(
       ReturnType<typeof hearthPathItem> |
       ReturnType<typeof statuePathItem> |
       ReturnType<typeof fogItem> |
+      ReturnType<typeof fogWallItem> |
       ReturnType<typeof fogDoorItem> |
       ReturnType<typeof lightItem>
   ) & {
@@ -2017,8 +2167,9 @@ export async function createOwlbearSceneJson(
   nextPropZIndex = highestPropZIndex + 1;
 
   if (options.dynamicFog) {
-    const rooms = roomFogContours(grid);
-    const isInterior = rooms.length > 0;
+    const isInterior = grid.some((row) =>
+      row.some((tile) => tile.roomId !== undefined)
+    );
     const addFogContours = (
       name: string,
       matches: (x: number, y: number) => boolean,
@@ -2044,34 +2195,18 @@ export async function createOwlbearSceneJson(
       );
     }
 
-    if (isInterior) {
-      rooms.forEach(({ roomId, role, contour }) => {
+    if (!hiddenItems.has(Terrain.Wall)) {
+      const walls = wallFogSegments(grid);
+      walls.forEach((wall, index) => {
         const id = crypto.randomUUID();
-        shared[id] = fogItem(
+        shared[id] = fogWallItem(
           id,
-          `${role || `Room ${roomId + 1}`} Fog`,
-          contour,
+          `Wall Fog${walls.length > 1 ? ` ${index + 1}` : ""}`,
+          wall,
           nextPropZIndex,
         );
         nextPropZIndex += 1;
       });
-      for (const door of doorFogRuns(grid)) {
-        const id = crypto.randomUUID();
-        shared[id] = fogDoorItem(
-          id,
-          door.x,
-          door.y,
-          door.orientation,
-          nextPropZIndex,
-          door.length,
-        );
-        nextPropZIndex += 1;
-      }
-    } else if (!hiddenItems.has(Terrain.Wall)) {
-      addFogContours(
-        "Wall",
-        (x, y) => grid[y]?.[x]?.terrain === Terrain.Wall,
-      );
     }
 
     if (!hiddenItems.has(Obstacle.Building)) {
@@ -2101,6 +2236,19 @@ export async function createOwlbearSceneJson(
         },
         false,
       );
+    }
+
+    for (const door of doorFogRuns(grid)) {
+      const id = crypto.randomUUID();
+      shared[id] = fogDoorItem(
+        id,
+        door.x,
+        door.y,
+        door.orientation,
+        nextPropZIndex,
+        door.length,
+      );
+      nextPropZIndex += 1;
     }
 
     mapLightSources

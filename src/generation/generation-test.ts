@@ -2143,6 +2143,7 @@ const fogScene = JSON.parse(fogExport.json) as {
     height?: number;
     shapeType?: string;
     position?: { x: number; y: number };
+    endPosition?: { x: number; y: number };
     attachedTo?: string;
     disableAttachmentBehavior?: string[];
     metadata?: Record<string, unknown>;
@@ -2166,14 +2167,30 @@ for (const [id, item] of fogEntries) {
   );
 }
 const roomFogItems = fogItems.filter(({ type }) => type === "CURVE");
+const wallFogItems = fogItems.filter(({ name, type, metadata }) =>
+  name.startsWith("Wall Fog") &&
+  type === "LINE" &&
+  !Array.isArray(metadata?.["rodeo.owlbear.dynamic-fog/doors"])
+);
 const doorFogItems = fogItems.filter(({ type, metadata }) =>
   type === "LINE" && Array.isArray(
     metadata?.["rodeo.owlbear.dynamic-fog/doors"],
   )
 );
 assert(
-  roomFogItems.length === housePreset.buildingCount,
-  `house fog export: expected ${housePreset.buildingCount} room outlines`,
+  roomFogItems.length === 0,
+  "house fog export: room outlines must not be exported as fog curves",
+);
+assert(
+  wallFogItems.length > doorFogItems.length,
+  "house fog export: expected wall line segments instead of room outlines",
+);
+assert(
+  wallFogItems.every((item) =>
+    item.position && item.endPosition &&
+    (item.endPosition.x !== 0 || item.endPosition.y !== 0)
+  ),
+  "house fog export: wall fog must use non-empty line segments",
 );
 assert(
   doorFogItems.length === housePreset.buildingCount,
@@ -2303,6 +2320,132 @@ assert(
   noFogItems.filter((item) => item.metadata?.[interiorPropMetadataKey] !== undefined)
     .length === expectedInteriorPropIds.size,
   "house export: interior prop drawings must exist without dynamic fog",
+);
+
+const doorSplitGrid: Grid = Array.from({ length: 5 }, () =>
+  Array.from({ length: 5 }, () => ({ terrain: Terrain.Void, obstacle: Obstacle.None })));
+for (const x of [0, 1, 3, 4]) {
+  doorSplitGrid[2][x] = { terrain: Terrain.Wall, obstacle: Obstacle.None };
+}
+doorSplitGrid[2][2] = {
+  terrain: Terrain.Door,
+  obstacle: Obstacle.None,
+  doorOrientation: "horizontal",
+};
+const doorSplitExport = await createOwlbearSceneJson(
+  doorSplitGrid,
+  "door-split-fog-export",
+  new Set(),
+  {
+    dynamicFog: true,
+    mapImage: {
+      url: "https://example.com/door-split.webp",
+      mime: "image/webp",
+      width: doorSplitGrid[0].length * 48,
+      height: doorSplitGrid.length * 48,
+    },
+  },
+);
+const doorSplitItems = Object.values((JSON.parse(doorSplitExport.json) as {
+  items: { shared: Record<string, {
+    name: string;
+    type: string;
+    layer: string;
+    position?: { x: number; y: number };
+    endPosition?: { x: number; y: number };
+    points?: Array<{ x: number; y: number }>;
+    metadata?: Record<string, unknown>;
+  }> };
+}).items.shared);
+const doorSplitWallItems = doorSplitItems.filter((item) =>
+  item.name.startsWith("Wall Fog") &&
+  item.type === "LINE" &&
+  !Array.isArray(item.metadata?.["rodeo.owlbear.dynamic-fog/doors"])
+);
+const doorSplitDoorItems = doorSplitItems.filter((item) =>
+  item.type === "LINE" && Array.isArray(
+    item.metadata?.["rodeo.owlbear.dynamic-fog/doors"],
+  )
+);
+assert(
+  doorSplitWallItems.length === 2,
+  `door split fog export: expected two wall segments, got ${doorSplitWallItems.length}`,
+);
+assert(
+  doorSplitDoorItems.length === 1,
+  `door split fog export: expected one door segment, got ${doorSplitDoorItems.length}`,
+);
+assert(
+  doorSplitWallItems.every((item) => item.position && item.endPosition),
+  "door split fog export: wall segments must be line items",
+);
+const wallSpans = doorSplitWallItems.map((item) => {
+  const startX = item.position?.x ?? 0;
+  const endX = startX + (item.endPosition?.x ?? 0);
+  return { minimumX: Math.min(startX, endX), maximumX: Math.max(startX, endX) };
+});
+assert(
+  wallSpans.some(({ minimumX, maximumX }) =>
+    minimumX === .5 * 150 && maximumX === 2 * 150) &&
+    wallSpans.some(({ minimumX, maximumX }) =>
+      minimumX === 3 * 150 && maximumX === 4.5 * 150),
+  "door split fog export: wall lines must follow visual endpoints around the door",
+);
+const [doorSplitDoor] = doorSplitDoorItems;
+assert(
+  doorSplitDoor.position?.x === 2 * 150 &&
+    doorSplitDoor.position.y === 2.5 * 150 &&
+    doorSplitDoor.endPosition?.x === 150 &&
+    doorSplitDoor.endPosition.y === 0,
+  "door split fog export: door must occupy the gap between wall segments",
+);
+
+const wallJunctionGrid: Grid = Array.from({ length: 5 }, () =>
+  Array.from({ length: 5 }, () => ({ terrain: Terrain.Void, obstacle: Obstacle.None })));
+for (const [x, y] of [[2, 0], [2, 1], [1, 2], [2, 2], [3, 2]] as const) {
+  wallJunctionGrid[y][x] = { terrain: Terrain.Wall, obstacle: Obstacle.None };
+}
+const wallJunctionExport = await createOwlbearSceneJson(
+  wallJunctionGrid,
+  "wall-junction-fog-export",
+  new Set(),
+  {
+    dynamicFog: true,
+    mapImage: {
+      url: "https://example.com/wall-junction.webp",
+      mime: "image/webp",
+      width: wallJunctionGrid[0].length * 48,
+      height: wallJunctionGrid.length * 48,
+    },
+  },
+);
+const wallJunctionItems = Object.values((JSON.parse(wallJunctionExport.json) as {
+  items: { shared: Record<string, {
+    name: string;
+    type: string;
+    position?: { x: number; y: number };
+    endPosition?: { x: number; y: number };
+    metadata?: Record<string, unknown>;
+  }> };
+}).items.shared);
+const wallJunctionSegments = wallJunctionItems.filter((item) =>
+  item.name.startsWith("Wall Fog") &&
+  item.type === "LINE" &&
+  !Array.isArray(item.metadata?.["rodeo.owlbear.dynamic-fog/doors"])
+);
+const wallJunctionVerticals = wallJunctionSegments.filter((item) =>
+  item.endPosition?.x === 0 && item.endPosition.y !== 0
+);
+assert(
+  wallJunctionVerticals.length === 1,
+  `wall junction fog export: expected one vertical wall segment, got ${wallJunctionVerticals.length}`,
+);
+const [wallJunctionVertical] = wallJunctionVerticals;
+assert(
+  wallJunctionVertical.position &&
+    wallJunctionVertical.endPosition &&
+    wallJunctionVertical.position.y + wallJunctionVertical.endPosition.y === 2.5 * 150,
+  "wall junction fog export: vertical wall must stop on the horizontal wall axis",
 );
 
 const spriteGrid: Grid = Array.from({ length: 6 }, () => Array.from({ length: 6 }, () => ({
