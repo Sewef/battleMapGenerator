@@ -2175,7 +2175,9 @@ function drawInteriorArchitecture(
   const vesselInterior = mode === "ship" || mode === "spaceship";
   const networkWallCoreWidth = cellSize * .34;
   const networkWallFacadeWidth = cellSize * .5;
-  const networkWallTopOffset = cellSize * .5 - networkWallCoreWidth * .5;
+  // Door frames keep their narrow thickness but now rise through the same
+  // full visual tile height as the wall cells they interrupt.
+  const networkWallTopOffset = 0;
   const networkWallBottomOffset = cellSize;
   const isOutsideVessel = (x: number, y: number) => {
     const terrain = grid[y]?.[x]?.terrain;
@@ -2362,6 +2364,31 @@ function drawInteriorArchitecture(
       return mask;
     };
     const wallMask = createWallMask();
+    const createWallShadowReceiverMask = () => {
+      const mask = document.createElement("canvas");
+      mask.width = Math.ceil(mapWidth);
+      mask.height = Math.ceil(mapHeight);
+      const maskContext = mask.getContext("2d")!;
+      maskContext.fillStyle = "#000";
+
+      for (let y = 0; y < grid.length; y += 1) {
+        for (let x = 0; x < grid[y].length; x += 1) {
+          const terrain = grid[y][x].terrain;
+          if (terrain === Terrain.Wall || terrain === Terrain.Void) continue;
+          maskContext.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+        }
+      }
+
+      return mask;
+    };
+    const wallShadowReceiverMask = createWallShadowReceiverMask();
+    const clipLayerToWallShadowReceivers = (layer: HTMLCanvasElement) => {
+      const layerContext = layer.getContext("2d")!;
+      layerContext.save();
+      layerContext.globalCompositeOperation = "destination-in";
+      layerContext.drawImage(wallShadowReceiverMask, 0, 0);
+      layerContext.restore();
+    };
     const drawJunctionDebugRegions = () => {
       const branchClear = Math.max(networkWallFacadeWidth, networkWallCoreWidth) * 1.15;
       const halfBranchClear = branchClear * .5;
@@ -2436,14 +2463,28 @@ function drawInteriorArchitecture(
       context.restore();
     };
     const drawNetworkShadows = () => {
-      const shadow = createOuterMaskShadow(
+      const shadowDebugActive = wallDebugActive("shadow");
+      const castShadow = createOuterMaskShadow(
         wallMask,
-        cellSize * .055,
-        cellSize * .095,
-        Math.max(1.5, cellSize * .13),
-        wallDebugActive("shadow") ? debugWallColors.shadow : "rgba(10, 9, 13, .32)",
+        cellSize * .13,
+        cellSize * .17,
+        Math.max(1.5, cellSize * .115),
+        shadowDebugActive ? debugWallColors.shadow : "rgba(8, 8, 11, .3)",
       );
-      context.drawImage(shadow, 0, 0);
+      clipLayerToWallShadowReceivers(castShadow);
+      context.drawImage(castShadow, 0, 0);
+
+      if (shadowDebugActive) return;
+
+      const contactShadow = createOuterMaskShadow(
+        wallMask,
+        cellSize * .025,
+        cellSize * .035,
+        Math.max(.75, cellSize * .04),
+        "rgba(4, 5, 7, .5)",
+      );
+      clipLayerToWallShadowReceivers(contactShadow);
+      context.drawImage(contactShadow, 0, 0);
     };
     const drawNetworkSurface = () => {
       const layer = document.createElement("canvas");
@@ -2458,6 +2499,41 @@ function drawInteriorArchitecture(
       layerContext.globalCompositeOperation = "destination-in";
       layerContext.drawImage(wallMask, 0, 0);
       context.drawImage(layer, 0, 0);
+    };
+    const drawNetworkRelief = () => {
+      if (wallDebugActive("surface")) return;
+
+      const reliefLayer = document.createElement("canvas");
+      reliefLayer.width = Math.ceil(mapWidth);
+      reliefLayer.height = Math.ceil(mapHeight);
+      const reliefContext = reliefLayer.getContext("2d")!;
+      const lightDepth = Math.max(1, cellSize * .12);
+      const shadeDepth = Math.max(1, cellSize * .17);
+      const lightBlur = Math.max(.75, cellSize * .045);
+      const shadeBlur = Math.max(1, cellSize * .065);
+
+      // Keep material and volume separate: a texture can later be inserted
+      // between the flat surface and these directional relief bands.
+      reliefContext.drawImage(createMaskEdge(
+        wallMask,
+        lightDepth,
+        lightDepth,
+        lightBlur,
+        "rgba(255, 246, 218, .12)",
+      ), 0, 0);
+      reliefContext.drawImage(createMaskEdge(
+        wallMask,
+        -shadeDepth,
+        -shadeDepth,
+        shadeBlur,
+        "rgba(5, 7, 9, .28)",
+      ), 0, 0);
+
+      reliefContext.save();
+      reliefContext.globalCompositeOperation = "destination-in";
+      reliefContext.drawImage(wallMask, 0, 0);
+      reliefContext.restore();
+      context.drawImage(reliefLayer, 0, 0);
     };
     const drawNetworkEdges = () => {
       const edge = Math.max(1, cellSize * .045);
@@ -2514,6 +2590,7 @@ function drawInteriorArchitecture(
     drawVesselHullApron();
     drawNetworkShadows();
     drawNetworkSurface();
+    drawNetworkRelief();
     drawNetworkEdges();
     if (wallDebugActive("path")) drawNetworkDebugPaths();
     if (wallDebugActive("junction")) drawJunctionDebugRegions();
