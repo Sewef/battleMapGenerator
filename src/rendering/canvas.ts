@@ -2351,64 +2351,17 @@ function drawInteriorArchitecture(
       mask.width = Math.ceil(mapWidth);
       mask.height = Math.ceil(mapHeight);
       const maskContext = mask.getContext("2d")!;
-      maskContext.strokeStyle = "#000";
-      strokeWallLines(maskContext, "horizontal", networkWallCoreWidth);
-      strokeWallLines(maskContext, "vertical", networkWallCoreWidth);
-      strokeWallLines(
-        maskContext,
-        "horizontal",
-        networkWallFacadeWidth,
-        cellSize * .25,
-      );
-      return mask;
-    };
-    const wallMask = createWallMask();
-    const eraseJunctionDetails = (target: CanvasRenderingContext2D) => {
-      const branchClear = Math.max(networkWallFacadeWidth, networkWallCoreWidth) * 1.15;
-      const halfBranchClear = branchClear * .5;
+      maskContext.fillStyle = "#000";
       for (let y = 0; y < grid.length; y += 1) {
         for (let x = 0; x < grid[y].length; x += 1) {
-          if (!isWall(x, y)) continue;
-          const directions = wallDirections(x, y);
-          if (!directions.horizontal || !directions.vertical) continue;
-          const left = x * cellSize;
-          const top = y * cellSize;
-          target.fillRect(left, top, cellSize, cellSize);
-          if (directions.joinsNorth) {
-            target.fillRect(
-              left + cellSize * .5 - halfBranchClear,
-              top - cellSize * .5,
-              branchClear,
-              cellSize * .5,
-            );
-          }
-          if (directions.joinsSouth) {
-            target.fillRect(
-              left + cellSize * .5 - halfBranchClear,
-              top + cellSize,
-              branchClear,
-              cellSize * .5,
-            );
-          }
-          if (directions.joinsWest) {
-            target.fillRect(
-              left - cellSize * .5,
-              top + cellSize * .5 - halfBranchClear,
-              cellSize * .5,
-              branchClear,
-            );
-          }
-          if (directions.joinsEast) {
-            target.fillRect(
-              left + cellSize,
-              top + cellSize * .5 - halfBranchClear,
-              cellSize * .5,
-              branchClear,
-            );
+          if (isWall(x, y)) {
+            maskContext.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
           }
         }
       }
+      return mask;
     };
+    const wallMask = createWallMask();
     const drawJunctionDebugRegions = () => {
       const branchClear = Math.max(networkWallFacadeWidth, networkWallCoreWidth) * 1.15;
       const halfBranchClear = branchClear * .5;
@@ -2490,9 +2443,6 @@ function drawInteriorArchitecture(
         Math.max(1.5, cellSize * .13),
         wallDebugActive("shadow") ? debugWallColors.shadow : "rgba(10, 9, 13, .32)",
       );
-      const shadowContext = shadow.getContext("2d")!;
-      shadowContext.globalCompositeOperation = "destination-out";
-      eraseJunctionDetails(shadowContext);
       context.drawImage(shadow, 0, 0);
     };
     const drawNetworkSurface = () => {
@@ -2554,8 +2504,6 @@ function drawInteriorArchitecture(
       );
       edgeContext.globalCompositeOperation = "destination-in";
       edgeContext.drawImage(wallMask, 0, 0);
-      edgeContext.globalCompositeOperation = "destination-out";
-      eraseJunctionDetails(edgeContext);
       context.drawImage(edgeLayer, 0, 0);
     };
     for (let y = 0; y < grid.length; y += 1) {
@@ -2892,12 +2840,7 @@ function drawInteriorArchitecture(
           isArchitecture(x, y + 1);
 
         context.fillStyle = style.wallAlt;
-        context.fillRect(
-          left + cellSize * .08,
-          top + cellSize * .08,
-          cellSize * .84,
-          cellSize * .84,
-        );
+        context.fillRect(left, top, cellSize, cellSize);
         context.strokeStyle = "rgba(222, 153, 82, .2)";
         context.lineWidth = Math.max(.65, cellSize * .022);
         if (connectedHorizontally) {
@@ -2921,7 +2864,7 @@ function drawInteriorArchitecture(
           if (!isSailingShipDeckFloor(grid, x + edge.dx, y + edge.dy)) {
             continue;
           }
-          const inset = cellSize * .08;
+          const inset = 0;
           const startX = left + edge.startX * cellSize - edge.dx * inset;
           const startY = top + edge.startY * cellSize - edge.dy * inset;
           const endX = left + edge.endX * cellSize - edge.dx * inset;
