@@ -2897,6 +2897,10 @@ for (const kind of [
 ] as const) {
   assert(lightKinds.has(kind), `light source extraction: missing ${kind}`);
 }
+const torchLightSource = collectMapLightSources(lightSourceGrid)
+  .find(({ kind }) => kind === "torch");
+assert(torchLightSource && Math.abs(torchLightSource.y - .12) < .0001,
+  "light source extraction: torch light must originate against its wall");
 const lightTilesetExport = await createOwlbearSceneJson(
   lightSourceGrid,
   "light-tileset-export",

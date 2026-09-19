@@ -179,6 +179,13 @@ export function collectMapLightSources(grid: Grid): MapLightSource[] {
       else if (facing === "east") x += offset;
       else if (facing === "south") y += offset;
       else if (facing === "west") x -= offset;
+    } else if (kind === "torch") {
+      // Torches are mounted against a wall: move the actual light origin from
+      // the middle of the floor tile towards the flame shown by the sprite.
+      const offset = .38;
+      if (facing === "south") y -= offset;
+      else if (facing === "east") x -= offset;
+      else if (facing === "west") x += offset;
     }
     return mapLightSource(kind, x, y, interiorPropId);
   });
@@ -457,17 +464,17 @@ function blocksLocalLight(tile: Tile) {
     tile.obstacle === Obstacle.Building;
 }
 
-function hasDirectLightLine(
+function hasDirectLightLineToPoint(
   grid: Grid,
   source: MapLightSource,
-  targetX: number,
-  targetY: number,
+  destinationX: number,
+  destinationY: number,
 ) {
-  const destinationX = targetX + .5;
-  const destinationY = targetY + .5;
+  const targetX = Math.floor(destinationX);
+  const targetY = Math.floor(destinationY);
   const deltaX = destinationX - source.x;
   const deltaY = destinationY - source.y;
-  const steps = Math.max(1, Math.ceil(Math.hypot(deltaX, deltaY) * 10));
+  const steps = Math.max(1, Math.ceil(Math.hypot(deltaX, deltaY) * 14));
   let previousX = Math.floor(source.x);
   let previousY = Math.floor(source.y);
   for (let step = 1; step <= steps; step += 1) {
@@ -498,26 +505,50 @@ function hasDirectLightLine(
   return true;
 }
 
-function reachableLightCells(grid: Grid, source: MapLightSource) {
-  const reached: Array<{ x: number; y: number }> = [];
-  const minimumX = Math.max(0, Math.floor(source.x - source.attenuationRadius - 1));
-  const maximumX = Math.min(
-    grid[0].length - 1,
-    Math.ceil(source.x + source.attenuationRadius),
-  );
-  const minimumY = Math.max(0, Math.floor(source.y - source.attenuationRadius - 1));
-  const maximumY = Math.min(
-    grid.length - 1,
-    Math.ceil(source.y + source.attenuationRadius),
-  );
-  for (let y = minimumY; y <= maximumY; y += 1) {
-    for (let x = minimumX; x <= maximumX; x += 1) {
-      const distance = Math.hypot(x + .5 - source.x, y + .5 - source.y);
-      if (distance > source.attenuationRadius + .5) continue;
-      if (hasDirectLightLine(grid, source, x, y)) reached.push({ x, y });
+function localLightReceiverRect(
+  grid: Grid,
+  source: MapLightSource,
+  x: number,
+  y: number,
+) {
+  const tile = grid[y][x];
+  if (!blocksLocalLight(tile)) {
+    return { x, y, width: 1, height: 1 };
+  }
+
+  const deltaX = x + .5 - source.x;
+  const deltaY = y + .5 - source.y;
+  let receiverAxis: "horizontal" | "vertical" =
+    Math.abs(deltaX) > Math.abs(deltaY) ? "horizontal" : "vertical";
+
+  if (tile.terrain === Terrain.Wall) {
+    const continuesVertically =
+      grid[y - 1]?.[x]?.terrain === Terrain.Wall ||
+      grid[y + 1]?.[x]?.terrain === Terrain.Wall;
+    const continuesHorizontally =
+      grid[y]?.[x - 1]?.terrain === Terrain.Wall ||
+      grid[y]?.[x + 1]?.terrain === Terrain.Wall;
+    if (continuesVertically && !continuesHorizontally) {
+      receiverAxis = "horizontal";
+    } else if (continuesHorizontally && !continuesVertically) {
+      receiverAxis = "vertical";
     }
   }
-  return reached;
+
+  if (receiverAxis === "horizontal") {
+    return {
+      x: deltaX > 0 ? x : x + .5,
+      y,
+      width: .5,
+      height: 1,
+    };
+  }
+  return {
+    x,
+    y: deltaY > 0 ? y : y + .5,
+    width: 1,
+    height: .5,
+  };
 }
 
 function drawLocalLightSources(
@@ -546,53 +577,101 @@ function drawLocalLightSources(
     const layerBottom = Math.min(mapHeight, Math.ceil(centerY + radius + cellSize));
     const layerWidth = layerRight - layerLeft;
     const layerHeight = layerBottom - layerTop;
-    const hardMask = document.createElement("canvas");
-    hardMask.width = layerWidth;
-    hardMask.height = layerHeight;
-    const hardContext = hardMask.getContext("2d")!;
-    hardContext.fillStyle = "#fff";
-    hardContext.beginPath();
-    for (const point of reachableLightCells(grid, source)) {
-      const tile = grid[point.y][point.x];
-      if (tileVisibility(tile, hiddenItems, hiddenOpacity) <= 0) continue;
-      const left = point.x * cellSize - layerLeft;
-      const top = point.y * cellSize - layerTop;
-      if (blocksLocalLight(tile)) {
-        const deltaX = point.x + .5 - source.x;
-        const deltaY = point.y + .5 - source.y;
-        if (Math.abs(deltaX) > Math.abs(deltaY)) {
-          hardContext.rect(
-            deltaX > 0 ? left : left + cellSize * .5,
-            top,
-            cellSize * .5,
-            cellSize,
-          );
-        } else {
-          hardContext.rect(
-            left,
-            deltaY > 0 ? top : top + cellSize * .5,
-            cellSize,
-            cellSize * .5,
-          );
+    // Sample visibility below the tile level. Upscaling this compact mask
+    // produces curved halo and shadow contours instead of unions of tile
+    // rectangles, while keeping the cost independent from export resolution.
+    const samplesPerCell = 8;
+    const sampleMask = document.createElement("canvas");
+    sampleMask.width = Math.max(1, Math.ceil(layerWidth / cellSize * samplesPerCell));
+    sampleMask.height = Math.max(1, Math.ceil(layerHeight / cellSize * samplesPerCell));
+    const sampleContext = sampleMask.getContext("2d")!;
+    const sampleImage = sampleContext.createImageData(sampleMask.width, sampleMask.height);
+    const layerMapLeft = layerLeft / cellSize;
+    const layerMapTop = layerTop / cellSize;
+    const sampleMapStepX = layerWidth / cellSize / sampleMask.width;
+    const sampleMapStepY = layerHeight / cellSize / sampleMask.height;
+    for (let sampleY = 0; sampleY < sampleMask.height; sampleY += 1) {
+      const mapY = layerMapTop + (sampleY + .5) * sampleMapStepY;
+      const tileY = Math.floor(mapY);
+      for (let sampleX = 0; sampleX < sampleMask.width; sampleX += 1) {
+        const mapX = layerMapLeft + (sampleX + .5) * sampleMapStepX;
+        const tileX = Math.floor(mapX);
+        const tile = grid[tileY]?.[tileX];
+        if (!tile || tileVisibility(tile, hiddenItems, hiddenOpacity) <= 0) continue;
+        if (Math.hypot(mapX - source.x, mapY - source.y) > source.attenuationRadius) {
+          continue;
         }
-      } else {
-        hardContext.rect(left, top, cellSize, cellSize);
+        if (!hasDirectLightLineToPoint(grid, source, mapX, mapY)) continue;
+        if (blocksLocalLight(tile)) {
+          const receiver = localLightReceiverRect(grid, source, tileX, tileY);
+          if (
+            mapX < receiver.x || mapX > receiver.x + receiver.width ||
+            mapY < receiver.y || mapY > receiver.y + receiver.height
+          ) continue;
+        }
+        const offset = (sampleY * sampleMask.width + sampleX) * 4;
+        sampleImage.data[offset] = 255;
+        sampleImage.data[offset + 1] = 255;
+        sampleImage.data[offset + 2] = 255;
+        sampleImage.data[offset + 3] = 255;
       }
     }
-    hardContext.fill();
+    sampleContext.putImageData(sampleImage, 0, 0);
 
-    // Blur the visibility mask, then intersect it with its hard version. The
-    // falloff therefore happens only on the lit side: it softens corners and
-    // stair-steps without bleeding through an opaque wall.
+    const visibilityMask = document.createElement("canvas");
+    visibilityMask.width = layerWidth;
+    visibilityMask.height = layerHeight;
+    const visibilityContext = visibilityMask.getContext("2d")!;
+    visibilityContext.imageSmoothingEnabled = true;
+    visibilityContext.imageSmoothingQuality = "high";
+    visibilityContext.drawImage(sampleMask, 0, 0, layerWidth, layerHeight);
+
+    // This independent receiver mask is the hard physical barrier. It allows
+    // the visibility mask to be soft without ever crossing the middle of an
+    // opaque wall or building.
+    const receiverLimit = document.createElement("canvas");
+    receiverLimit.width = layerWidth;
+    receiverLimit.height = layerHeight;
+    const receiverContext = receiverLimit.getContext("2d")!;
+    receiverContext.fillStyle = "#fff";
+    receiverContext.fillRect(0, 0, layerWidth, layerHeight);
+    const minimumTileX = Math.max(0, Math.floor(layerLeft / cellSize));
+    const maximumTileX = Math.min(grid[0].length - 1, Math.floor((layerRight - 1) / cellSize));
+    const minimumTileY = Math.max(0, Math.floor(layerTop / cellSize));
+    const maximumTileY = Math.min(grid.length - 1, Math.floor((layerBottom - 1) / cellSize));
+    for (let y = minimumTileY; y <= maximumTileY; y += 1) {
+      for (let x = minimumTileX; x <= maximumTileX; x += 1) {
+        const tile = grid[y][x];
+        if (!blocksLocalLight(tile)) continue;
+        receiverContext.globalCompositeOperation = "destination-out";
+        receiverContext.fillRect(
+          x * cellSize - layerLeft,
+          y * cellSize - layerTop,
+          cellSize,
+          cellSize,
+        );
+        if (tileVisibility(tile, hiddenItems, hiddenOpacity) <= 0) continue;
+        const receiver = localLightReceiverRect(grid, source, x, y);
+        receiverContext.globalCompositeOperation = "source-over";
+        receiverContext.fillRect(
+          receiver.x * cellSize - layerLeft,
+          receiver.y * cellSize - layerTop,
+          receiver.width * cellSize,
+          receiver.height * cellSize,
+        );
+      }
+    }
+    receiverContext.globalCompositeOperation = "source-over";
+
     const softMask = document.createElement("canvas");
     softMask.width = layerWidth;
     softMask.height = layerHeight;
     const softContext = softMask.getContext("2d")!;
-    softContext.filter = `blur(${Math.max(2, cellSize * .24)}px)`;
-    softContext.drawImage(hardMask, 0, 0);
+    softContext.filter = `blur(${Math.max(1.25, cellSize * .12)}px)`;
+    softContext.drawImage(visibilityMask, 0, 0);
     softContext.filter = "none";
     softContext.globalCompositeOperation = "destination-in";
-    softContext.drawImage(hardMask, 0, 0);
+    softContext.drawImage(receiverLimit, 0, 0);
 
     const lightLayer = document.createElement("canvas");
     lightLayer.width = layerWidth;
