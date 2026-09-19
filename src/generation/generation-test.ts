@@ -732,7 +732,9 @@ function assertHouseTavernFurniture(
     return groups;
   };
   const occupiedCount = (room: FurnitureRoom) =>
-    room.cells.filter(({ tile }) => Boolean(tile.interiorProp)).length;
+    room.cells.filter(({ tile }) =>
+      tile.interiorProp && INTERIOR_PROP_RULES[tile.interiorProp].movement === "blocked"
+    ).length;
   const density = (room: FurnitureRoom) => occupiedCount(room) / room.cells.length;
 
   for (const door of doors) {
@@ -1724,6 +1726,52 @@ for (const preset of PRESETS.filter(({ mode }) => isInteriorMode(mode))) {
 
 const housePreset = PRESETS.find(({ mode }) => mode === "house");
 assert(housePreset, "missing house preset");
+const torchDensitySeed = "house-light-prop-density";
+const unlitHouse = generateTerrain({
+  ...housePreset,
+  seed: torchDensitySeed,
+  lightPropRatio: 0,
+});
+const litHouse = generateTerrain({
+  ...housePreset,
+  seed: torchDensitySeed,
+  lightPropRatio: .05,
+});
+const torchCells = litHouse.flatMap((row, y) => row.flatMap((tile, x) =>
+  tile.interiorProp === "torch" ? [{ x, y, tile }] : []
+));
+assert(!unlitHouse.some((row) => row.some(({ interiorProp }) => interiorProp === "torch")),
+  "light props: zero density must disable automatic torches");
+assert(torchCells.length > 0,
+  "light props: positive density must generate automatic torches");
+const withoutTorches = (grid: Grid) => grid.map((row) => row.map((tile) =>
+  tile.interiorProp === "torch"
+    ? { ...tile, interiorProp: undefined, interiorPropId: undefined,
+      propOrientation: undefined, propFacing: undefined }
+    : tile
+));
+assert(JSON.stringify(withoutTorches(unlitHouse)) === JSON.stringify(withoutTorches(litHouse)),
+  "light props: changing density must not alter the layout or existing furniture");
+for (const { x, y, tile } of torchCells) {
+  assert(tile.propFacing === "south" || tile.propFacing === "east" ||
+    tile.propFacing === "west",
+  `light props: torch at ${x},${y} has no available sprite orientation`);
+  const attachedToWall = tile.propFacing === "south"
+    ? litHouse[y - 1]?.[x]?.terrain === Terrain.Wall
+    : tile.propFacing === "east"
+      ? litHouse[y]?.[x - 1]?.terrain === Terrain.Wall
+      : litHouse[y]?.[x + 1]?.terrain === Terrain.Wall;
+  assert(attachedToWall, `light props: torch at ${x},${y} is not attached to its wall`);
+}
+for (let first = 0; first < torchCells.length; first += 1) {
+  for (let second = first + 1; second < torchCells.length; second += 1) {
+    assert(Math.max(
+      Math.abs(torchCells[first].x - torchCells[second].x),
+      Math.abs(torchCells[first].y - torchCells[second].y),
+    ) >= 3, "light props: automatic torches must remain spaced apart");
+  }
+}
+generated += 2;
 for (
   let roomCount = INTERIOR_ROOM_LIMITS.house.minimum;
   roomCount <= INTERIOR_ROOM_LIMITS.house.maximum;

@@ -1,6 +1,7 @@
 import "./style.css";
 import {
   generateTerrain,
+  DEFAULT_PRESET_ID,
   INTERIOR_MINIMUM_DIMENSIONS,
   INTERIOR_ROOM_LIMITS,
   INTERIOR_PROP_RULES,
@@ -211,7 +212,8 @@ const inputs = Object.fromEntries(
   ]),
 ) as Record<(typeof PARAMETER_FIELDS)[number]["id"], HTMLInputElement>;
 
-let activePreset = PRESETS[0];
+const defaultPreset = PRESETS.find(({ id }) => id === DEFAULT_PRESET_ID) ?? PRESETS[0];
+let activePreset = defaultPreset;
 let currentGrid: Grid = [];
 let generatedOptions: TerrainOptions | undefined;
 let mapRevision = 0;
@@ -313,7 +315,7 @@ function applyPreset(preset: Preset, useNewSeed = true) {
   widthInput.value = String(preset.width);
   heightInput.value = String(preset.height);
   for (const field of PARAMETER_FIELDS) {
-    const value = preset[field.key];
+    const value = preset[field.key] ?? 0;
     inputs[field.id].value = String(field.percent ? Number(value) * 100 : value);
   }
   if (useNewSeed || !seedInput.value) seedInput.value = randomSeed();
@@ -431,6 +433,7 @@ function currentGenerationOptions(): TerrainOptions {
     rockRatio: Number(inputs.rocks.value) / 100,
     treeRatio: Number(inputs.trees.value) / 100,
     buildingCount: Number(inputs.buildings.value),
+    lightPropRatio: Number(inputs.lights.value) / 100,
   };
 }
 
@@ -1938,5 +1941,5 @@ setPropEditorTool(activePropTool);
 updatePropEditorForMode();
 setControlsTab(activeControlsTab);
 void initializeOwlbearExtensionControls();
-applyPreset(PRESETS[0]);
+applyPreset(defaultPreset);
 generate();

@@ -1181,6 +1181,7 @@ export function generateInterior(
   requestedRoomCount: number,
   random: Random,
   mode: InteriorMode,
+  lightPropRatio = 0,
 ) {
   initialize(grid);
   const bounds = buildingBounds(grid, random, mode);
@@ -1213,7 +1214,7 @@ export function generateInterior(
   }
   repairBlockedInternalDoors(grid);
   mirrorInterior(grid, random);
-  decorateInterior(grid, mode, random);
+  decorateInterior(grid, mode, random, lightPropRatio);
   if (mode === "ship-deck") decorateSailingShipDeck(grid, random);
   if (mode === "ship" || mode === "ship-deck") {
     // Both sailing-ship views are presented afloat. The hull walls remain the

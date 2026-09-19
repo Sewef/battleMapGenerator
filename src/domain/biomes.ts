@@ -1,5 +1,7 @@
 import type { Preset } from "./map";
 
+export const DEFAULT_PRESET_ID = "house";
+
 export const PRESETS: Preset[] = [
   {
     id: "desert-canyon", name: "Desert canyon",
@@ -140,7 +142,7 @@ export const PRESETS: Preset[] = [
     description: "A living room with direct kitchen access, a hallway, and separate bedrooms.",
     width: 30, height: 22, seed: "", scale: 6, mode: "house",
     waterWeight: 0, difficultWeight: 0, reliefWeight: 0,
-    rockRatio: 0, treeRatio: 0, buildingCount: 6,
+    rockRatio: 0, treeRatio: 0, buildingCount: 6, lightPropRatio: .015,
   },
   {
     id: "spaceship", name: "Spaceship",
@@ -154,7 +156,7 @@ export const PRESETS: Preset[] = [
     description: "A central gangway serving the captain's cabin, galley, berths, and holds.",
     width: 42, height: 18, seed: "", scale: 6, mode: "ship",
     waterWeight: 0, difficultWeight: 0, reliefWeight: 0,
-    rockRatio: 0, treeRatio: 0, buildingCount: 7,
+    rockRatio: 0, treeRatio: 0, buildingCount: 7, lightPropRatio: .015,
   },
   {
     id: "ship-deck", name: "Sailing ship — exterior",
@@ -168,27 +170,27 @@ export const PRESETS: Preset[] = [
     description: "A great hall and defensive galleries connecting guardrooms, armory, kitchens, and private wings.",
     width: 36, height: 28, seed: "", scale: 6, mode: "castle",
     waterWeight: 0, difficultWeight: 0, reliefWeight: 0,
-    rockRatio: 0, treeRatio: 0, buildingCount: 10,
+    rockRatio: 0, treeRatio: 0, buildingCount: 10, lightPropRatio: .015,
   },
   {
     id: "cathedral", name: "Cathedral",
     description: "A massive cross-shaped nave with transepts, chapels, sacristy, and reliquary.",
     width: 30, height: 36, seed: "", scale: 6, mode: "cathedral",
     waterWeight: 0, difficultWeight: 0, reliefWeight: 0,
-    rockRatio: 0, treeRatio: 0, buildingCount: 6,
+    rockRatio: 0, treeRatio: 0, buildingCount: 6, lightPropRatio: .015,
   },
   {
     id: "tavern", name: "Tavern",
     description: "A large common room, connected kitchen, hallway, and private guest rooms.",
     width: 34, height: 24, seed: "", scale: 6, mode: "tavern",
     waterWeight: 0, difficultWeight: 0, reliefWeight: 0,
-    rockRatio: 0, treeRatio: 0, buildingCount: 7,
+    rockRatio: 0, treeRatio: 0, buildingCount: 7, lightPropRatio: .015,
   },
   {
     id: "crypt", name: "Crypt",
     description: "A processional passage with paired burial vaults and a deeper sanctum.",
     width: 34, height: 24, seed: "", scale: 6, mode: "crypt",
     waterWeight: 0, difficultWeight: 0, reliefWeight: 0,
-    rockRatio: 0, treeRatio: 0, buildingCount: 9,
+    rockRatio: 0, treeRatio: 0, buildingCount: 9, lightPropRatio: .015,
   },
 ];

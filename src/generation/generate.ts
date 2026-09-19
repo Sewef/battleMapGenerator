@@ -1408,6 +1408,7 @@ function generateTerrainAttempt(options: TerrainOptions) {
       options.buildingCount,
       seededRandom(`${seed}:${options.mode}`),
       options.mode,
+      options.lightPropRatio,
     );
     return { grid };
   }

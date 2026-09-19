@@ -1,4 +1,4 @@
-import { PRESETS } from "../domain/biomes";
+import { DEFAULT_PRESET_ID, PRESETS } from "../domain/biomes";
 import {
   DECK_FEATURE_RULES,
   INTERIOR_PROP_RULES,
@@ -18,6 +18,7 @@ export const PARAMETER_FIELDS = [
   { id: "rocks", key: "rockRatio", label: "Rocks", min: 0, max: 12, step: 1, percent: true, group: "obstacles" },
   { id: "trees", key: "treeRatio", label: "Trees", min: 0, max: 32, step: 1, percent: true, group: "obstacles" },
   { id: "buildings", key: "buildingCount", label: "Buildings", min: 0, max: 8, step: 1, percent: false, group: "obstacles" },
+  { id: "lights", key: "lightPropRatio", label: "Light props", min: 0, max: 5, step: .5, percent: true, group: "lighting" },
 ] as const;
 
 export type ParameterId = (typeof PARAMETER_FIELDS)[number]["id"];
@@ -44,14 +45,14 @@ export const BIOME_PARAMETER_PROFILES: Record<
   "mountain-pass": { difficult: "Mountain scree", relief: "Mountain mass", rocks: "Rock density", trees: "Tree density", buildings: "Buildings" },
   sewer: { water: "Channel width", rocks: "Debris density" },
   "ancient-ruins": { difficult: "Overgrowth", rocks: "Rubble density", trees: "Vegetation density", buildings: "Ruined structures" },
-  house: { buildings: "Rooms" },
+  house: { buildings: "Rooms", lights: "Light props" },
   spaceship: { buildings: "Compartments" },
-  ship: { buildings: "Cabins / holds" },
+  ship: { buildings: "Cabins / holds", lights: "Light props" },
   "ship-deck": { buildings: "Deck areas" },
-  castle: { buildings: "Chambers" },
-  cathedral: { buildings: "Halls / chapels" },
-  tavern: { buildings: "Rooms" },
-  crypt: { buildings: "Vaults" },
+  castle: { buildings: "Chambers", lights: "Light props" },
+  cathedral: { buildings: "Halls / chapels", lights: "Light props" },
+  tavern: { buildings: "Rooms", lights: "Light props" },
+  crypt: { buildings: "Vaults", lights: "Light props" },
 };
 
 const PRESET_GROUPS = [
@@ -139,7 +140,7 @@ export function renderApp(root: HTMLElement) {
   const initialPresetGroupIndex = Math.max(
     0,
     PRESET_GROUPS.findIndex((group) =>
-      group.ids.some((id) => id === PRESETS[0].id)
+      group.ids.some((id) => id === DEFAULT_PRESET_ID)
     ),
   );
   root.innerHTML = `
@@ -215,6 +216,7 @@ export function renderApp(root: HTMLElement) {
           ${[
       ["terrain", "Terrain weight"],
       ["obstacles", "Obstacle population"],
+      ["lighting", "Lighting"],
     ].map(([group, title]) => `
           <div class="parameter-section" data-parameter-group="${group}">
             <div class="parameter-heading">

@@ -105,7 +105,12 @@ function reserveCirculation(grid: Grid, rooms: Room[]) {
   return { reserved, doorClearance };
 }
 
-export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random) {
+export function decorateInterior(
+  grid: Grid,
+  mode: InteriorMode,
+  random: Random,
+  lightPropRatio = 0,
+) {
   if (mode === "ship-deck") return;
   const rooms = collectRooms(grid);
   const { reserved, doorClearance } = reserveCirculation(grid, rooms);
@@ -183,6 +188,63 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
   ) => placeComposition(room, [{ kind, points, orientation, facing }]);
   const pointInRoom = (room: Room, x: number, y: number) =>
     grid[y]?.[x]?.terrain === Terrain.Ground && grid[y][x].roomId === room.id;
+
+  const placeLightProps = () => {
+    if (lightPropRatio <= 0 || mode === "spaceship") return;
+
+    type TorchCandidate = Point & {
+      facing: NonNullable<Tile["propFacing"]>;
+    };
+    const candidates = shuffled(rooms
+      .filter(({ role }) => !/Hallway|passage|spine|gangway/i.test(role))
+      .flatMap((room) =>
+        room.cells.flatMap((point): TorchCandidate[] => {
+          const tile = grid[point.y][point.x];
+          if (
+            tile.interiorProp ||
+            reserved.has(key(point)) ||
+            doorClearance.has(key(point)) ||
+            neighbors(point).some(({ x, y }) => Boolean(grid[y]?.[x]?.interiorProp))
+          ) return [];
+
+          const facings: TorchCandidate["facing"][] = [];
+          if (grid[point.y - 1]?.[point.x]?.terrain === Terrain.Wall) {
+            facings.push("south");
+          }
+          if (grid[point.y]?.[point.x - 1]?.terrain === Terrain.Wall) {
+            facings.push("east");
+          }
+          if (grid[point.y]?.[point.x + 1]?.terrain === Terrain.Wall) {
+            facings.push("west");
+          }
+          if (!facings.length) return [];
+          return [{
+            ...point,
+            facing: facings[Math.floor(random() * facings.length)],
+          }];
+        })), random);
+    const floorArea = rooms.reduce((total, room) => total + room.cells.length, 0);
+    const target = Math.max(1, Math.round(floorArea * lightPropRatio));
+    const placed: TorchCandidate[] = [];
+
+    for (const candidate of candidates) {
+      if (placed.length >= target) break;
+      const sufficientlySpaced = placed.every((light) =>
+        Math.max(
+          Math.abs(light.x - candidate.x),
+          Math.abs(light.y - candidate.y),
+        ) >= 3
+      );
+      if (!sufficientlySpaced) continue;
+      commitProp({
+        kind: "torch",
+        points: [candidate],
+        orientation: candidate.facing === "south" ? "vertical" : "horizontal",
+        facing: candidate.facing,
+      });
+      placed.push(candidate);
+    }
+  };
 
   const wallAnchors = (room: Room) => shuffled(room.cells.flatMap((point) => {
     const anchors: Array<{ head: Point; dx: number; dy: number; orientation: Orientation; facing: NonNullable<Tile["propFacing"]> }> = [];
@@ -1432,4 +1494,5 @@ export function decorateInterior(grid: Grid, mode: InteriorMode, random: Random)
       if (room.cells.length >= 28) placeDiningSets(room, 1, 2, "chair");
     }
   }
+  placeLightProps();
 }

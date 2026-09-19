@@ -162,6 +162,7 @@ export interface TerrainOptions {
   rockRatio: number;
   treeRatio: number;
   buildingCount: number;
+  lightPropRatio?: number;
 }
 
 export interface Preset extends TerrainOptions {

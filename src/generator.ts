@@ -1,3 +1,3 @@
 export { generateTerrain } from "./generation/generate";
 export * from "./domain/map";
-export { PRESETS } from "./domain/biomes";
+export { DEFAULT_PRESET_ID, PRESETS } from "./domain/biomes";
