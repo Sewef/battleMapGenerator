@@ -2,9 +2,11 @@ import type { Grid, LandscapeMode } from "../domain/map";
 import {
   drawGrid,
   type CustomPropImages,
-  type TilesetPropImages,
-  type TilesetTerrainImages,
 } from "../rendering/canvas";
+import type {
+  TilesetPropImages,
+  TilesetTerrainImages,
+} from "../rendering/tileset-assets";
 
 const WEBP_QUALITY = 0.95;
 

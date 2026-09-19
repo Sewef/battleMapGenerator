@@ -1,4 +1,3 @@
-import type { TilesetPropImages, TilesetTerrainImages } from "./canvas";
 import type { LandscapeMode } from "../domain/map";
 
 export interface InteriorPropSpriteLayout {
@@ -13,45 +12,14 @@ const DEFAULT_INTERIOR_PROP_SPRITE_LAYOUT: InteriorPropSpriteLayout = {
   anchor: "center",
 };
 
+const interiorAssetSpriteLayouts: Record<string, InteriorPropSpriteLayout> = {};
 export const INTERIOR_ASSET_SPRITE_LAYOUTS: Readonly<
   Record<string, InteriorPropSpriteLayout>
-> = {
-  // These files occupy one gameplay cell, but their artwork rises one cell north.
-  "altar_3x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "altar_2x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "altar_vertical_1x2.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "barrel_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "cabinet_north_2x1.png": { renderWidthCells: 2, renderHeightCells: 2, anchor: "bottom" },
-  "cabinet_south_2x1.png": { renderWidthCells: 2, renderHeightCells: 2, anchor: "bottom" },
-  "counter_horizontal_left_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "counter_horizontal_middle_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "counter_horizontal_right_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "drawer_1_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "drawer_2_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "drawer_3_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "shelf_1_1x1.png": { renderWidthCells: 1, renderHeightCells: 3, anchor: "bottom" },
-  "shelf_2_1x1.png": { renderWidthCells: 1, renderHeightCells: 3, anchor: "bottom" },
-  "shelf_3_1x1.png": { renderWidthCells: 1, renderHeightCells: 3, anchor: "bottom" },
-  "shelf_4_1x1.png": { renderWidthCells: 1, renderHeightCells: 3, anchor: "bottom" },
-  "shelf_5_1x1.png": { renderWidthCells: 1, renderHeightCells: 3, anchor: "bottom" },
-  "shelf_6_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "shelf_7_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "statue_1_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "statue_2_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "statue_3_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "statue_4_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "statue_5_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "statue_6_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "statue_7_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "table_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "table_horizontal_left.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "table_horizontal_middle.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "table_horizontal_right.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "wall_chain_1_1x2.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "wall_chain_2_1x2.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-};
+> = interiorAssetSpriteLayouts;
 
 export function interiorAssetSpriteLayout(assetName: string) {
+  const declaredLayout = INTERIOR_ASSET_SPRITE_LAYOUTS[assetName];
+  if (declaredLayout) return declaredLayout;
   const verticalAltar = /^altar_vertical_1x(\d+)\.png$/.exec(assetName);
   if (verticalAltar) {
     return {
@@ -94,27 +62,52 @@ const lpc = (name: string) => `${TILESET_ROOT}/lpc/${name}`;
 
 export type InteriorAssetFolder = "ai" | "bailey" | "lpc";
 
-const AI_INTERIOR_ASSETS = new Set([
-  "coffin_1x2.png",
-  "hearth_1x2.png", "hearth_1x3.png", "hearth_2x1.png", "hearth_3x1.png",
-]);
-
-const BAILEY_INTERIOR_ASSETS = new Set([
-  "drawer_1_1x1.png", "drawer_2_1x1.png", "drawer_3_1x1.png",
-  "flower_pot_1_1x1.png", "flower_pot_2_1x1.png", "flower_pot_3_1x1.png",
-  "table_2x2.png", "terrain_indoor.png",
-]);
+const interiorAssetFolders: Record<string, InteriorAssetFolder> = {};
 
 export function interiorAssetFolder(assetName: string): InteriorAssetFolder {
-  if (AI_INTERIOR_ASSETS.has(assetName)) return "ai";
-  if (BAILEY_INTERIOR_ASSETS.has(assetName)) return "bailey";
-  return "lpc";
+  return interiorAssetFolders[assetName] ?? "lpc";
 }
 
 export const interiorAssetPath = (assetName: string) =>
   `${interiorAssetFolder(assetName)}/${assetName}`;
 
-const interior = (assetName: string) => `${TILESET_ROOT}/${interiorAssetPath(assetName)}`;
+export interface TilesetAssetDefinition {
+  source: string;
+  visual?: InteriorPropSpriteLayout;
+}
+
+const assetDefinition = (
+  source: string,
+  visual?: InteriorPropSpriteLayout,
+): TilesetAssetDefinition => ({ source, visual });
+
+const interiorAssetDefinition = (
+  assetName: string,
+  visual?: InteriorPropSpriteLayout,
+  folder: InteriorAssetFolder = "lpc",
+) => {
+  interiorAssetFolders[assetName] = folder;
+  if (visual) interiorAssetSpriteLayouts[assetName] = visual;
+  return assetDefinition(`${TILESET_ROOT}/${folder}/${assetName}`, visual);
+};
+
+const bottomLayout = (
+  renderWidthCells: number,
+  renderHeightCells: number,
+): InteriorPropSpriteLayout => ({
+  renderWidthCells,
+  renderHeightCells,
+  anchor: "bottom",
+});
+
+const centeredLayout = (
+  renderWidthCells: number,
+  renderHeightCells: number,
+): InteriorPropSpriteLayout => ({
+  renderWidthCells,
+  renderHeightCells,
+  anchor: "center",
+});
 
 export type FurnitureFacing = "north" | "east" | "south" | "west";
 
@@ -202,11 +195,56 @@ export function casualSofaAssetNames(facing: FurnitureFacing) {
     `${color}_${variant}_${facing}.png`));
 }
 
-const image = (source: string) => {
+const image = (source: string, visual?: InteriorPropSpriteLayout) => {
   const result = new Image();
   result.dataset.tilesetSource = source;
+  if (visual) {
+    result.dataset.tilesetRenderWidthCells = String(visual.renderWidthCells);
+    result.dataset.tilesetRenderHeightCells = String(visual.renderHeightCells);
+    result.dataset.tilesetAnchor = visual.anchor;
+  }
   return result;
 };
+
+export function tilesetImageSpriteLayout(
+  value: CanvasImageSource,
+): InteriorPropSpriteLayout | undefined {
+  if (!(value instanceof HTMLImageElement)) return undefined;
+  const renderWidthCells = Number(value.dataset.tilesetRenderWidthCells);
+  const renderHeightCells = Number(value.dataset.tilesetRenderHeightCells);
+  const anchor = value.dataset.tilesetAnchor;
+  if (
+    !Number.isFinite(renderWidthCells) || !Number.isFinite(renderHeightCells) ||
+    (anchor !== "center" && anchor !== "bottom")
+  ) return undefined;
+  return { renderWidthCells, renderHeightCells, anchor };
+}
+
+type MaterializedAssets<T> = T extends TilesetAssetDefinition
+  ? HTMLImageElement
+  : T extends readonly unknown[]
+    ? { [Key in keyof T]: MaterializedAssets<T[Key]> }
+    : T extends object
+      ? { [Key in keyof T]: MaterializedAssets<T[Key]> }
+      : T;
+
+function materializeAssets<T>(value: T): MaterializedAssets<T> {
+  if (
+    value && typeof value === "object" &&
+    "source" in value && typeof value.source === "string"
+  ) {
+    const definition = value as TilesetAssetDefinition;
+    return image(definition.source, definition.visual) as MaterializedAssets<T>;
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => materializeAssets(entry)) as MaterializedAssets<T>;
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) =>
+      [key, materializeAssets(entry)])) as MaterializedAssets<T>;
+  }
+  return value as MaterializedAssets<T>;
+}
 
 export function ensureTilesetImageLoaded(value: CanvasImageSource) {
   if (!(value instanceof HTMLImageElement)) return;
@@ -214,47 +252,48 @@ export function ensureTilesetImageLoaded(value: CanvasImageSource) {
   if (source && !value.src) value.src = source;
 }
 
-const numberedImages = (
-  source: (index: number) => string,
+const numberedAssets = (
+  definition: (index: number) => TilesetAssetDefinition,
   count: number,
-) => Array.from({ length: count }, (_, index) => image(source(index + 1)));
+) => Array.from({ length: count }, (_, index) => definition(index + 1));
 
-const lengthImages = (
-  source: (length: number) => string,
+const lengthAssets = (
+  definition: (length: number) => TilesetAssetDefinition,
   minimum: number,
   maximum: number,
 ) => Object.fromEntries(Array.from(
   { length: maximum - minimum + 1 },
   (_, index) => {
     const length = minimum + index;
-    return [length, image(source(length))];
+    return [length, definition(length)];
   },
 ));
 
-const rockFamilyImages = (family: "rock" | "rock_light" | "rock_dark" |
+const rockFamilyAssets = (family: "rock" | "rock_light" | "rock_dark" |
   "rock_desert" | "rock_snow") => ({
   oneByOne: Array.from({ length: 16 }, (_, index) =>
-    image(lpc(`rock/${family}_${index + 1}_1x1.png`))),
+    assetDefinition(lpc(`rock/${family}_${index + 1}_1x1.png`))),
   oneByTwo: Array.from({ length: 9 }, (_, index) =>
-    image(lpc(`rock/${family}_${index + 1}_1x2.png`))),
+    assetDefinition(lpc(`rock/${family}_${index + 1}_1x2.png`))),
   twoByOne: Array.from({ length: 3 }, (_, index) =>
-    image(lpc(`rock/${family}_${index + 1}_2x1.png`))),
+    assetDefinition(lpc(`rock/${family}_${index + 1}_2x1.png`))),
   twoByTwo: Array.from({ length: 14 }, (_, index) =>
-    image(lpc(`rock/${family}_${index + 1}_2x2.png`))),
-  twoByThree: [image(lpc(`rock/${family}_1_2x3.png`))],
-  threeByThree: [image(lpc(`rock/${family}_1_3x3.png`))],
+    assetDefinition(lpc(`rock/${family}_${index + 1}_2x2.png`))),
+  twoByThree: [assetDefinition(lpc(`rock/${family}_1_2x3.png`))],
+  threeByThree: [assetDefinition(lpc(`rock/${family}_1_3x3.png`))],
   fourByThree: Array.from({ length: 2 }, (_, index) =>
-    image(lpc(`rock/${family}_${index + 1}_4x3.png`))),
-  fourByFive: [image(lpc(`rock/${family}_1_4x5.png`))],
-  fiveByFour: [image(lpc(`rock/${family}_1_5x4.png`))],
+    assetDefinition(lpc(`rock/${family}_${index + 1}_4x3.png`))),
+  fourByFive: [assetDefinition(lpc(`rock/${family}_1_4x5.png`))],
+  fiveByFour: [assetDefinition(lpc(`rock/${family}_1_5x4.png`))],
 });
 
-const casualSofaImages = (facing: FurnitureFacing) =>
-  casualSofaAssetNames(facing).map((name) => image(lpc(`casual_sofa/${name}`)));
+const casualSofaAssets = (facing: FurnitureFacing) =>
+  casualSofaAssetNames(facing).map((name) =>
+    assetDefinition(lpc(`casual_sofa/${name}`)));
 
-const bedImages = (doubleBed: boolean, facing: FurnitureFacing) =>
+const bedAssets = (doubleBed: boolean, facing: FurnitureFacing) =>
   bedAssetDefinitions(doubleBed, facing)
-    .map((asset) => image(lpc(`${asset.folder}/${asset.name}`)));
+    .map((asset) => assetDefinition(lpc(`${asset.folder}/${asset.name}`)));
 
 export function collectTilesetImages(value: unknown): HTMLImageElement[] {
   if (value instanceof HTMLImageElement) return [value];
@@ -287,9 +326,8 @@ export function tilesetLoadStatus(value: unknown): TilesetLoadStatus {
   };
 }
 
-export function createTilesetAssets() {
-  const terrain = image(bailey("terrain.png"));
-  const terrainTiles: Record<keyof TilesetTerrainImages, HTMLImageElement> = {
+function createTilesetTerrainImages() {
+  return {
     beachSand: image(lpc("terrain/beach_sand.png")),
     coldWater: image(lpc("terrain/cold_water.png")),
     desertSand: image(lpc("terrain/desert_sand.png")),
@@ -302,90 +340,128 @@ export function createTilesetAssets() {
     tiledSoil: image(lpc("terrain/tiled_soil.png")),
     water: image(lpc("terrain/water.png")),
   };
-  const props = {
+}
+
+// Single source of truth for prop assets. Visual sizes are expressed in grid
+// cells and travel with the asset to both the canvas renderer and Owlbear export.
+const TILESET_PROP_ASSET_DEFINITIONS = {
     // Outdoor Bailey tiles.
-    tree1x1: image(bailey("tree_1x1.png")),
-    tree2x2: image(bailey("tree_2x2.png")),
-    campfire: image(lpc("campfire_1x1.png")),
-    lampPost: image(lpc("lamp_post_1x1.png")),
+    tree1x1: assetDefinition(bailey("tree_1x1.png"), centeredLayout(1, 1)),
+    tree2x2: assetDefinition(bailey("tree_2x2.png"), centeredLayout(2, 2)),
+    campfire: assetDefinition(lpc("campfire_1x1.png"), bottomLayout(1, 2)),
+    lampPost: assetDefinition(lpc("lamp_post_1x1.png"), bottomLayout(1, 3)),
     torches: {
-      east: image(lpc("torch_east.png")),
-      south: image(lpc("torch_south.png")),
-      west: image(lpc("torch_west.png")),
+      east: interiorAssetDefinition("torch_east.png", centeredLayout(1, 1)),
+      south: interiorAssetDefinition("torch_south.png", centeredLayout(1, 1)),
+      west: interiorAssetDefinition("torch_west.png", centeredLayout(1, 1)),
     },
     rockFamilies: {
-      normal: rockFamilyImages("rock"),
-      light: rockFamilyImages("rock_light"),
-      dark: rockFamilyImages("rock_dark"),
-      desert: rockFamilyImages("rock_desert"),
-      snow: rockFamilyImages("rock_snow"),
+      normal: rockFamilyAssets("rock"),
+      light: rockFamilyAssets("rock_light"),
+      dark: rockFamilyAssets("rock_dark"),
+      desert: rockFamilyAssets("rock_desert"),
+      snow: rockFamilyAssets("rock_snow"),
     },
 
-    crate1x1: numberedImages((index) => interior(`crate_${index}_1x1.png`), 4),
-    barrel1x1: image(interior("barrel_1x1.png")),
-    bucket1x1: numberedImages((index) => interior(`bucket_${index}_1x1.png`), 2),
+    crate1x1: numberedAssets((index) =>
+      interiorAssetDefinition(`crate_${index}_1x1.png`, centeredLayout(1, 1)), 4),
+    barrel1x1: interiorAssetDefinition("barrel_1x1.png", bottomLayout(1, 2)),
+    bucket1x1: numberedAssets((index) =>
+      interiorAssetDefinition(`bucket_${index}_1x1.png`, centeredLayout(1, 1)), 2),
 
     bedSingles: {
-      north: bedImages(false, "north"),
-      east: bedImages(false, "east"),
-      south: bedImages(false, "south"),
-      west: bedImages(false, "west"),
+      north: bedAssets(false, "north"),
+      east: bedAssets(false, "east"),
+      south: bedAssets(false, "south"),
+      west: bedAssets(false, "west"),
     },
     bedDoubles: {
-      north: bedImages(true, "north"),
-      east: bedImages(true, "east"),
-      south: bedImages(true, "south"),
-      west: bedImages(true, "west"),
+      north: bedAssets(true, "north"),
+      east: bedAssets(true, "east"),
+      south: bedAssets(true, "south"),
+      west: bedAssets(true, "west"),
     },
-    table2x2: image(interior("table_2x2.png")),
-    indoorTerrain: image(interior("terrain_indoor.png")),
-    drawers1x1: numberedImages((index) => interior(`drawer_${index}_1x1.png`), 3),
-    shelves1x1: numberedImages((index) => interior(`shelf_${index}_1x1.png`), 7),
-    statue1x1: numberedImages((index) => interior(`statue_${index}_1x1.png`), 7),
-    flowerPots1x1: numberedImages((index) => interior(`flower_pot_${index}_1x1.png`), 3),
-    bones1x1: numberedImages((index) => interior(`bones_${index}_1x1.png`), 5),
-    wallChains1x2: numberedImages((index) => interior(`wall_chain_${index}_1x2.png`), 2),
+    table2x2: interiorAssetDefinition(
+      "table_2x2.png", centeredLayout(2, 2), "bailey"),
+    indoorTerrain: interiorAssetDefinition("terrain_indoor.png", undefined, "bailey"),
+    drawers1x1: numberedAssets((index) =>
+      interiorAssetDefinition(
+        `drawer_${index}_1x1.png`, bottomLayout(1, 2), "bailey"), 3),
+    shelves1x1: numberedAssets((index) => interiorAssetDefinition(
+      `shelf_${index}_1x1.png`, bottomLayout(1, index <= 5 ? 3 : 2)), 7),
+    statue1x1: numberedAssets((index) =>
+      interiorAssetDefinition(`statue_${index}_1x1.png`, bottomLayout(1, 2)), 7),
+    flowerPots1x1: numberedAssets((index) =>
+      interiorAssetDefinition(
+        `flower_pot_${index}_1x1.png`, centeredLayout(1, 1), "bailey"), 3),
+    bones1x1: numberedAssets((index) =>
+      interiorAssetDefinition(`bones_${index}_1x1.png`, centeredLayout(1, 1)), 5),
+    wallChains1x2: numberedAssets((index) =>
+      interiorAssetDefinition(`wall_chain_${index}_1x2.png`, bottomLayout(1, 2)), 2),
 
     // Hand-drawn LPC furniture.
-    stool1x1: image(interior("stool_1x1.png")),
-    table1x1: image(interior("table_1x1.png")),
-    tableHorizontalByLength: lengthImages((length) =>
-      interior(`table_horizontal_${length}x1.png`), 2, 3),
-    tableVerticalByLength: lengthImages((length) =>
-      interior(`table_vertical_1x${length}.png`), 2, 3),
-    counterHorizontalByLength: lengthImages((length) =>
-      interior(`counter_horizontal_${length}x1.png`), 3, 7),
-    counterVerticalByLength: lengthImages((length) =>
-      interior(`counter_vertical_1x${length}.png`), 3, 7),
-    benchHorizontalByLength: lengthImages((length) =>
-      interior(`bench_horizontal_${length}x1.png`), 2, 5),
-    benchVerticalByLength: lengthImages((length) =>
-      interior(`bench_vertical_1x${length}.png`), 2, 5),
-    cannonNorth: image(lpc("cannon_north_1x2.png")),
-    cannonSouth: image(lpc("cannon_south_1x2.png")),
+    stool1x1: interiorAssetDefinition("stool_1x1.png", centeredLayout(1, 1)),
+    table1x1: interiorAssetDefinition("table_1x1.png", bottomLayout(1, 2)),
+    tableHorizontalByLength: lengthAssets((length) => interiorAssetDefinition(
+      `table_horizontal_${length}x1.png`, bottomLayout(length, 2)), 2, 3),
+    tableVerticalByLength: lengthAssets((length) => interiorAssetDefinition(
+      `table_vertical_1x${length}.png`, centeredLayout(1, length)), 2, 3),
+    counterHorizontalByLength: lengthAssets((length) => interiorAssetDefinition(
+      `counter_horizontal_${length}x1.png`, bottomLayout(length, 2)), 3, 7),
+    counterVerticalByLength: lengthAssets((length) => interiorAssetDefinition(
+      `counter_vertical_1x${length}.png`, centeredLayout(1, length)), 3, 7),
+    benchHorizontalByLength: lengthAssets((length) => interiorAssetDefinition(
+      `bench_horizontal_${length}x1.png`, centeredLayout(length, 1)), 2, 5),
+    benchVerticalByLength: lengthAssets((length) => interiorAssetDefinition(
+      `bench_vertical_1x${length}.png`, centeredLayout(1, length)), 2, 5),
+    cannonNorth: assetDefinition(lpc("cannon_north_1x2.png"), bottomLayout(1, 2)),
+    cannonSouth: assetDefinition(lpc("cannon_south_1x2.png"), bottomLayout(1, 2)),
     casualSofas: {
-      north: casualSofaImages("north"),
-      east: casualSofaImages("east"),
-      south: casualSofaImages("south"),
-      west: casualSofaImages("west"),
+      north: casualSofaAssets("north"),
+      east: casualSofaAssets("east"),
+      south: casualSofaAssets("south"),
+      west: casualSofaAssets("west"),
     },
 
     // Generated multi-cell and directional variants.
-    hearth1x2: image(interior("hearth_1x2.png")),
-    hearth2x1: image(interior("hearth_2x1.png")),
-    hearth1x3: image(interior("hearth_1x3.png")),
-    hearth3x1: image(interior("hearth_3x1.png")),
-    cabinetVertical1x2: image(interior("cabinet_vertical_1x2.png")),
-    cabinet2x1North: image(interior("cabinet_north_2x1.png")),
-    cabinetVertical1x3: image(interior("cabinet_vertical_1x3.png")),
-    cabinet2x1South: image(interior("cabinet_south_2x1.png")),
-    altarVertical1x2: image(interior("altar_vertical_1x2.png")),
-    altar2x1: image(interior("altar_2x1.png")),
-    altarVertical1x3: image(interior("altar_vertical_1x3.png")),
-    altar3x1: image(interior("altar_3x1.png")),
-    coffin1x2: image(interior("coffin_1x2.png")),
-    coffin2x1: image(interior("coffin_2x1.png")),
-  } satisfies TilesetPropImages;
+    hearth1x2: interiorAssetDefinition(
+      "hearth_1x2.png", centeredLayout(1, 2), "ai"),
+    hearth2x1: interiorAssetDefinition(
+      "hearth_2x1.png", centeredLayout(2, 1), "ai"),
+    hearth1x3: interiorAssetDefinition(
+      "hearth_1x3.png", centeredLayout(1, 3), "ai"),
+    hearth3x1: interiorAssetDefinition(
+      "hearth_3x1.png", centeredLayout(3, 1), "ai"),
+    cabinetVertical1x2: interiorAssetDefinition(
+      "cabinet_vertical_1x2.png", bottomLayout(1, 3)),
+    cabinet2x1North: interiorAssetDefinition(
+      "cabinet_north_2x1.png", bottomLayout(2, 2)),
+    cabinetVertical1x3: interiorAssetDefinition(
+      "cabinet_vertical_1x3.png", bottomLayout(1, 4)),
+    cabinet2x1South: interiorAssetDefinition(
+      "cabinet_south_2x1.png", bottomLayout(2, 2)),
+    altarVertical1x2: interiorAssetDefinition(
+      "altar_vertical_1x2.png", bottomLayout(1, 3)),
+    altar2x1: interiorAssetDefinition("altar_2x1.png", bottomLayout(1, 2)),
+    altarVertical1x3: interiorAssetDefinition(
+      "altar_vertical_1x3.png", bottomLayout(1, 4)),
+    altar3x1: interiorAssetDefinition("altar_3x1.png", bottomLayout(1, 2)),
+    coffin1x2: interiorAssetDefinition(
+      "coffin_1x2.png", centeredLayout(1, 2), "ai"),
+    coffin2x1: interiorAssetDefinition("coffin_2x1.png", centeredLayout(2, 1)),
+} as const;
+
+function createTilesetPropImages() {
+  return materializeAssets(TILESET_PROP_ASSET_DEFINITIONS);
+}
+
+export type TilesetTerrainImages = ReturnType<typeof createTilesetTerrainImages>;
+export type TilesetPropImages = ReturnType<typeof createTilesetPropImages>;
+
+export function createTilesetAssets() {
+  const terrain = image(bailey("terrain.png"));
+  const terrainTiles = createTilesetTerrainImages();
+  const props = createTilesetPropImages();
   const terrainStatus = () => tilesetLoadStatus({ terrain, terrainTiles });
   const terrainReady = () => {
     const status = terrainStatus();

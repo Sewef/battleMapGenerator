@@ -23,6 +23,9 @@ import {
   ensureTilesetImageLoaded,
   interiorAssetSpriteLayout,
   selectBedAssetDefinition,
+  tilesetImageSpriteLayout,
+  type TilesetPropImages,
+  type TilesetTerrainImages,
 } from "./tileset-assets";
 
 export interface RenderOptions {
@@ -43,67 +46,6 @@ export interface RenderOptions {
   stylizedLighting?: boolean;
   hideInteriorProps?: boolean;
   wallDebug?: WallDebugOptions;
-}
-
-export interface TilesetTerrainImages {
-  beachSand: CanvasImageSource;
-  coldWater: CanvasImageSource;
-  desertSand: CanvasImageSource;
-  grass: CanvasImageSource;
-  grassRough: CanvasImageSource;
-  ice: CanvasImageSource;
-  lava: CanvasImageSource;
-  sandRough: CanvasImageSource;
-  snow: CanvasImageSource;
-  tiledSoil: CanvasImageSource;
-  water: CanvasImageSource;
-}
-
-export interface TilesetPropImages {
-  tree1x1: CanvasImageSource;
-  tree2x2: CanvasImageSource;
-  campfire: CanvasImageSource;
-  lampPost: CanvasImageSource;
-  torches: Record<"east" | "south" | "west", CanvasImageSource>;
-  rockFamilies: Record<RockFamily, RockFamilyImages>;
-  crate1x1: readonly CanvasImageSource[];
-  barrel1x1: CanvasImageSource;
-  bucket1x1: readonly CanvasImageSource[];
-  stool1x1: CanvasImageSource;
-  bedSingles: Record<"north" | "east" | "south" | "west", readonly CanvasImageSource[]>;
-  bedDoubles: Record<"north" | "east" | "south" | "west", readonly CanvasImageSource[]>;
-  hearth1x2: CanvasImageSource;
-  hearth2x1: CanvasImageSource;
-  hearth1x3: CanvasImageSource;
-  hearth3x1: CanvasImageSource;
-  cabinetVertical1x2: CanvasImageSource;
-  cabinet2x1North: CanvasImageSource;
-  cabinetVertical1x3: CanvasImageSource;
-  cabinet2x1South: CanvasImageSource;
-  tableHorizontalByLength: Readonly<Record<number, CanvasImageSource>>;
-  tableVerticalByLength: Readonly<Record<number, CanvasImageSource>>;
-  counterHorizontalByLength: Readonly<Record<number, CanvasImageSource>>;
-  counterVerticalByLength: Readonly<Record<number, CanvasImageSource>>;
-  altarVertical1x2: CanvasImageSource;
-  altar2x1: CanvasImageSource;
-  altarVertical1x3: CanvasImageSource;
-  altar3x1: CanvasImageSource;
-  benchHorizontalByLength: Readonly<Record<number, CanvasImageSource>>;
-  benchVerticalByLength: Readonly<Record<number, CanvasImageSource>>;
-  cannonNorth: CanvasImageSource;
-  cannonSouth: CanvasImageSource;
-  casualSofas: Record<"north" | "east" | "south" | "west", readonly CanvasImageSource[]>;
-  coffin1x2: CanvasImageSource;
-  coffin2x1: CanvasImageSource;
-  table1x1: CanvasImageSource;
-  table2x2: CanvasImageSource;
-  indoorTerrain: CanvasImageSource;
-  drawers1x1: readonly CanvasImageSource[];
-  shelves1x1: readonly CanvasImageSource[];
-  statue1x1: readonly CanvasImageSource[];
-  flowerPots1x1: readonly CanvasImageSource[];
-  bones1x1: readonly CanvasImageSource[];
-  wallChains1x2: readonly CanvasImageSource[];
 }
 
 export interface CustomPropImages {
@@ -240,17 +182,6 @@ function drawTilesetProp(
 }
 
 type RockFamily = "normal" | "light" | "dark" | "desert" | "snow";
-type RockFamilyImages = {
-  oneByOne: readonly CanvasImageSource[];
-  oneByTwo: readonly CanvasImageSource[];
-  twoByOne: readonly CanvasImageSource[];
-  twoByTwo: readonly CanvasImageSource[];
-  twoByThree: readonly CanvasImageSource[];
-  threeByThree: readonly CanvasImageSource[];
-  fourByThree: readonly CanvasImageSource[];
-  fourByFive: readonly CanvasImageSource[];
-  fiveByFour: readonly CanvasImageSource[];
-};
 
 function rockFamilyForMode(mode: LandscapeMode): RockFamily {
   if (mode === "desert-canyon" || mode === "badlands") return "desert";
@@ -5118,7 +5049,7 @@ function drawLampPostPlaceholder(
   context.restore();
 }
 
-function drawLampPostTileset(
+function drawAnchoredTilesetProp(
   image: CanvasImageSource,
   x: number,
   y: number,
@@ -5126,8 +5057,13 @@ function drawLampPostTileset(
   context: CanvasRenderingContext2D,
 ) {
   const source = imageSourceSize(image);
-  const targetWidth = cellSize;
-  const targetHeight = cellSize * 3;
+  const visual = tilesetImageSpriteLayout(image) ?? {
+    renderWidthCells: 1,
+    renderHeightCells: 1,
+    anchor: "center" as const,
+  };
+  const targetWidth = cellSize * visual.renderWidthCells;
+  const targetHeight = cellSize * visual.renderHeightCells;
   const scale = source
     ? Math.min(targetWidth / source.width, targetHeight / source.height)
     : 1;
@@ -5140,7 +5076,9 @@ function drawLampPostTileset(
   context.drawImage(
     image,
     (x + .5) * cellSize - drawWidth / 2,
-    (y + 1) * cellSize - drawHeight,
+    visual.anchor === "bottom"
+      ? (y + 1) * cellSize - drawHeight
+      : (y + .5) * cellSize - drawHeight / 2,
     drawWidth,
     drawHeight,
   );
@@ -5165,7 +5103,7 @@ function drawOutdoorProps(
         const campfireImage = tilesetProps && imageSourceSize(tilesetProps.campfire)
           ? tilesetProps.campfire : undefined;
         if (campfireImage) {
-          drawLampPostTileset(campfireImage, x, y, cellSize, context);
+          drawAnchoredTilesetProp(campfireImage, x, y, cellSize, context);
         } else {
           drawCampfirePlaceholder(x, y, cellSize, context);
         }
@@ -5173,7 +5111,7 @@ function drawOutdoorProps(
         const lampPostImage = tilesetProps && imageSourceSize(tilesetProps.lampPost)
           ? tilesetProps.lampPost : undefined;
         if (lampPostImage) {
-          drawLampPostTileset(lampPostImage, x, y, cellSize, context);
+          drawAnchoredTilesetProp(lampPostImage, x, y, cellSize, context);
         } else {
           drawLampPostPlaceholder(x, y, cellSize, context);
         }
