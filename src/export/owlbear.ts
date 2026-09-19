@@ -43,7 +43,7 @@ const FALLBACK_TILESET_ASSET_BASE =
   "https://cdn.jsdelivr.net/gh/Sewef/battleMapGenerator@main/public/assets/tilesets/";
 // Owlbear caches remote image URLs aggressively. Change this revision whenever
 // a shipped tileset image is replaced so an export cannot reuse the old bitmap.
-const TILESET_ASSET_REVISION = "20260812-rocks";
+const TILESET_ASSET_REVISION = "20260919-lights";
 
 const publicTilesetAssetBase = () => typeof window === "undefined"
   ? FALLBACK_TILESET_ASSET_BASE
@@ -747,6 +747,7 @@ const LIGHT_SOURCE_NAMES: Record<MapLightSource["kind"], string> = {
   hearth: "Hearth",
   console: "Console",
   altar: "Altar candles",
+  torch: "Torch",
   lava: "Lava",
   campfire: "Campfire",
   lamp_post: "Lamp post",
@@ -786,6 +787,7 @@ const INTERIOR_PROP_DRAWING_STYLES: Record<
   flower_pot: { fillColor: "#9a634b", strokeColor: "#4b3028", shapeType: "CIRCLE" },
   bones: { fillColor: "#d0c8ae", strokeColor: "#625d50", shapeType: "RECTANGLE" },
   wall_chain: { fillColor: "#62625f", strokeColor: "#292a29", shapeType: "RECTANGLE" },
+  torch: { fillColor: "#f0b65b", strokeColor: "#443126", shapeType: "CIRCLE" },
 };
 
 const OUTDOOR_PROP_DRAWING_STYLES: Record<
@@ -856,6 +858,46 @@ function outdoorPropItem(
       strokeDash: [],
     },
   };
+}
+
+function outdoorPropSpriteItem(
+  id: string,
+  prop: ExportedOutdoorProp,
+  baseZIndex: number,
+  tieBreaker = 0,
+) {
+  if (prop.kind !== "campfire") return undefined;
+  const width = 32;
+  const height = 64;
+  return imageItem(
+    id,
+    `${OUTDOOR_PROP_RULES[prop.kind].label} ${prop.id}`,
+    "PROP",
+    publicTilesetAssetUrl("lpc/campfire_1x1.png"),
+    "image/png",
+    width,
+    height,
+    {
+      x: (prop.x + .5) * OWLBEAR_SCENE_DPI,
+      y: prop.y * OWLBEAR_SCENE_DPI,
+    },
+    PROP_IMAGE_DPI,
+    { x: width / 2, y: height / 2 },
+    perspectiveZIndex(baseZIndex, prop.y + 1, prop.x + .5, tieBreaker),
+    false,
+    {
+      x: PROP_IMAGE_DPI / width,
+      y: 2 * PROP_IMAGE_DPI / height,
+    },
+    0,
+    {
+      "com.touchgrass/outdoor-prop": {
+        kind: prop.kind,
+        id: prop.id,
+        footprint: [{ x: prop.x, y: prop.y }],
+      },
+    },
+  );
 }
 
 function interiorPropItem(
@@ -1542,10 +1584,12 @@ function interiorPropSpriteItems(
           : prop.kind === "bucket" ? `bucket_${variant % 2 + 1}_1x1.png`
             : prop.kind === "drawers" ? `drawer_${variant % 3 + 1}_1x1.png`
               : prop.kind === "shelf" ? `shelf_${variant % 7 + 1}_1x1.png`
-                : prop.kind === "statue" ? "statue_1x1.png"
+                : prop.kind === "statue" ? `statue_${variant % 7 + 1}_1x1.png`
                   : prop.kind === "flower_pot" ? `flower_pot_${variant % 3 + 1}_1x1.png`
                     : prop.kind === "bones" ? `bones_${variant % 5 + 1}_1x1.png`
                       : prop.kind === "wall_chain" ? `wall_chain_${variant % 2 + 1}_1x2.png`
+                        : prop.kind === "torch" && prop.facing !== "north"
+                          ? `torch_${prop.facing ?? "south"}.png`
                     : prop.kind === "table" && prop.points.length === 1 ? "table_1x1.png"
                       : prop.kind === "table" && prop.points.length === 4 &&
                         rectangle.width === 2 && rectangle.height === 2 ? "table_2x2.png"
@@ -2085,7 +2129,10 @@ export async function createOwlbearSceneJson(
   collectOutdoorProps(grid).forEach((prop) => {
     if (hiddenItems.has(prop.kind)) return;
     const id = crypto.randomUUID();
-    shared[id] = outdoorPropItem(id, prop, baseZIndex, propTieBreaker);
+    shared[id] = options.useTileset
+      ? outdoorPropSpriteItem(id, prop, baseZIndex, propTieBreaker) ??
+        outdoorPropItem(id, prop, baseZIndex, propTieBreaker)
+      : outdoorPropItem(id, prop, baseZIndex, propTieBreaker);
     highestPropZIndex = Math.max(highestPropZIndex, shared[id].zIndex);
     propTieBreaker += 1;
   });

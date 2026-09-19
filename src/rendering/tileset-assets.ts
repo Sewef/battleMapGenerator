@@ -18,6 +18,7 @@ export const INTERIOR_ASSET_SPRITE_LAYOUTS: Readonly<
 > = {
   // These files occupy one gameplay cell, but their artwork rises one cell north.
   "altar_3x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
+  "altar_2x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
   "altar_vertical_1x2.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
   "barrel_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
   "cabinet_north_2x1.png": { renderWidthCells: 2, renderHeightCells: 2, anchor: "bottom" },
@@ -35,7 +36,13 @@ export const INTERIOR_ASSET_SPRITE_LAYOUTS: Readonly<
   "shelf_5_1x1.png": { renderWidthCells: 1, renderHeightCells: 3, anchor: "bottom" },
   "shelf_6_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
   "shelf_7_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
-  "statue_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
+  "statue_1_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
+  "statue_2_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
+  "statue_3_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
+  "statue_4_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
+  "statue_5_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
+  "statue_6_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
+  "statue_7_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
   "table_1x1.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
   "table_horizontal_left.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
   "table_horizontal_middle.png": { renderWidthCells: 1, renderHeightCells: 2, anchor: "bottom" },
@@ -88,14 +95,14 @@ const lpc = (name: string) => `${TILESET_ROOT}/lpc/${name}`;
 export type InteriorAssetFolder = "ai" | "bailey" | "lpc";
 
 const AI_INTERIOR_ASSETS = new Set([
-  "coffin_1x2.png", "coffin_2x1.png",
+  "coffin_1x2.png",
   "hearth_1x2.png", "hearth_1x3.png", "hearth_2x1.png", "hearth_3x1.png",
 ]);
 
 const BAILEY_INTERIOR_ASSETS = new Set([
   "drawer_1_1x1.png", "drawer_2_1x1.png", "drawer_3_1x1.png",
   "flower_pot_1_1x1.png", "flower_pot_2_1x1.png", "flower_pot_3_1x1.png",
-  "statue_1x1.png", "table_2x2.png", "terrain_indoor.png",
+  "table_2x2.png", "terrain_indoor.png",
 ]);
 
 export function interiorAssetFolder(assetName: string): InteriorAssetFolder {
@@ -195,27 +202,17 @@ export function casualSofaAssetNames(facing: FurnitureFacing) {
     `${color}_${variant}_${facing}.png`));
 }
 
-let deferAssetImages = false;
-
 const image = (source: string) => {
-  const result = new Image();
-  if (deferAssetImages) result.dataset.tilesetSource = source;
-  else result.src = source;
-  return result;
-};
-
-const deferredImage = (source: string) => {
   const result = new Image();
   result.dataset.tilesetSource = source;
   return result;
 };
 
-const activateImages = (value: unknown) => {
-  for (const entry of collectTilesetImages(value)) {
-    const source = entry.dataset.tilesetSource;
-    if (source && !entry.src) entry.src = source;
-  }
-};
+export function ensureTilesetImageLoaded(value: CanvasImageSource) {
+  if (!(value instanceof HTMLImageElement)) return;
+  const source = value.dataset.tilesetSource;
+  if (source && !value.src) value.src = source;
+}
 
 const numberedImages = (
   source: (index: number) => string,
@@ -237,28 +234,20 @@ const lengthImages = (
 const rockFamilyImages = (family: "rock" | "rock_light" | "rock_dark" |
   "rock_desert" | "rock_snow") => ({
   oneByOne: Array.from({ length: 16 }, (_, index) =>
-    deferredImage(lpc(`rock/${family}_${index + 1}_1x1.png`))),
+    image(lpc(`rock/${family}_${index + 1}_1x1.png`))),
   oneByTwo: Array.from({ length: 9 }, (_, index) =>
-    deferredImage(lpc(`rock/${family}_${index + 1}_1x2.png`))),
+    image(lpc(`rock/${family}_${index + 1}_1x2.png`))),
   twoByOne: Array.from({ length: 3 }, (_, index) =>
-    deferredImage(lpc(`rock/${family}_${index + 1}_2x1.png`))),
+    image(lpc(`rock/${family}_${index + 1}_2x1.png`))),
   twoByTwo: Array.from({ length: 14 }, (_, index) =>
-    deferredImage(lpc(`rock/${family}_${index + 1}_2x2.png`))),
-  twoByThree: [deferredImage(lpc(`rock/${family}_1_2x3.png`))],
-  threeByThree: [deferredImage(lpc(`rock/${family}_1_3x3.png`))],
+    image(lpc(`rock/${family}_${index + 1}_2x2.png`))),
+  twoByThree: [image(lpc(`rock/${family}_1_2x3.png`))],
+  threeByThree: [image(lpc(`rock/${family}_1_3x3.png`))],
   fourByThree: Array.from({ length: 2 }, (_, index) =>
-    deferredImage(lpc(`rock/${family}_${index + 1}_4x3.png`))),
-  fourByFive: [deferredImage(lpc(`rock/${family}_1_4x5.png`))],
-  fiveByFour: [deferredImage(lpc(`rock/${family}_1_5x4.png`))],
+    image(lpc(`rock/${family}_${index + 1}_4x3.png`))),
+  fourByFive: [image(lpc(`rock/${family}_1_4x5.png`))],
+  fiveByFour: [image(lpc(`rock/${family}_1_5x4.png`))],
 });
-
-const rockFamilyKey = (mode: LandscapeMode) => {
-  if (mode === "desert-canyon" || mode === "badlands") return "desert" as const;
-  if (mode === "frozen-lake") return "snow" as const;
-  if (mode === "underground" || mode === "sewer" || mode === "volcanic") return "dark" as const;
-  if (mode === "coast" || mode === "archipelago") return "light" as const;
-  return "normal" as const;
-};
 
 const casualSofaImages = (facing: FurnitureFacing) =>
   casualSofaAssetNames(facing).map((name) => image(lpc(`casual_sofa/${name}`)));
@@ -284,7 +273,9 @@ export interface TilesetLoadStatus {
 }
 
 export function tilesetLoadStatus(value: unknown): TilesetLoadStatus {
-  const images = collectTilesetImages(value);
+  // Unrequested images deliberately have no src: exclude them from readiness
+  // instead of treating the lazy catalogue as failed or pending downloads.
+  const images = collectTilesetImages(value).filter((entry) => Boolean(entry.src));
   const failed = images.filter((entry) => entry.complete && entry.naturalWidth === 0)
     .map((entry) => entry.currentSrc || entry.src);
   const loaded = images.filter((entry) => entry.complete && entry.naturalWidth > 0).length;
@@ -311,12 +302,17 @@ export function createTilesetAssets() {
     tiledSoil: image(lpc("terrain/tiled_soil.png")),
     water: image(lpc("terrain/water.png")),
   };
-  deferAssetImages = true;
   const props = {
     // Outdoor Bailey tiles.
     tree1x1: image(bailey("tree_1x1.png")),
     tree2x2: image(bailey("tree_2x2.png")),
+    campfire: image(lpc("campfire_1x1.png")),
     lampPost: image(lpc("lamp_post_1x1.png")),
+    torches: {
+      east: image(lpc("torch_east.png")),
+      south: image(lpc("torch_south.png")),
+      west: image(lpc("torch_west.png")),
+    },
     rockFamilies: {
       normal: rockFamilyImages("rock"),
       light: rockFamilyImages("rock_light"),
@@ -345,7 +341,7 @@ export function createTilesetAssets() {
     indoorTerrain: image(interior("terrain_indoor.png")),
     drawers1x1: numberedImages((index) => interior(`drawer_${index}_1x1.png`), 3),
     shelves1x1: numberedImages((index) => interior(`shelf_${index}_1x1.png`), 7),
-    statue1x1: image(interior("statue_1x1.png")),
+    statue1x1: numberedImages((index) => interior(`statue_${index}_1x1.png`), 7),
     flowerPots1x1: numberedImages((index) => interior(`flower_pot_${index}_1x1.png`), 3),
     bones1x1: numberedImages((index) => interior(`bones_${index}_1x1.png`), 5),
     wallChains1x2: numberedImages((index) => interior(`wall_chain_${index}_1x2.png`), 2),
@@ -390,25 +386,12 @@ export function createTilesetAssets() {
     coffin1x2: image(interior("coffin_1x2.png")),
     coffin2x1: image(interior("coffin_2x1.png")),
   } satisfies TilesetPropImages;
-  deferAssetImages = false;
-
   const terrainStatus = () => tilesetLoadStatus({ terrain, terrainTiles });
   const terrainReady = () => {
     const status = terrainStatus();
     return status.loaded === status.total;
   };
-  const { rockFamilies, ...propsWithoutRockFamilies } = props;
-  const propAssetsForMode = (mode: LandscapeMode) => ({
-    ...propsWithoutRockFamilies,
-    rocks: rockFamilies[rockFamilyKey(mode)],
-  });
-  const ensurePropsForMode = (mode: LandscapeMode) => {
-    activateImages(propAssetsForMode(mode));
-  };
-  const propsStatus = (mode: LandscapeMode) => {
-    ensurePropsForMode(mode);
-    return tilesetLoadStatus(propAssetsForMode(mode));
-  };
+  const propsStatus = (_mode: LandscapeMode) => tilesetLoadStatus(props);
   const propsReady = (mode: LandscapeMode) => {
     const status = propsStatus(mode);
     return status.pending === 0;
@@ -418,7 +401,6 @@ export function createTilesetAssets() {
     terrain,
     terrainTiles,
     props,
-    ensurePropsForMode,
     terrainReady,
     terrainStatus,
     propsReady,

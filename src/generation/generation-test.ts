@@ -2600,22 +2600,26 @@ const assetRoutingExport = await createOwlbearSceneJson(
     },
   },
 );
-const assetRoutingUrls = Object.values((JSON.parse(assetRoutingExport.json) as {
+const assetRoutingItems = Object.values((JSON.parse(assetRoutingExport.json) as {
   items: { shared: Record<string, {
-    image?: { url?: string };
+    image?: { url?: string; width?: number; height?: number };
     metadata?: Record<string, unknown>;
   }> };
-}).items.shared).filter((item) => item.metadata?.[interiorPropMetadataKey] !== undefined)
-  .map(({ image }) => image?.url ?? "");
+}).items.shared).filter((item) => item.metadata?.[interiorPropMetadataKey] !== undefined);
+const assetRoutingUrls = assetRoutingItems.map(({ image }) => image?.url ?? "");
 for (const path of [
   "/lpc/table_1x1.png", "/lpc/barrel_1x1.png", "/lpc/bucket_2_1x1.png",
-  "/lpc/shelf_5_1x1.png", "/bailey/drawer_3_1x1.png", "/bailey/statue_1x1.png",
+  "/lpc/shelf_5_1x1.png", "/bailey/drawer_3_1x1.png", "/lpc/statue_7_1x1.png",
   "/bailey/flower_pot_2_1x1.png", "/bailey/table_2x2.png", "/lpc/altar_3x1.png",
   "/lpc/altar_2x1.png",
 ]) {
   assert(assetRoutingUrls.some((url) => url.endsWith(path)),
     `interior tileset export: incorrect asset routing for ${path}`);
 }
+const statueSprite = assetRoutingItems.find(({ image }) =>
+  image?.url?.endsWith("/lpc/statue_7_1x1.png"));
+assert(statueSprite?.image?.width === 32 && statueSprite.image.height === 64,
+  "interior tileset export: statue sprite must retain its two-cell height");
 
 const hearthSpriteGrid: Grid = Array.from({ length: 6 }, () =>
   Array.from({ length: 6 }, () => ({ terrain: Terrain.Ground, obstacle: Obstacle.None })));
@@ -2821,6 +2825,13 @@ const lightSourceGrid: Grid = [[
     interiorPropId: 3,
   },
   {
+    terrain: Terrain.Wall,
+    obstacle: Obstacle.None,
+    interiorProp: "torch",
+    interiorPropId: 4,
+    propFacing: "south",
+  },
+  {
     terrain: Terrain.Ground,
     obstacle: Obstacle.None,
     outdoorProp: OutdoorProp.Campfire,
@@ -2833,9 +2844,43 @@ const lightSourceGrid: Grid = [[
   { terrain: Terrain.Lava, obstacle: Obstacle.None },
 ]];
 const lightKinds = new Set(collectMapLightSources(lightSourceGrid).map(({ kind }) => kind));
-for (const kind of ["hearth", "console", "altar", "campfire", "lamp_post", "lava"] as const) {
+for (const kind of [
+  "hearth", "console", "altar", "torch", "campfire", "lamp_post", "lava",
+] as const) {
   assert(lightKinds.has(kind), `light source extraction: missing ${kind}`);
 }
+const lightTilesetExport = await createOwlbearSceneJson(
+  lightSourceGrid,
+  "light-tileset-export",
+  new Set(),
+  {
+    useTileset: true,
+    dynamicFog: true,
+    mapImage: {
+      url: "https://example.com/light-tileset.webp",
+      mime: "image/webp",
+      width: lightSourceGrid[0].length * 48,
+      height: lightSourceGrid.length * 48,
+    },
+  },
+);
+const lightTilesetItems = Object.values((JSON.parse(lightTilesetExport.json) as {
+  items: { shared: Record<string, {
+    image?: { url?: string; width?: number; height?: number };
+    metadata?: Record<string, unknown>;
+  }> };
+}).items.shared);
+const torchSprite = lightTilesetItems.find(({ image }) =>
+  image?.url?.includes("/lpc/torch_south.png"));
+assert(torchSprite?.metadata?.[lightMetadataKey],
+  "light tileset export: torch sprite must carry dynamic fog light metadata");
+const campfireSprite = lightTilesetItems.find(({ image }) =>
+  image?.url?.includes("/lpc/campfire_1x1.png"));
+assert(campfireSprite?.image?.width === 32 && campfireSprite.image.height === 64,
+  "light tileset export: campfire must use its 32x64 sprite");
+assert(lightTilesetItems.some(({ metadata }) =>
+  metadata?.[lightMetadataKey] && !metadata?.[interiorPropMetadataKey]),
+"light tileset export: outdoor lights must be exported for dynamic fog");
 
 const propGrid: Grid = [[
   {

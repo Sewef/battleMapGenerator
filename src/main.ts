@@ -179,14 +179,21 @@ const {
   terrain: tilesetImage,
   terrainTiles: tilesetTerrain,
   props: tilesetProps,
-  terrainReady: tilesetReady,
   terrainStatus: tilesetTerrainStatus,
-  propsReady: tilesetPropsReady,
   propsStatus: tilesetPropsStatus,
-  ensurePropsForMode,
 } = createTilesetAssets();
-const tilesetEnabledFor = (mode: Preset["mode"]) => useTilesetInput.checked &&
-  (isInteriorMode(mode) ? tilesetPropsReady(mode) : tilesetReady());
+const tilesetEnabledFor = (_mode: Preset["mode"]) => useTilesetInput.checked;
+const waitForRequestedTilesetAssets = async () => {
+  const requested = collectTilesetImages({
+    tilesetImage,
+    tilesetTerrain,
+    tilesetProps,
+  }).filter((image) => Boolean(image.src) && !image.complete);
+  await Promise.all(requested.map((image) => new Promise<void>((resolve) => {
+    image.addEventListener("load", () => resolve(), { once: true });
+    image.addEventListener("error", () => resolve(), { once: true });
+  })));
+};
 const customProps: CustomPropImages = {};
 const customPropSources: Partial<Record<"tree" | "rock", string>> = {};
 const activeCustomProps = (): CustomPropImages => ({
@@ -210,9 +217,6 @@ let generatedOptions: TerrainOptions | undefined;
 let mapRevision = 0;
 let pendingGenerationFrame: number | undefined;
 let pendingSeedGeneration: number | undefined;
-let lastTilesetWarning = "";
-let tilesetTerrainReadyLogged = false;
-let tilesetPropsReadyLogged = false;
 const hiddenLegendItems = new Set<string>();
 const editableTerrains = new Set<TerrainKind>(
   Object.values(Terrain) as TerrainKind[],
@@ -304,8 +308,6 @@ function updateBiomeParameterFields(preset: Preset) {
 
 function applyPreset(preset: Preset, useNewSeed = true) {
   activePreset = preset;
-  tilesetPropsReadyLogged = false;
-  ensurePropsForMode(preset.mode);
   updateBiomeParameterFields(preset);
   updatePropEditorForMode();
   widthInput.value = String(preset.width);
@@ -336,24 +338,7 @@ function activeWallDebugOptions(): WallDebugOptions {
 }
 
 function renderMap(grid: Grid, targetCanvas = previewCanvas, cellSize?: number) {
-  ensurePropsForMode(activePreset.mode);
   const useTileset = tilesetEnabledFor(activePreset.mode);
-  if (targetCanvas === previewCanvas && useTilesetInput.checked && !useTileset) {
-    const status = tilesetPropsStatus(activePreset.mode);
-    const diagnostic = isInteriorMode(activePreset.mode)
-      ? `${activePreset.mode}:${status.loaded}:${status.pending}:${status.failed.join("|")}`
-      : `${activePreset.mode}:terrain:${JSON.stringify(tilesetTerrainStatus())}`;
-    if (diagnostic !== lastTilesetWarning) {
-      lastTilesetWarning = diagnostic;
-      console.warn("[tileset] Rendering without tileset: assets unavailable", {
-        mode: activePreset.mode,
-        interior: isInteriorMode(activePreset.mode),
-        ...status,
-      });
-    }
-  } else if (useTileset) {
-    lastTilesetWarning = "";
-  }
   drawGrid(grid, {
     targetCanvas,
     mode: activePreset.mode,
@@ -365,9 +350,9 @@ function renderMap(grid: Grid, targetCanvas = previewCanvas, cellSize?: number) 
       (targetCanvas === previewCanvas &&
         (activeControlsTab === "terrain" || activeControlsTab === "props")),
     useTileset,
-    tilesetImage: tilesetReady() ? tilesetImage : undefined,
-    tilesetTerrain: tilesetReady() ? tilesetTerrain : undefined,
-    tilesetProps: tilesetPropsReady(activePreset.mode) ? tilesetProps : undefined,
+    tilesetImage: useTileset ? tilesetImage : undefined,
+    tilesetTerrain: useTileset ? tilesetTerrain : undefined,
+    tilesetProps: useTileset ? tilesetProps : undefined,
     customProps: useTileset ? activeCustomProps() : undefined,
     stylizedLighting: stylizedLightingInput.checked,
     wallDebug: targetCanvas === previewCanvas ? activeWallDebugOptions() : undefined,
@@ -416,7 +401,7 @@ function renderPropEditorPreview() {
     }
   }
 
-  const usePropTileset = useTilesetInput.checked && tilesetPropsReady(activePreset.mode);
+  const usePropTileset = useTilesetInput.checked;
   drawGrid(previewGrid, {
     targetCanvas: propSelectionPreviewCanvas,
     mode: activePreset.mode,
@@ -820,6 +805,9 @@ function propFacingOptions(
   const [scope, kind] = tool.split(":") as [string, string];
   if (scope === "interior") {
     if (kind === "bed") return propFacingChoices;
+    if (kind === "torch") {
+      return propFacingChoices.filter(({ value }) => value !== "north");
+    }
     if (kind === "cabinet" && footprint.width === 2 && footprint.height === 1) {
       return propFacingChoices.filter(({ value }) =>
         value === "north" || value === "south");
@@ -870,6 +858,8 @@ function propVariantCount(
     case "drawers":
       return 3;
     case "shelf":
+      return 7;
+    case "statue":
       return 7;
     case "flower_pot":
       return 3;
@@ -1434,15 +1424,14 @@ function webpRenderOptions(
     hiddenItems.add(OutdoorProp.Campfire);
     hiddenItems.add(OutdoorProp.LampPost);
   }
-  ensurePropsForMode(mode);
   const useTileset = tilesetEnabledFor(mode);
   return {
     hiddenItems,
     showGrid: showGridInput.checked,
     useTileset,
-    tilesetImage: tilesetReady() ? tilesetImage : undefined,
-    tilesetTerrain: tilesetReady() ? tilesetTerrain : undefined,
-    tilesetProps: tilesetPropsReady(mode) ? tilesetProps : undefined,
+    tilesetImage: useTileset ? tilesetImage : undefined,
+    tilesetTerrain: useTileset ? tilesetTerrain : undefined,
+    tilesetProps: useTileset ? tilesetProps : undefined,
     customProps: useTileset ? activeCustomProps() : undefined,
     stylizedLighting: stylizedLightingInput.checked,
     hideInteriorProps: !includeProps,
@@ -1466,6 +1455,10 @@ async function runWebpExport(
   // Let the busy state paint before rendering a potentially large map.
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
   try {
+    if (useTilesetInput.checked) {
+      renderMap(currentGrid);
+      await waitForRequestedTilesetAssets();
+    }
     const options = webpRenderOptions(includeProps);
     if (action === "copy") {
       const clipboardFormat = await copyWebp(
@@ -1852,9 +1845,6 @@ for (const input of wallDebugInputs) {
 }
 collectTilesetImages({ tilesetImage, tilesetTerrain }).forEach((image) => {
   image.addEventListener("load", () => {
-    if (!tilesetReady() || tilesetTerrainReadyLogged) return;
-    tilesetTerrainReadyLogged = true;
-    console.info("[tileset] All terrain assets loaded", tilesetTerrainStatus());
     if (useTilesetInput.checked) renderMap(currentGrid);
     renderPropEditorPreview();
   });
@@ -1867,9 +1857,6 @@ collectTilesetImages({ tilesetImage, tilesetTerrain }).forEach((image) => {
 });
 collectTilesetImages(tilesetProps).forEach((image) => {
   image.addEventListener("load", () => {
-    if (!tilesetPropsReady(activePreset.mode) || tilesetPropsReadyLogged) return;
-    tilesetPropsReadyLogged = true;
-    console.info("[tileset] Required prop assets loaded", tilesetPropsStatus(activePreset.mode));
     if (useTilesetInput.checked) renderMap(currentGrid);
     renderPropEditorPreview();
   });

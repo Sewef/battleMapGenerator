@@ -20,6 +20,7 @@ import { drawStylizedLighting } from "./lighting";
 import {
   bedAssetDefinitions,
   blueBedAssetDefinitions,
+  ensureTilesetImageLoaded,
   interiorAssetSpriteLayout,
   selectBedAssetDefinition,
 } from "./tileset-assets";
@@ -61,7 +62,9 @@ export interface TilesetTerrainImages {
 export interface TilesetPropImages {
   tree1x1: CanvasImageSource;
   tree2x2: CanvasImageSource;
+  campfire: CanvasImageSource;
   lampPost: CanvasImageSource;
+  torches: Record<"east" | "south" | "west", CanvasImageSource>;
   rockFamilies: Record<RockFamily, RockFamilyImages>;
   crate1x1: readonly CanvasImageSource[];
   barrel1x1: CanvasImageSource;
@@ -97,7 +100,7 @@ export interface TilesetPropImages {
   indoorTerrain: CanvasImageSource;
   drawers1x1: readonly CanvasImageSource[];
   shelves1x1: readonly CanvasImageSource[];
-  statue1x1: CanvasImageSource;
+  statue1x1: readonly CanvasImageSource[];
   flowerPots1x1: readonly CanvasImageSource[];
   bones1x1: readonly CanvasImageSource[];
   wallChains1x2: readonly CanvasImageSource[];
@@ -120,6 +123,7 @@ export interface WallDebugOptions {
 }
 
 function imageSourceSize(image: CanvasImageSource) {
+  ensureTilesetImageLoaded(image);
   const source = image as CanvasImageSource & {
     naturalWidth?: number; naturalHeight?: number;
     videoWidth?: number; videoHeight?: number;
@@ -129,6 +133,10 @@ function imageSourceSize(image: CanvasImageSource) {
   const height = source.naturalHeight ?? source.videoHeight ?? Number(source.height);
   return Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0
     ? { width, height } : undefined;
+}
+
+function readyTilesetImage<T extends CanvasImageSource>(image: T | undefined) {
+  return image && imageSourceSize(image) ? image : undefined;
 }
 
 
@@ -217,6 +225,7 @@ function drawTilesetProp(
   tint: string,
   tintStrength: number,
 ) {
+  if (!readyTilesetImage(image)) return;
   context.save();
   context.imageSmoothingEnabled = false;
   applyPropContactShadow(cellSize, context);
@@ -261,6 +270,7 @@ function drawLpcProp(
   context: CanvasRenderingContext2D,
 ) {
   const source = imageSourceSize(image);
+  if (!source) return;
   const targetWidth = width * cellSize;
   const targetHeight = height * cellSize;
   const scale = source
@@ -410,6 +420,7 @@ function createTilesetTilePattern(
   tint?: string,
   tintStrength = .5,
 ) {
+  if (!readyTilesetImage(image)) return null;
   const tile = document.createElement("canvas");
   tile.width = cellSize;
   tile.height = cellSize;
@@ -448,10 +459,12 @@ function createTilesetPatterns(
   cellSize: number,
   width: number,
   height: number,
+  usedTerrains: ReadonlySet<TerrainKind>,
 ) {
   const patterns = new Map<TerrainKind, CanvasPattern>();
-  if (image) {
+  if (image && imageSourceSize(image)) {
     for (const terrain of terrainPaintOrder) {
+      if (!usedTerrains.has(terrain)) continue;
       const coordinate = tilesetCoordinate(terrain, mode);
       if (!coordinate) continue;
       const pattern = createTilesetTilePattern(
@@ -489,9 +502,9 @@ function createTilesetPatterns(
       ? { [Terrain.Difficult]: terrainImages.sandRough }
       : mode === "farmland"
         ? { [Terrain.Difficult]: terrainImages.tiledSoil }
-      : groundProfile === "grass" && !isInteriorMode(mode)
-        ? { [Terrain.Difficult]: terrainImages.grassRough }
-        : {}),
+        : groundProfile === "grass" && !isInteriorMode(mode)
+          ? { [Terrain.Difficult]: terrainImages.grassRough }
+          : {}),
     [Terrain.Beach]: terrainImages.beachSand,
     [Terrain.Water]: waterImage,
     [Terrain.Ice]: terrainImages.ice,
@@ -499,6 +512,7 @@ function createTilesetPatterns(
   };
   for (const [terrain, terrainImage] of Object.entries(replacements) as
     Array<[TerrainKind, CanvasImageSource]>) {
+    if (!usedTerrains.has(terrain)) continue;
     const source = imageSourceSize(terrainImage);
     if (!source) continue;
     const columns = Math.max(1, Math.floor(source.width / 32));
@@ -1441,6 +1455,14 @@ function drawTerrainLayers(
   context: CanvasRenderingContext2D,
 ): (x: number, y: number) => void {
   const hasTilesetTexture = Boolean(tilesetImage || tilesetTerrain);
+  const usedTerrains = new Set<TerrainKind>([Terrain.Ground]);
+  for (const row of grid) {
+    for (const tile of row) {
+      usedTerrains.add(tile.terrain);
+      const surface = tileSurface(tile);
+      if (surface) usedTerrains.add(surface);
+    }
+  }
   const tilesetPatterns = createTilesetPatterns(
     tilesetImage,
     tilesetTerrain,
@@ -1449,6 +1471,7 @@ function drawTerrainLayers(
     cellSize,
     width,
     height,
+    usedTerrains,
   );
   const terrainFill = (terrain: TerrainKind) =>
     tilesetPatterns.get(terrain) ?? getTerrainStyle(terrain, mode).color;
@@ -1460,8 +1483,8 @@ function drawTerrainLayers(
     const rawTerrain = grid[y]?.[x]?.terrain;
     const tileTerrain = !includeArchitectureUnderlay &&
       (rawTerrain === Terrain.Wall || rawTerrain === Terrain.Door)
-        ? Terrain.Void
-        : underlyingTerrain(grid, x, y);
+      ? Terrain.Void
+      : underlyingTerrain(grid, x, y);
     const terrain = tileTerrain === Terrain.Cliff
       ? terrainBackdropTerrain(grid, x, y, Terrain.Cliff)
       : tileTerrain === Terrain.Water
@@ -1771,11 +1794,12 @@ function drawInteriorArchitecture(
         : mode === "cathedral" ? 3
           : 3;
   const drawFloorTile = (left: number, top: number) => {
-    if (!tilesetProps?.indoorTerrain) return false;
+    const indoorTerrain = readyTilesetImage(tilesetProps?.indoorTerrain);
+    if (!indoorTerrain) return false;
     context.save();
     context.imageSmoothingEnabled = Math.abs(cellSize / 32 - Math.round(cellSize / 32)) > .001;
     context.imageSmoothingQuality = "high";
-    context.drawImage(tilesetProps.indoorTerrain, floorTileIndex * 32, 0, 32, 32,
+    context.drawImage(indoorTerrain, floorTileIndex * 32, 0, 32, 32,
       left, top, cellSize, cellSize);
     context.restore();
     return true;
@@ -3732,11 +3756,11 @@ function drawSailingShipDeckFeatures(
         continue;
       }
 
-      const cannonImage = feature === "cannon"
+      const cannonImage = readyTilesetImage(feature === "cannon"
         ? facing === "north" ? tilesetProps?.cannonNorth
           : facing === "south" ? tilesetProps?.cannonSouth
             : undefined
-        : undefined;
+        : undefined);
       if (cannonImage) {
         const drawTop = facing === "north" ? (y - 1) * cellSize : y * cellSize;
         context.save();
@@ -4107,10 +4131,10 @@ function drawInteriorProps(
         spanHeight === cellSize;
       const modularVerticalTable = prop === "table" && propCells.length > 1 &&
         spanWidth === cellSize;
-      const counterImage = prop === "bar" && tilesetProps
+      const counterImage = readyTilesetImage(prop === "bar" && tilesetProps
         ? (vertical ? tilesetProps.counterVerticalByLength
           : tilesetProps.counterHorizontalByLength)[propCells.length]
-        : undefined;
+        : undefined);
       if (counterImage) {
         context.save();
         context.imageSmoothingEnabled = false;
@@ -4120,9 +4144,9 @@ function drawInteriorProps(
         context.restore();
         continue;
       }
-      const horizontalTableImage = modularHorizontalTable
+      const horizontalTableImage = readyTilesetImage(modularHorizontalTable
         ? tilesetProps?.tableHorizontalByLength[propCells.length]
-        : undefined;
+        : undefined);
       if (horizontalTableImage) {
         context.save();
         context.imageSmoothingEnabled = false;
@@ -4131,9 +4155,9 @@ function drawInteriorProps(
         context.restore();
         continue;
       }
-      const verticalTableImage = modularVerticalTable
+      const verticalTableImage = readyTilesetImage(modularVerticalTable
         ? tilesetProps?.tableVerticalByLength[propCells.length]
-        : undefined;
+        : undefined);
       if (verticalTableImage) {
         context.save();
         context.imageSmoothingEnabled = false;
@@ -4146,16 +4170,13 @@ function drawInteriorProps(
           : propCells.length === 4 && spanWidth === cellSize * 2 && spanHeight === cellSize * 2
             ? "table_2x2.png" : undefined
         : undefined;
-      const tableImage = prop === "table"
+      const tableImage = readyTilesetImage(prop === "table"
         ? propCells.length === 1 ? tilesetProps?.table1x1
           : propCells.length === 4 && spanWidth === cellSize * 2 && spanHeight === cellSize * 2
             ? tilesetProps?.table2x2 : undefined
-        : undefined;
+        : undefined);
       if (tableImage) {
-        const source = imageSourceSize(tableImage) ?? {
-          width: propCells.length === 4 ? 64 : 32,
-          height: propCells.length === 4 ? 64 : 32,
-        };
+        const source = imageSourceSize(tableImage)!;
         const scale = cellSize / 32;
         const layout = interiorAssetSpriteLayout(tableAssetName ?? "");
         const drawWidth = source.width * scale;
@@ -4171,11 +4192,12 @@ function drawInteriorProps(
         context.restore();
         continue;
       }
-      const altarImage = prop === "altar" && (propCells.length === 2 || propCells.length === 3)
+      const altarImage = readyTilesetImage(prop === "altar" &&
+        (propCells.length === 2 || propCells.length === 3)
         ? propCells.length === 3
           ? vertical ? tilesetProps?.altarVertical1x3 : tilesetProps?.altar3x1
           : vertical ? tilesetProps?.altarVertical1x2 : tilesetProps?.altar2x1
-        : undefined;
+        : undefined);
       if (altarImage) {
         const source = imageSourceSize(altarImage);
         if (source) {
@@ -4201,9 +4223,9 @@ function drawInteriorProps(
       const casualSofaImages = upholsteredBench
         ? tilesetProps?.casualSofas[propFacing ?? "north"]
         : undefined;
-      const casualSofaImage = casualSofaImages?.length
+      const casualSofaImage = readyTilesetImage(casualSofaImages?.length
         ? casualSofaImages[variantIndex % casualSofaImages.length]
-        : undefined;
+        : undefined);
       if (prop === "bench" && casualSofaImage) {
         context.save();
         context.imageSmoothingEnabled = false;
@@ -4211,9 +4233,10 @@ function drawInteriorProps(
         context.restore();
         continue;
       }
-      const horizontalBenchImage = prop === "bench" && !upholsteredBench && !vertical
+      const horizontalBenchImage = readyTilesetImage(
+        prop === "bench" && !upholsteredBench && !vertical
         ? tilesetProps?.benchHorizontalByLength[propCells.length]
-        : undefined;
+        : undefined);
       if (horizontalBenchImage) {
         context.save();
         context.imageSmoothingEnabled = false;
@@ -4221,9 +4244,10 @@ function drawInteriorProps(
         context.restore();
         continue;
       }
-      const verticalBenchImage = prop === "bench" && !upholsteredBench && vertical
+      const verticalBenchImage = readyTilesetImage(
+        prop === "bench" && !upholsteredBench && vertical
         ? tilesetProps?.benchVerticalByLength[propCells.length]
-        : undefined;
+        : undefined);
       if (verticalBenchImage) {
         context.save();
         context.imageSmoothingEnabled = false;
@@ -4231,7 +4255,8 @@ function drawInteriorProps(
         context.restore();
         continue;
       }
-      const wallPropImage = prop === "cabinet" && (propCells.length === 2 || propCells.length === 3)
+      const wallPropImage = readyTilesetImage(prop === "cabinet" &&
+        (propCells.length === 2 || propCells.length === 3)
         ? propCells.length === 3
           ? vertical ? tilesetProps?.cabinetVertical1x3 : undefined
           : vertical ? tilesetProps?.cabinetVertical1x2
@@ -4239,7 +4264,7 @@ function drawInteriorProps(
               ? tilesetProps?.cabinet2x1South : tilesetProps?.cabinet2x1North
         : prop === "tomb" && propCells.length === 2
           ? vertical ? tilesetProps?.coffin1x2 : tilesetProps?.coffin2x1
-          : undefined;
+          : undefined);
       if (wallPropImage) {
         const source = imageSourceSize(wallPropImage);
         if (source) {
@@ -4256,11 +4281,12 @@ function drawInteriorProps(
           continue;
         }
       }
-      const hearthImage = prop === "hearth" && (propCells.length === 2 || propCells.length === 3)
+      const hearthImage = readyTilesetImage(prop === "hearth" &&
+        (propCells.length === 2 || propCells.length === 3)
         ? propCells.length === 3
           ? vertical ? tilesetProps?.hearth1x3 : tilesetProps?.hearth3x1
           : vertical ? tilesetProps?.hearth1x2 : tilesetProps?.hearth2x1
-        : undefined;
+        : undefined);
       if (hearthImage) {
         const source = imageSourceSize(hearthImage);
         if (source) {
@@ -4285,25 +4311,25 @@ function drawInteriorProps(
         ? undefined
         : propVariant !== undefined
           ? allBedAssets[propVariant % allBedAssets.length]
-        : spaceshipFurniture
-          ? blueBedAssets[variantIndex % blueBedAssets.length]
-          : selectBedAssetDefinition(
-            propCells.length === 4,
-            propFacing ?? "north",
-            variantIndex,
-            propRoomRole,
-          );
+          : spaceshipFurniture
+            ? blueBedAssets[variantIndex % blueBedAssets.length]
+            : selectBedAssetDefinition(
+              propCells.length === 4,
+              propFacing ?? "north",
+              variantIndex,
+              propRoomRole,
+            );
       const bedIndex = selectedBedAsset
         ? allBedAssets.findIndex(({ folder, name }) =>
           folder === selectedBedAsset.folder && name === selectedBedAsset.name)
         : -1;
       const bedImages = prop === "bed"
         ? (propCells.length === 4 ? tilesetProps?.bedDoubles : tilesetProps?.bedSingles)
-          ?.[propFacing ?? "north"]
+        ?.[propFacing ?? "north"]
         : undefined;
-      const bedImage = bedImages?.[bedIndex];
+      const bedImage = readyTilesetImage(bedImages?.[bedIndex]);
       if (bedImage) {
-        const source = imageSourceSize(bedImage) ?? { width: spanWidth, height: spanHeight };
+        const source = imageSourceSize(bedImage)!;
         const bedAsset = allBedAssets[bedIndex];
         const scale = cellSize / 32;
         context.save();
@@ -4321,12 +4347,14 @@ function drawInteriorProps(
             : prop === "bucket" ? "bucket_1x1.png"
               : prop === "drawers" ? `drawer_${variantIndex % 3 + 1}_1x1.png`
                 : prop === "shelf" ? `shelf_${variantIndex % 7 + 1}_1x1.png`
-                  : prop === "statue" ? "statue_1x1.png"
+                  : prop === "statue" ? `statue_${variantIndex % 7 + 1}_1x1.png`
                     : prop === "flower_pot" ? `flower_pot_${variantIndex % 3 + 1}_1x1.png`
                       : prop === "bones" ? `bones_${variantIndex % 5 + 1}_1x1.png`
                         : prop === "wall_chain" ? `wall_chain_${variantIndex % 2 + 1}_1x2.png`
+                          : prop === "torch" && propFacing !== "north"
+                            ? `torch_${propFacing ?? "south"}.png`
                           : undefined;
-      const tileImage = prop === "chair" ? tilesetProps?.stool1x1
+      const tileImage = readyTilesetImage(prop === "chair" ? tilesetProps?.stool1x1
         : prop === "crate" && tilesetProps?.crate1x1.length
           ? tilesetProps?.crate1x1[variantIndex % tilesetProps.crate1x1.length]
           : prop === "barrel" ? tilesetProps?.barrel1x1
@@ -4336,14 +4364,17 @@ function drawInteriorProps(
                 ? tilesetProps.drawers1x1[variantIndex % tilesetProps.drawers1x1.length]
                 : prop === "shelf" && tilesetProps?.shelves1x1.length
                   ? tilesetProps.shelves1x1[variantIndex % tilesetProps.shelves1x1.length]
-                  : prop === "statue" ? tilesetProps?.statue1x1
+                  : prop === "statue" && tilesetProps?.statue1x1.length
+                    ? tilesetProps.statue1x1[variantIndex % tilesetProps.statue1x1.length]
                     : prop === "flower_pot" && tilesetProps?.flowerPots1x1.length
                       ? tilesetProps.flowerPots1x1[variantIndex % tilesetProps.flowerPots1x1.length]
                       : prop === "bones" && tilesetProps?.bones1x1.length
                         ? tilesetProps.bones1x1[variantIndex % tilesetProps.bones1x1.length]
                         : prop === "wall_chain" && tilesetProps?.wallChains1x2.length
                           ? tilesetProps.wallChains1x2[variantIndex % tilesetProps.wallChains1x2.length]
-                          : undefined;
+                          : prop === "torch" && propFacing !== "north"
+                            ? tilesetProps?.torches[propFacing ?? "south"]
+                          : undefined);
       if (tileImage) {
         const layout = interiorAssetSpriteLayout(tileAssetName ?? "");
         const source = imageSourceSize(tileImage);
@@ -4950,6 +4981,16 @@ function drawInteriorProps(
         context.beginPath();
         context.arc(centerX, centerY, Math.max(1.3, cellSize * .09), 0, Math.PI * 2);
         context.fill();
+      } else if (prop === "torch") {
+        context.fillStyle = "#f0b65b";
+        context.beginPath();
+        context.arc(centerX, centerY, cellSize * .14, 0, Math.PI * 2);
+        context.fill();
+        context.strokeStyle = "#443126";
+        context.beginPath();
+        context.moveTo(centerX, centerY + cellSize * .08);
+        context.lineTo(centerX, centerY + cellSize * .32);
+        context.stroke();
       } else if (prop === "bar") {
         const width = spanWidth * (vertical ? .56 : .94);
         const height = spanHeight * (vertical ? .94 : .56);
@@ -5121,7 +5162,13 @@ function drawOutdoorProps(
       if (!prop) continue;
       context.globalAlpha = hiddenItems.has(prop) ? hiddenOpacity : 1;
       if (prop === OutdoorProp.Campfire) {
-        drawCampfirePlaceholder(x, y, cellSize, context);
+        const campfireImage = tilesetProps && imageSourceSize(tilesetProps.campfire)
+          ? tilesetProps.campfire : undefined;
+        if (campfireImage) {
+          drawLampPostTileset(campfireImage, x, y, cellSize, context);
+        } else {
+          drawCampfirePlaceholder(x, y, cellSize, context);
+        }
       } else if (prop === OutdoorProp.LampPost) {
         const lampPostImage = tilesetProps && imageSourceSize(tilesetProps.lampPost)
           ? tilesetProps.lampPost : undefined;

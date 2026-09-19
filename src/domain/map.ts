@@ -127,7 +127,7 @@ export interface Tile {
   interiorProp?: "table" | "chair" | "bar" | "cabinet" | "bed" |
     "bench" | "altar" | "crate" | "console" | "tomb" | "hearth" |
     "drawers" | "shelf" | "statue" | "barrel" | "bucket" | "flower_pot" |
-    "bones" | "wall_chain";
+    "bones" | "wall_chain" | "torch";
   interiorPropId?: number;
   propVariant?: number;
   propOrientation?: "horizontal" | "vertical";
@@ -229,6 +229,7 @@ export const INTERIOR_PROP_RULES: Record<
   flower_pot: { label: "Flower pot", movement: "blocked", blocksSight: false },
   bones: { label: "Bones", movement: "normal", blocksSight: false },
   wall_chain: { label: "Wall chain", movement: "normal", blocksSight: false },
+  torch: { label: "Torch", movement: "normal", blocksSight: false },
 };
 
 export const DECK_FEATURE_RULES: Record<

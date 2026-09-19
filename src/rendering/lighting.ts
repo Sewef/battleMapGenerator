@@ -21,6 +21,7 @@ export type MapLightKind =
   | "hearth"
   | "console"
   | "altar"
+  | "torch"
   | "lava"
   | "campfire"
   | "lamp_post";
@@ -65,6 +66,14 @@ const lightSourceStyles: Record<
     lightType: "SECONDARY",
     color: [255, 204, 128],
     intensity: .25,
+  },
+  torch: {
+    attenuationRadius: 3.5,
+    sourceRadius: .12,
+    falloff: .32,
+    lightType: "SECONDARY",
+    color: [255, 174, 82],
+    intensity: .38,
   },
   lava: {
     attenuationRadius: 4.6,
@@ -126,7 +135,7 @@ function spreadLavaSources(points: Array<{ x: number; y: number }>) {
 
 export function collectMapLightSources(grid: Grid): MapLightSource[] {
   if (!grid.length || !grid[0].length) return [];
-  const propKinds = new Set<MapLightKind>(["hearth", "console", "altar"]);
+  const propKinds = new Set<MapLightKind>(["hearth", "console", "altar", "torch"]);
   const outdoorLightSources: MapLightSource[] = [];
   const propGroups = new Map<
     string,
