@@ -1897,7 +1897,7 @@ owlbearSceneMapsList.addEventListener("click", (event) => {
   if (!button || !mapId) return;
   const seed = button.dataset.touchGrassMapSeed || mapId.slice(0, 8);
   if (!window.confirm(
-    `Remove the Touch Grass map “${seed}” and all of its attached props from this scene?`,
+    `Remove the Touch Grass map “${seed}”, all of its attached props, and Battle System smoke zones positioned over it?`,
   )) return;
   void (async () => {
     const buttons = [

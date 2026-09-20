@@ -12,6 +12,14 @@ type OwlbearScenePayload = {
   bounds?: Partial<BoundingBox>;
 };
 
+const BATTLE_SYSTEM_SMOKE_METADATA_PREFIX = "com.battle-system.smoke";
+
+type SmokeCurve = Item & {
+  type: "CURVE";
+  points: Array<{ x: number; y: number }>;
+  style: { strokeWidth: number };
+};
+
 export type TouchGrassSceneMap = {
   mapId: string;
   seed: string;
@@ -37,6 +45,46 @@ function touchGrassItemMetadata(item: Item): TouchGrassItemMetadata | undefined 
     (metadata.role !== "map" && metadata.role !== "prop" && metadata.role !== "support")
   ) return undefined;
   return metadata as TouchGrassItemMetadata;
+}
+
+export function isBattleSystemSmokeCurve(item: Item): item is SmokeCurve {
+  return item.type === "CURVE" && Object.keys(item.metadata ?? {})
+    .some((key) => key.startsWith(BATTLE_SYSTEM_SMOKE_METADATA_PREFIX));
+}
+
+function boundsOverlap(first: BoundingBox, second: BoundingBox) {
+  return Math.min(first.max.x, second.max.x) >= Math.max(first.min.x, second.min.x) &&
+    Math.min(first.max.y, second.max.y) >= Math.max(first.min.y, second.min.y);
+}
+
+function smokeCurveBounds(item: SmokeCurve): BoundingBox | undefined {
+  if (!item.points.length) return undefined;
+  const radians = item.rotation * Math.PI / 180;
+  const cosine = Math.cos(radians);
+  const sine = Math.sin(radians);
+  const points = item.points.map((point) => {
+    const scaledX = point.x * item.scale.x;
+    const scaledY = point.y * item.scale.y;
+    return {
+      x: item.position.x + scaledX * cosine - scaledY * sine,
+      y: item.position.y + scaledX * sine + scaledY * cosine,
+    };
+  });
+  const padding = item.style.strokeWidth *
+    Math.max(Math.abs(item.scale.x), Math.abs(item.scale.y)) / 2;
+  const minX = Math.min(...points.map(({ x }) => x)) - padding;
+  const minY = Math.min(...points.map(({ y }) => y)) - padding;
+  const maxX = Math.max(...points.map(({ x }) => x)) + padding;
+  const maxY = Math.max(...points.map(({ y }) => y)) + padding;
+  const width = maxX - minX;
+  const height = maxY - minY;
+  return {
+    min: { x: minX, y: minY },
+    max: { x: maxX, y: maxY },
+    width,
+    height,
+    center: { x: minX + width / 2, y: minY + height / 2 },
+  };
 }
 
 export function touchGrassSceneMapsFromItems(items: Item[]): TouchGrassSceneMap[] {
@@ -150,21 +198,76 @@ export async function listTouchGrassSceneMaps() {
 
 export async function deleteTouchGrassSceneMap(mapId: string) {
   await waitForOwlbearExtension();
-  const items = await OBR.scene.items.getItems();
-  const ids = items.flatMap((item) =>
-    touchGrassItemMetadata(item)?.mapId === mapId ? [item.id] : []
+  const [items, localItems] = await Promise.all([
+    OBR.scene.items.getItems(),
+    OBR.scene.local.getItems(),
+  ]);
+  const mapItems = items.filter((item) =>
+    touchGrassItemMetadata(item)?.mapId === mapId
   );
+  const ids = mapItems.map(({ id }) => id);
+  const localIds: string[] = [];
   if (!ids.length) return 0;
-  await OBR.scene.items.deleteItems(ids);
+
+  const background = mapItems.find((item) =>
+    touchGrassItemMetadata(item)?.role === "map"
+  );
+  if (background) {
+    try {
+      const mapBounds = await OBR.scene.items.getItemBounds([background.id]);
+      const findOverlappingSmokeIds = async (
+        candidates: SmokeCurve[],
+      ) => (await Promise.all(candidates.map(async (item) => {
+        try {
+          const smokeBounds = smokeCurveBounds(item);
+          if (!smokeBounds) return undefined;
+          return boundsOverlap(mapBounds, smokeBounds) ? item.id : undefined;
+        } catch (error) {
+          console.warn("[owlbear] Unable to inspect smoke curve bounds", {
+            itemId: item.id,
+            error,
+          });
+          return undefined;
+        }
+      }))).filter((id): id is string => Boolean(id));
+
+      const [sharedSmokeIds, localSmokeIds] = await Promise.all([
+        findOverlappingSmokeIds(
+          items
+            .filter(isBattleSystemSmokeCurve)
+            .filter((item) => !ids.includes(item.id)),
+        ),
+        findOverlappingSmokeIds(
+          localItems.filter(isBattleSystemSmokeCurve),
+        ),
+      ]);
+      ids.push(...sharedSmokeIds);
+      localIds.push(...localSmokeIds);
+    } catch (error) {
+      // Map deletion remains available even when an unrelated extension item
+      // has invalid geometry or Owlbear cannot calculate its current bounds.
+      console.warn("[owlbear] Unable to inspect map bounds for smoke cleanup", {
+        mapId,
+        error,
+      });
+    }
+  }
+  await Promise.all([
+    OBR.scene.items.deleteItems(ids),
+    localIds.length
+      ? OBR.scene.local.deleteItems(localIds)
+      : Promise.resolve(),
+  ]);
+  const deletedItemCount = ids.length + localIds.length;
   try {
     await OBR.notification.show(
-      `Touch Grass map removed (${ids.length} items).`,
+      `Touch Grass map removed (${deletedItemCount} items).`,
       "SUCCESS",
     );
   } catch (error) {
     console.warn("[owlbear] Map was removed, but notification failed", error);
   }
-  return ids.length;
+  return deletedItemCount;
 }
 
 export function onTouchGrassSceneMapsChange(
