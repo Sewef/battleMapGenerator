@@ -17,7 +17,11 @@ import {
 } from "../domain/map";
 import { generateTerrain } from "./generate";
 import { validateAndRepairGrid } from "./pipeline";
-import { createOwlbearSceneJson } from "../export/owlbear";
+import {
+  createOwlbearSceneJson,
+  TOUCH_GRASS_METADATA_KEY,
+  type TouchGrassItemMetadata,
+} from "../export/owlbear";
 import { collectMapLightSources } from "../rendering/lighting";
 import { selectBedAssetDefinition } from "../rendering/tileset-assets";
 
@@ -2205,6 +2209,22 @@ const backgroundEntry = fogEntries.find(([, { layer }]) => layer === "MAP");
 assert(backgroundEntry, "house fog export: missing map background");
 const [backgroundId, background] = backgroundEntry;
 assert(!background.locked, "house fog export: background must stay movable");
+assert(fogExport.mapId === backgroundId,
+  "house fog export: exported mapId must identify the background item");
+for (const [id, item] of fogEntries) {
+  const metadata = item.metadata?.[TOUCH_GRASS_METADATA_KEY] as
+    TouchGrassItemMetadata | undefined;
+  assert(metadata?.schemaVersion === 1,
+    `house fog export: ${item.name} has no Touch Grass metadata`);
+  assert(metadata.mapId === fogExport.mapId && metadata.seed === "house-fog-export",
+    `house fog export: ${item.name} does not belong to the exported map`);
+  assert(metadata.width === fogExportGrid[0].length &&
+    metadata.height === fogExportGrid.length,
+  `house fog export: ${item.name} has incorrect map dimensions`);
+  assert(metadata.role === (id === backgroundId
+    ? "map" : item.layer === "PROP" ? "prop" : "support"),
+  `house fog export: ${item.name} has an incorrect Touch Grass role`);
+}
 for (const [id, item] of fogEntries) {
   if (id === backgroundId) continue;
   assert(

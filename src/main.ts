@@ -43,7 +43,11 @@ import {
 } from "./export/owlbear";
 import {
   addOwlbearSceneExport,
+  deleteTouchGrassSceneMap,
   isOwlbearExtensionAvailable,
+  listTouchGrassSceneMaps,
+  onTouchGrassSceneMapsChange,
+  type TouchGrassSceneMap,
   waitForOwlbearExtension,
 } from "./export/owlbear-extension";
 
@@ -176,6 +180,14 @@ const owlbearImportButton =
   document.querySelector<HTMLButtonElement>("#import-owlbear")!;
 const owlbearTerrainDownloadButton =
   document.querySelector<HTMLButtonElement>("#download-owlbear-terrain")!;
+const owlbearSceneMapsPanel =
+  document.querySelector<HTMLElement>("#owlbear-scene-maps")!;
+const owlbearSceneMapsEmpty =
+  document.querySelector<HTMLElement>("#owlbear-scene-maps-empty")!;
+const owlbearSceneMapsList =
+  document.querySelector<HTMLElement>("#owlbear-scene-maps-list")!;
+const owlbearSceneMapsRefreshButton =
+  document.querySelector<HTMLButtonElement>("#refresh-owlbear-scene-maps")!;
 const {
   terrain: tilesetImage,
   terrainTiles: tilesetTerrain,
@@ -242,6 +254,7 @@ let owlbearExportCache: {
   scene: Awaited<ReturnType<typeof createOwlbearSceneJson>>;
 } | undefined;
 let manifestStatusTimeout = 0;
+let stopOwlbearSceneMapWatcher: (() => void) | undefined;
 
 function setPresetGroupTab(index: number) {
   presetGroupPanels.forEach((panel, panelIndex) => {
@@ -1650,6 +1663,51 @@ function bindPropPreview(
   void updatePropPreview(input, preview, kind);
 }
 
+function renderOwlbearSceneMaps(maps: TouchGrassSceneMap[]) {
+  owlbearSceneMapsList.replaceChildren();
+  owlbearSceneMapsEmpty.hidden = maps.length > 0;
+  for (const map of maps) {
+    const row = document.createElement("div");
+    row.className = "owlbear-scene-map";
+
+    const information = document.createElement("div");
+    information.className = "owlbear-scene-map-info";
+    const title = document.createElement("strong");
+    title.textContent = map.seed || "Unnamed map";
+    const details = document.createElement("small");
+    const mode = map.mode ? `${map.mode} · ` : "";
+    const orphan = map.hasBackground ? "" : " · background missing";
+    details.textContent =
+      `${mode}${map.width}×${map.height} · ${map.itemCount} items · ${map.mapId.slice(0, 8)}${orphan}`;
+    information.append(title, details);
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "owlbear-scene-map-remove";
+    remove.dataset.touchGrassMapId = map.mapId;
+    remove.dataset.touchGrassMapSeed = map.seed;
+    remove.textContent = "Remove";
+    remove.setAttribute("aria-label", `Remove map ${map.seed || map.mapId}`);
+    row.append(information, remove);
+    owlbearSceneMapsList.append(row);
+  }
+}
+
+async function refreshOwlbearSceneMaps() {
+  owlbearSceneMapsRefreshButton.disabled = true;
+  try {
+    renderOwlbearSceneMaps(await listTouchGrassSceneMaps());
+  } catch (error) {
+    console.error("[owlbear] Unable to list Touch Grass maps", { error });
+    owlbearStatus.classList.add("is-error");
+    owlbearStatus.textContent = error instanceof Error
+      ? `Scene map list failed: ${error.message}`
+      : "Unable to list Touch Grass maps in this scene.";
+  } finally {
+    owlbearSceneMapsRefreshButton.disabled = false;
+  }
+}
+
 function updateOwlbearExtensionControls(available: boolean) {
   document.body.classList.toggle("is-owlbear-extension", available);
   owlbearImportButton.hidden = !available;
@@ -1659,6 +1717,7 @@ function updateOwlbearExtensionControls(available: boolean) {
   owlbearSiteInstructions.hidden = available;
   owlbearExtensionInstructions.hidden = true;
   owlbearHostingNotice.hidden = available;
+  owlbearSceneMapsPanel.hidden = !available;
   owlbearDescription.textContent = available
     ? "Insert the current map and select every created item in the Owlbear scene."
     : "Create a ready-to-import Owlbear token set with the current map as its background and editable props.";
@@ -1675,6 +1734,9 @@ async function initializeOwlbearExtensionControls() {
   } catch {
     return;
   }
+  await refreshOwlbearSceneMaps();
+  stopOwlbearSceneMapWatcher?.();
+  stopOwlbearSceneMapWatcher = onTouchGrassSceneMapsChange(renderOwlbearSceneMaps);
   owlbearStatus.textContent = "Owlbear scene integration ready.";
 }
 
@@ -1794,6 +1856,9 @@ async function runOwlbearExport(action: "copy" | "download" | "import") {
     } else {
       owlbearStatus.textContent = "Adding map items to the Owlbear scene...";
       const itemCount = await addOwlbearSceneExport(scene);
+      // A second insertion is a distinct scene map and must receive fresh
+      // item IDs as well as a fresh Touch Grass mapId.
+      owlbearExportCache = undefined;
       owlbearStatus.textContent =
         `${itemCount} Owlbear items added to the current scene.`;
     }
@@ -1820,6 +1885,43 @@ owlbearImportButton.addEventListener("click", () => {
 });
 owlbearTerrainDownloadButton.addEventListener("click", () => {
   void runOwlbearTerrainDownload();
+});
+owlbearSceneMapsRefreshButton.addEventListener("click", () => {
+  void refreshOwlbearSceneMaps();
+});
+owlbearSceneMapsList.addEventListener("click", (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>(
+    "[data-touch-grass-map-id]",
+  );
+  const mapId = button?.dataset.touchGrassMapId;
+  if (!button || !mapId) return;
+  const seed = button.dataset.touchGrassMapSeed || mapId.slice(0, 8);
+  if (!window.confirm(
+    `Remove the Touch Grass map “${seed}” and all of its attached props from this scene?`,
+  )) return;
+  void (async () => {
+    const buttons = [
+      ...owlbearSceneMapsList.querySelectorAll<HTMLButtonElement>("button"),
+    ];
+    buttons.forEach((candidate) => candidate.disabled = true);
+    owlbearStatus.classList.remove("is-error");
+    owlbearStatus.textContent = `Removing map “${seed}”…`;
+    try {
+      const removed = await deleteTouchGrassSceneMap(mapId);
+      owlbearStatus.textContent = removed
+        ? `Map “${seed}” removed (${removed} items).`
+        : `Map “${seed}” is no longer in the scene.`;
+      await refreshOwlbearSceneMaps();
+    } catch (error) {
+      console.error("[owlbear] Map removal failed", { mapId, error });
+      owlbearStatus.classList.add("is-error");
+      owlbearStatus.textContent = error instanceof Error
+        ? `Map removal failed: ${error.message}`
+        : "Unable to remove the map from the scene.";
+    } finally {
+      buttons.forEach((candidate) => candidate.disabled = false);
+    }
+  })();
 });
 bindPropPreview(
   treePropUrlInput,

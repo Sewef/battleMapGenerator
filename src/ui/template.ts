@@ -338,6 +338,22 @@ export function renderApp(root: HTMLElement) {
           <div class="canvas-wrap">
             <canvas id="map" aria-label="Generated terrain grid"></canvas>
           </div>
+        </div>
+
+        <div class="workspace-after-map">
+          <section id="owlbear-scene-maps" class="owlbear-scene-maps" hidden aria-labelledby="owlbear-scene-maps-title">
+            <div class="owlbear-scene-maps-heading">
+              <div>
+                <p class="eyebrow">Current Owlbear scene</p>
+                <strong id="owlbear-scene-maps-title">Touch Grass maps</strong>
+              </div>
+              <button id="refresh-owlbear-scene-maps" class="text-button" type="button">Refresh</button>
+            </div>
+            <p id="owlbear-scene-maps-empty">No Touch Grass maps in this scene.</p>
+            <div id="owlbear-scene-maps-list" class="owlbear-scene-maps-list"></div>
+          </section>
+
+          <div class="map-output-main">
           <section class="map-content-panel" aria-labelledby="map-content-title">
             <div class="map-content-heading">
               <div>
@@ -499,6 +515,7 @@ export function renderApp(root: HTMLElement) {
             </div>
             </div>
           </section>
+          </div>
         </div>
       </section>
       <footer class="asset-credit">

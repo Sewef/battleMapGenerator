@@ -28,6 +28,18 @@ import {
 const OWLBEAR_SCENE_DPI = 150;
 const MAP_IMAGE_DPI = 48;
 const PROP_IMAGE_DPI = 512;
+export const TOUCH_GRASS_METADATA_KEY = "com.sewef.touchgrass";
+
+export type TouchGrassItemMetadata = {
+  schemaVersion: 1;
+  mapId: string;
+  seed: string;
+  mode?: LandscapeMode;
+  width: number;
+  height: number;
+  role: "map" | "prop" | "support";
+  exportedAt: string;
+};
 const FOG_TERRAINS = new Set<TerrainKind>([
   Terrain.Ground,
   Terrain.Difficult,
@@ -136,6 +148,7 @@ export interface OwlbearExportOptions {
 export interface OwlbearSceneExport {
   json: string;
   filename: string;
+  mapId: string;
 }
 
 function safeSeed(seed: string) {
@@ -1988,6 +2001,7 @@ export async function createOwlbearSceneJson(
       ReturnType<typeof fogDoorItem> |
       ReturnType<typeof lightItem>
   ) & {
+    metadata: Record<string, unknown>;
     attachedTo?: string;
     disableAttachmentBehavior?: Array<
       "VISIBLE" | "SCALE" | "ROTATION" | "POSITION" |
@@ -1997,6 +2011,7 @@ export async function createOwlbearSceneJson(
   const shared: Record<string, ExportedSceneItem> = {};
   const baseZIndex = Date.now();
   const mapId = crypto.randomUUID();
+  const exportedAt = new Date().toISOString();
   const mapWidth = grid[0].length * MAP_IMAGE_DPI;
   const mapHeight = grid.length * MAP_IMAGE_DPI;
   if (
@@ -2314,6 +2329,20 @@ export async function createOwlbearSceneJson(
   const width = grid[0].length * OWLBEAR_SCENE_DPI;
   const height = grid.length * OWLBEAR_SCENE_DPI;
   for (const [id, item] of Object.entries(shared)) {
+    const touchGrassMetadata: TouchGrassItemMetadata = {
+      schemaVersion: 1,
+      mapId,
+      seed,
+      mode: options.mode,
+      width: grid[0].length,
+      height: grid.length,
+      role: id === mapId ? "map" : item.layer === "PROP" ? "prop" : "support",
+      exportedAt,
+    };
+    item.metadata = {
+      ...item.metadata,
+      [TOUCH_GRASS_METADATA_KEY]: touchGrassMetadata,
+    };
     if (id === mapId) continue;
     if (item.attachedTo) continue;
     item.attachedTo = mapId;
@@ -2333,6 +2362,7 @@ export async function createOwlbearSceneJson(
   };
   return {
     json: JSON.stringify(scene),
+    mapId,
     filename:
       `touchgrass-${safeSeed(seed)}-${grid[0].length}x${grid.length}-owlbear.json`,
   };
