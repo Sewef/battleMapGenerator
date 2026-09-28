@@ -1618,9 +1618,6 @@ function interiorPropSpriteItems(
     prop.kind === "table" && !modularTable &&
       (prop.points.length === 2 || prop.points.length === 3)
     ? prop.points.length : 0;
-  const cabinetOverhang = prop.kind === "cabinet" &&
-    (rectangle.height > rectangle.width || prop.facing === "south" ||
-      prop.points.length === 2 && rectangle.width > rectangle.height) ? 1 : 0;
   const benchAsset = prop.kind === "bench";
   const verticalBench = false;
   const compositeAsset = modularWoodenBench || modularTable || modularCounter;
@@ -1635,7 +1632,7 @@ function interiorPropSpriteItems(
     : upholsteredBench
     ? prop.facing === "east" || prop.facing === "west" ? 64 : 32
     : benchAsset ? 32 : fittedLength
-    ? (rectangle.height + cabinetOverhang) * 32
+    ? spriteLayout.renderHeightCells * 32
     : assetName.includes("1x2") ? 64
       : assetName.includes("2x1") ? 32 : assetWidth;
   const layoutAssetWidth = !benchAsset && !fittedLength &&

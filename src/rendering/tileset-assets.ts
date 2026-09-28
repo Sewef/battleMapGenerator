@@ -442,13 +442,13 @@ const TILESET_PROP_ASSET_DEFINITIONS = {
       "cabinet_south_2x1.png", bottomLayout(2, 2)),
     altarVertical1x2: interiorAssetDefinition(
       "altar_vertical_1x2.png", bottomLayout(1, 3)),
-    altar2x1: interiorAssetDefinition("altar_2x1.png", bottomLayout(1, 2)),
+    altar2x1: interiorAssetDefinition("altar_2x1.png", bottomLayout(2, 2)),
     altarVertical1x3: interiorAssetDefinition(
       "altar_vertical_1x3.png", bottomLayout(1, 4)),
-    altar3x1: interiorAssetDefinition("altar_3x1.png", bottomLayout(1, 2)),
+    altar3x1: interiorAssetDefinition("altar_3x1.png", bottomLayout(3, 2)),
     coffin1x2: interiorAssetDefinition(
       "coffin_1x2.png", centeredLayout(1, 2), "ai"),
-    coffin2x1: interiorAssetDefinition("coffin_2x1.png", centeredLayout(2, 1)),
+    coffin2x1: interiorAssetDefinition("coffin_2x1.png", bottomLayout(2, 2)),
 } as const;
 
 function createTilesetPropImages() {
