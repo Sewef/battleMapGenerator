@@ -29,6 +29,7 @@ import {
   collectTilesetImages,
   createTilesetAssets,
 } from "./rendering/tileset-assets";
+import { defaultOutdoorPropAssetPath } from "./rendering/biome-assets";
 import {
   BIOME_PARAMETER_PROFILES,
   PARAMETER_FIELDS,
@@ -1594,7 +1595,7 @@ async function updatePropPreview(
   if (!requestedUrl) {
     delete customProps[kind];
     delete customPropSources[kind];
-    previewImage.src = `/assets/tilesets/bailey/${kind}_1x1.png`;
+    previewImage.src = defaultOutdoorPropAssetPath(kind, "1x1");
     previewImage.style.display = "block";
     information.textContent = "Tileset fallback";
     preview.classList.remove("is-loading");

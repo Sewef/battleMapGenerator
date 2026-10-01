@@ -18,6 +18,10 @@ import {
 } from "./palettes";
 import { drawStylizedLighting } from "./lighting";
 import {
+  biomeAssetProfile,
+  type TilesetProfileName,
+} from "./biome-assets";
+import {
   bedAssetDefinitions,
   blueBedAssetDefinitions,
   ensureTilesetImageLoaded,
@@ -181,16 +185,6 @@ function drawTilesetProp(
   context.restore();
 }
 
-type RockFamily = "normal" | "light" | "dark" | "desert" | "snow";
-
-function rockFamilyForMode(mode: LandscapeMode): RockFamily {
-  if (mode === "desert-canyon" || mode === "badlands") return "desert";
-  if (mode === "frozen-lake") return "snow";
-  if (mode === "underground" || mode === "sewer" || mode === "volcanic") return "dark";
-  if (mode === "coast" || mode === "archipelago") return "light";
-  return "normal";
-}
-
 function drawLpcProp(
   image: CanvasImageSource,
   x: number,
@@ -284,7 +278,6 @@ const terrainPaintOrder: TerrainKind[] = [
 ];
 
 type TilesetCoordinate = readonly [column: number, row: number];
-type TilesetProfileName = "grass" | "sand" | "mountain" | "snow";
 type TilesetTerrainMap =
   Partial<Record<TerrainKind, TilesetCoordinate>>;
 
@@ -320,24 +313,11 @@ const tilesetProfiles: Record<TilesetProfileName, TilesetTerrainMap> = {
   },
 };
 
-const tilesetProfileByMode: Partial<
-  Record<LandscapeMode, TilesetProfileName>
-> = {
-  "desert-canyon": "sand",
-  badlands: "sand",
-  "mountain-pass": "mountain",
-  highlands: "mountain",
-  sewer: "mountain",
-  underground: "mountain",
-  volcanic: "mountain",
-  "frozen-lake": "snow",
-};
-
 function tilesetCoordinate(
   terrain: TerrainKind,
   mode: LandscapeMode,
 ): TilesetCoordinate | undefined {
-  const profileName = tilesetProfileByMode[mode] ?? "grass";
+  const profileName = biomeAssetProfile(mode).atlas;
   return tilesetProfiles[profileName][terrain] ??
     sharedTilesetCoordinates[terrain];
 }
@@ -417,25 +397,17 @@ function createTilesetPatterns(
     }
   }
   if (!terrainImages) return patterns;
-  const groundProfile = tilesetProfileByMode[mode] ?? "grass";
-  const groundImage = isInteriorMode(mode)
-    ? undefined
-    : mode === "desert-canyon" || mode === "badlands"
-      ? terrainImages.desertSand
-      : mode === "frozen-lake"
-        ? terrainImages.snow
-        : groundProfile === "grass" ? terrainImages.grass : undefined;
-  const waterImage = mode === "frozen-lake"
-    ? terrainImages.coldWater : terrainImages.water;
+  const assetProfile = biomeAssetProfile(mode);
+  const groundImage = assetProfile.groundTexture
+    ? terrainImages[assetProfile.groundTexture]
+    : undefined;
+  const difficultImage = assetProfile.difficultTexture
+    ? terrainImages[assetProfile.difficultTexture]
+    : undefined;
+  const waterImage = terrainImages[assetProfile.waterTexture];
   const replacements: Partial<Record<TerrainKind, CanvasImageSource>> = {
     ...(groundImage ? { [Terrain.Ground]: groundImage } : {}),
-    ...(groundProfile === "sand"
-      ? { [Terrain.Difficult]: terrainImages.sandRough }
-      : mode === "farmland"
-        ? { [Terrain.Difficult]: terrainImages.tiledSoil }
-        : groundProfile === "grass" && !isInteriorMode(mode)
-          ? { [Terrain.Difficult]: terrainImages.grassRough }
-          : {}),
+    ...(difficultImage ? { [Terrain.Difficult]: difficultImage } : {}),
     [Terrain.Beach]: terrainImages.beachSand,
     [Terrain.Water]: waterImage,
     [Terrain.Ice]: terrainImages.ice,
@@ -1718,12 +1690,7 @@ function drawInteriorArchitecture(
     const terrain = grid[y]?.[x]?.terrain;
     return terrain === Terrain.Wall || terrain === Terrain.Door;
   };
-  const floorTileIndex = mode === "house" || mode === "tavern" || mode === "ship" ||
-    mode === "ship-deck" ? 0
-    : mode === "crypt" ? 2
-      : mode === "castle" ? 2
-        : mode === "cathedral" ? 3
-          : 3;
+  const floorTileIndex = biomeAssetProfile(mode).interiorFloorTile ?? 3;
   const drawFloorTile = (left: number, top: number) => {
     const indoorTerrain = readyTilesetImage(tilesetProps?.indoorTerrain);
     if (!indoorTerrain) return false;
@@ -7583,7 +7550,7 @@ export function drawGrid(grid: Grid, options: RenderOptions) {
   context.globalAlpha =
     hiddenItems.has(Obstacle.Rock) ? hiddenOpacity : 1;
   const objectStyle = getBiomeObjectStyle(mode);
-  const rockFamily = rockFamilyForMode(mode);
+  const rockFamily = biomeAssetProfile(mode).rockFamily;
   const rockAssets = options.tilesetProps?.rockFamilies[rockFamily];
   for (const [rockId, points] of rockGroups) {
     const firstRockPoint = points[0];

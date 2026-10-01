@@ -53,6 +53,9 @@ npm run deploy:check
 The generation test checks map invariants and deterministic output for every
 biome preset.
 
+The module boundaries and rules for extending the generator are documented in
+[`docs/architecture.md`](docs/architecture.md).
+
 ## Cloudflare architecture
 
 The Worker serves `dist/` and exposes `/api/map-images` for Owlbear exports.

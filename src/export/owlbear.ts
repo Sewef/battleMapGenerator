@@ -24,6 +24,13 @@ import {
   selectBedAssetDefinition,
   type FurnitureFacing,
 } from "../rendering/tileset-assets";
+import {
+  ROCK_ASSET_VARIANTS,
+  biomeAssetProfile,
+  defaultOutdoorPropAssetPath,
+  rockAssetName,
+  tilesetAssetPath,
+} from "../rendering/biome-assets";
 
 const OWLBEAR_SCENE_DPI = 150;
 const MAP_IMAGE_DPI = 48;
@@ -119,19 +126,6 @@ const SUPPORTED_PROP_MIMES = new Set<OwlbearPropAsset["mime"]>(
   Object.values(PROP_MIME_BY_EXTENSION),
 );
 const DEFAULT_PROP_DIMENSIONS: Record<string, { width: number; height: number }> = {
-  "tree_1x1.png": { width: 32, height: 32 },
-  "tree_2x2.png": { width: 64, height: 64 },
-  ...Object.fromEntries(Array.from({ length: 7 }, (_, index) =>
-    [`rock_${index + 1}_1x1.png`, { width: 32, height: 32 }])),
-  ...Object.fromEntries(Array.from({ length: 9 }, (_, index) =>
-    [`rock_${index + 1}_1x2.png`, { width: 32, height: 64 }])),
-  "rock_2x1.png": { width: 64, height: 32 },
-  ...Object.fromEntries(Array.from({ length: 7 }, (_, index) =>
-    [`rock_${index + 1}_2x2.png`, { width: 64, height: 64 }])),
-  "rock_desert_1x1.png": { width: 32, height: 32 },
-  "rock_desert_1x2.png": { width: 32, height: 64 },
-  "rock_desert_1_2x2.png": { width: 64, height: 64 },
-  "rock_desert_2_2x2.png": { width: 64, height: 64 },
   "tree.png": { width: 64, height: 64 },
   "rock.png": { width: 64, height: 64 },
 };
@@ -1819,12 +1813,11 @@ export async function inspectPropAsset(
   if (!value) {
     const filename = defaultAssetPath.split("/").at(-1);
     if (!filename) throw new Error("Missing default prop asset name.");
-    const rockDimensions = /^rock(?:_(?:light|dark|desert|snow))?_\d+_(\d+)x(\d+)\.png$/
-      .exec(filename);
-    const dimensions = DEFAULT_PROP_DIMENSIONS[filename] ?? (rockDimensions
+    const footprint = /_(\d+)x(\d+)\.png$/.exec(filename);
+    const dimensions = DEFAULT_PROP_DIMENSIONS[filename] ?? (footprint
       ? {
-        width: Number(rockDimensions[1]) * 32,
-        height: Number(rockDimensions[2]) * 32,
+        width: Number(footprint[1]) * 32,
+        height: Number(footprint[2]) * 32,
       }
       : undefined);
     if (!dimensions) throw new Error(`Unknown default prop asset: ${filename}`);
@@ -1869,14 +1862,14 @@ async function owlBearPropAssets(
   }
   if (useTileset) {
     const [oneByOne, twoByTwo] = await Promise.all([
-      inspectPropAsset(undefined, `/assets/tilesets/bailey/${kind}_1x1.png`),
-      inspectPropAsset(undefined, `/assets/tilesets/bailey/${kind}_2x2.png`),
+      inspectPropAsset(undefined, defaultOutdoorPropAssetPath(kind, "1x1")),
+      inspectPropAsset(undefined, defaultOutdoorPropAssetPath(kind, "2x2")),
     ]);
     return { oneByOne, twoByTwo };
   }
   const fallback = await inspectPropAsset(
     undefined,
-    `/assets/tilesets/bailey/${kind}.png`,
+    defaultOutdoorPropAssetPath(kind),
   );
   return { oneByOne: fallback, twoByTwo: fallback };
 }
@@ -1900,29 +1893,26 @@ async function owlBearRockAssets(
       fiveByFour: [],
     };
   }
-  const family = mode === "desert-canyon" || mode === "badlands"
-    ? "rock_desert"
-    : mode === "frozen-lake"
-      ? "rock_snow"
-      : mode === "underground" || mode === "sewer" || mode === "volcanic"
-        ? "rock_dark"
-        : mode === "coast" || mode === "archipelago"
-          ? "rock_light" : "rock";
-  const names = (count: number, footprint: string) =>
-    Array.from({ length: count }, (_, index) => `${family}_${index + 1}_${footprint}.png`);
+  const family = biomeAssetProfile(mode ?? "countryside").rockFamily;
+  const names = (
+    definition: (typeof ROCK_ASSET_VARIANTS)[keyof typeof ROCK_ASSET_VARIANTS],
+  ) => Array.from(
+    { length: definition.count },
+    (_, index) => rockAssetName(family, index + 1, definition.footprint),
+  );
   const paths = {
-    oneByOne: names(16, "1x1"),
-    oneByTwo: names(9, "1x2"),
-    twoByOne: names(3, "2x1"),
-    twoByTwo: names(14, "2x2"),
-    twoByThree: names(1, "2x3"),
-    threeByThree: names(1, "3x3"),
-    fourByThree: names(2, "4x3"),
-    fourByFive: names(1, "4x5"),
-    fiveByFour: names(1, "5x4"),
+    oneByOne: names(ROCK_ASSET_VARIANTS.oneByOne),
+    oneByTwo: names(ROCK_ASSET_VARIANTS.oneByTwo),
+    twoByOne: names(ROCK_ASSET_VARIANTS.twoByOne),
+    twoByTwo: names(ROCK_ASSET_VARIANTS.twoByTwo),
+    twoByThree: names(ROCK_ASSET_VARIANTS.twoByThree),
+    threeByThree: names(ROCK_ASSET_VARIANTS.threeByThree),
+    fourByThree: names(ROCK_ASSET_VARIANTS.fourByThree),
+    fourByFive: names(ROCK_ASSET_VARIANTS.fourByFive),
+    fiveByFour: names(ROCK_ASSET_VARIANTS.fiveByFour),
   };
   const load = (names: string[]) => Promise.all(names.map((name) =>
-    inspectPropAsset(undefined, `/assets/tilesets/lpc/rock/${name}`)));
+    inspectPropAsset(undefined, tilesetAssetPath("lpc", `rock/${name}`))));
   const [
     oneByOne,
     oneByTwo,

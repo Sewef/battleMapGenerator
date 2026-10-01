@@ -1,4 +1,11 @@
 import type { LandscapeMode } from "../domain/map";
+import {
+  ROCK_ASSET_VARIANTS,
+  rockAssetName,
+  tilesetAssetPath,
+  type RockFamily,
+  type TilesetAssetFolder,
+} from "./biome-assets";
 
 export interface InteriorPropSpriteLayout {
   renderWidthCells: number;
@@ -55,12 +62,10 @@ export function interiorAssetSpriteLayout(assetName: string) {
   return INTERIOR_ASSET_SPRITE_LAYOUTS[assetName] ?? DEFAULT_INTERIOR_PROP_SPRITE_LAYOUT;
 }
 
-const TILESET_ROOT = "/assets/tilesets";
+const bailey = (name: string) => tilesetAssetPath("bailey", name);
+const lpc = (name: string) => tilesetAssetPath("lpc", name);
 
-const bailey = (name: string) => `${TILESET_ROOT}/bailey/${name}`;
-const lpc = (name: string) => `${TILESET_ROOT}/lpc/${name}`;
-
-export type InteriorAssetFolder = "ai" | "bailey" | "lpc";
+export type InteriorAssetFolder = TilesetAssetFolder;
 
 const interiorAssetFolders: Record<string, InteriorAssetFolder> = {};
 
@@ -88,7 +93,7 @@ const interiorAssetDefinition = (
 ) => {
   interiorAssetFolders[assetName] = folder;
   if (visual) interiorAssetSpriteLayouts[assetName] = visual;
-  return assetDefinition(`${TILESET_ROOT}/${folder}/${assetName}`, visual);
+  return assetDefinition(tilesetAssetPath(folder, assetName), visual);
 };
 
 const bottomLayout = (
@@ -269,23 +274,24 @@ const lengthAssets = (
   },
 ));
 
-const rockFamilyAssets = (family: "rock" | "rock_light" | "rock_dark" |
-  "rock_desert" | "rock_snow") => ({
-  oneByOne: Array.from({ length: 16 }, (_, index) =>
-    assetDefinition(lpc(`rock/${family}_${index + 1}_1x1.png`))),
-  oneByTwo: Array.from({ length: 9 }, (_, index) =>
-    assetDefinition(lpc(`rock/${family}_${index + 1}_1x2.png`))),
-  twoByOne: Array.from({ length: 3 }, (_, index) =>
-    assetDefinition(lpc(`rock/${family}_${index + 1}_2x1.png`))),
-  twoByTwo: Array.from({ length: 14 }, (_, index) =>
-    assetDefinition(lpc(`rock/${family}_${index + 1}_2x2.png`))),
-  twoByThree: [assetDefinition(lpc(`rock/${family}_1_2x3.png`))],
-  threeByThree: [assetDefinition(lpc(`rock/${family}_1_3x3.png`))],
-  fourByThree: Array.from({ length: 2 }, (_, index) =>
-    assetDefinition(lpc(`rock/${family}_${index + 1}_4x3.png`))),
-  fourByFive: [assetDefinition(lpc(`rock/${family}_1_4x5.png`))],
-  fiveByFour: [assetDefinition(lpc(`rock/${family}_1_5x4.png`))],
-});
+const rockFamilyAssets = (family: RockFamily) => {
+  const assets = (
+    definition: (typeof ROCK_ASSET_VARIANTS)[keyof typeof ROCK_ASSET_VARIANTS],
+  ) => Array.from({ length: definition.count }, (_, index) => assetDefinition(
+    lpc(`rock/${rockAssetName(family, index + 1, definition.footprint)}`),
+  ));
+  return {
+    oneByOne: assets(ROCK_ASSET_VARIANTS.oneByOne),
+    oneByTwo: assets(ROCK_ASSET_VARIANTS.oneByTwo),
+    twoByOne: assets(ROCK_ASSET_VARIANTS.twoByOne),
+    twoByTwo: assets(ROCK_ASSET_VARIANTS.twoByTwo),
+    twoByThree: assets(ROCK_ASSET_VARIANTS.twoByThree),
+    threeByThree: assets(ROCK_ASSET_VARIANTS.threeByThree),
+    fourByThree: assets(ROCK_ASSET_VARIANTS.fourByThree),
+    fourByFive: assets(ROCK_ASSET_VARIANTS.fourByFive),
+    fiveByFour: assets(ROCK_ASSET_VARIANTS.fiveByFour),
+  };
+};
 
 const casualSofaAssets = (facing: FurnitureFacing) =>
   casualSofaAssetNames(facing).map((name) =>
@@ -356,11 +362,11 @@ const TILESET_PROP_ASSET_DEFINITIONS = {
       west: interiorAssetDefinition("torch_west.png", centeredLayout(1, 1)),
     },
     rockFamilies: {
-      normal: rockFamilyAssets("rock"),
-      light: rockFamilyAssets("rock_light"),
-      dark: rockFamilyAssets("rock_dark"),
-      desert: rockFamilyAssets("rock_desert"),
-      snow: rockFamilyAssets("rock_snow"),
+      normal: rockFamilyAssets("normal"),
+      light: rockFamilyAssets("light"),
+      dark: rockFamilyAssets("dark"),
+      desert: rockFamilyAssets("desert"),
+      snow: rockFamilyAssets("snow"),
     },
 
     crate1x1: numberedAssets((index) =>
