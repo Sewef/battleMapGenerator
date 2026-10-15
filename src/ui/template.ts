@@ -19,6 +19,7 @@ export const PARAMETER_FIELDS = [
   { id: "rocks", key: "rockRatio", label: "Rocks", min: 0, max: 12, step: 1, percent: true, group: "obstacles" },
   { id: "trees", key: "treeRatio", label: "Trees", min: 0, max: 32, step: 1, percent: true, group: "obstacles" },
   { id: "buildings", key: "buildingCount", label: "Buildings", min: 0, max: 8, step: 1, percent: false, group: "obstacles" },
+  { id: "streets", key: "streetWidth", label: "Street width", min: 1, max: 4, step: 1, percent: false, group: "terrain" },
   { id: "lights", key: "lightPropRatio", label: "Light props", min: 0, max: 5, step: .5, percent: true, group: "lighting" },
 ] as const;
 
@@ -35,7 +36,7 @@ export const BIOME_PARAMETER_PROFILES: Record<
   underground: { water: "Pool frequency", difficult: "Rough floor", rocks: "Rock density" },
   volcanic: { water: "Lava coverage", difficult: "Ash coverage", relief: "Volcanic ridges", rocks: "Rock density" },
   highlands: { relief: "Ridges / ravines", rocks: "Rock density", trees: "Tree density", buildings: "Buildings" },
-  city: { difficult: "Damaged ground", trees: "Street trees", buildings: "Urban density" },
+  city: { difficult: "Damaged ground", streets: "Street width", trees: "Street trees", buildings: "Urban density" },
   "desert-canyon": { water: "Oasis size", difficult: "Scree coverage", relief: "Canyon relief", rocks: "Rock density", trees: "Vegetation density", buildings: "Buildings" },
   "ancient-forest": { water: "Stream width", difficult: "Undergrowth", rocks: "Rock density", trees: "Forest density", buildings: "Ruins / buildings" },
   "frozen-lake": { water: "Frozen basin size", difficult: "Snowdrifts", rocks: "Rock density", trees: "Tree density", buildings: "Buildings" },

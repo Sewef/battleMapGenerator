@@ -284,9 +284,11 @@ function updateLabels() {
   document.querySelector("#height-value")!.textContent = heightInput.value;
   for (const field of PARAMETER_FIELDS) {
     const value = inputs[field.id].value;
-    document.querySelector(`#${field.id}-value`)!.textContent = field.group === "terrain"
-      ? `×${(Number(value) / 100).toFixed(1)}`
-      : field.percent ? `${value}%` : value;
+    document.querySelector(`#${field.id}-value`)!.textContent = field.percent
+      ? field.group === "terrain"
+        ? `×${(Number(value) / 100).toFixed(1)}`
+        : `${value}%`
+      : value;
   }
 }
 
@@ -447,6 +449,7 @@ function currentGenerationOptions(): TerrainOptions {
     rockRatio: Number(inputs.rocks.value) / 100,
     treeRatio: Number(inputs.trees.value) / 100,
     buildingCount: Number(inputs.buildings.value),
+    streetWidth: Number(inputs.streets.value),
     lightPropRatio: Number(inputs.lights.value) / 100,
   };
 }

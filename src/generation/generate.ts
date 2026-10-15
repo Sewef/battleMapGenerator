@@ -1433,6 +1433,7 @@ function generateTerrainAttempt(options: TerrainOptions) {
       seededRandom(`${seed}:city`),
       options.buildingCount,
       options.difficultWeight,
+      options.streetWidth,
     );
   }
 

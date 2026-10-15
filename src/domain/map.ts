@@ -162,6 +162,7 @@ export interface TerrainOptions {
   rockRatio: number;
   treeRatio: number;
   buildingCount: number;
+  streetWidth?: number;
   lightPropRatio?: number;
 }
 

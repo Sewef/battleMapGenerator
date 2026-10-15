@@ -1491,6 +1491,39 @@ for (const preset of PRESETS) {
   }
 }
 
+const cityPreset = PRESETS.find(({ mode }) => mode === "city");
+assert(cityPreset, "missing city preset");
+const cityStreetWidths = [1, 2, 3, 4].map((streetWidth) => {
+  const label = `city:street-width:${streetWidth}`;
+  const grid = generateTerrain({
+    ...cityPreset,
+    streetWidth,
+    seed: "city-street-width-audit",
+  });
+  assertGrid(grid, label);
+  assertExteriorSemantics(grid, "city", cityPreset.buildingCount, label);
+  generated += 1;
+  const buildingCells = grid.flat().filter((tile) =>
+    tile.obstacle === Obstacle.Building
+  );
+  const buildingIds = new Set(buildingCells.map(({ obstacleId }) => obstacleId));
+  return {
+    roadCells: grid.flat().filter((tile) =>
+      tileSurface(tile) === Terrain.Road
+    ).length,
+    averageBuildingSize: buildingCells.length / Math.max(1, buildingIds.size),
+  };
+});
+assert(
+  cityStreetWidths[3].roadCells > cityStreetWidths[0].roadCells,
+  "city: increasing the street width must increase the road footprint",
+);
+assert(
+  cityStreetWidths[3].averageBuildingSize >
+    cityStreetWidths[0].averageBuildingSize,
+  "city: broader streets must produce proportionally broader buildings",
+);
+
 const exteriorSemanticPresets = PRESETS.filter(({ mode }) => !isInteriorMode(mode));
 for (const preset of exteriorSemanticPresets) {
   const spatialQualitySamples: Grid[] = [];

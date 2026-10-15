@@ -127,7 +127,7 @@ export const PRESETS: Preset[] = [
     description: "Connected streets, plazas, alleys, and dense urban blocks.",
     width: 36, height: 24, seed: "", scale: 8, mode: "city",
     waterWeight: 0, difficultWeight: 0.7, reliefWeight: 0,
-    rockRatio: 0, treeRatio: 0.015, buildingCount: 8,
+    rockRatio: 0, treeRatio: 0.015, buildingCount: 8, streetWidth: 1,
   },
   {
     id: "highlands",

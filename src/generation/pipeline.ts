@@ -65,6 +65,7 @@ export function normalizeGenerationOptions(
     rockRatio: clamp(options.rockRatio, 0, .35),
     treeRatio: clamp(options.treeRatio, 0, .5),
     buildingCount: clamp(Math.round(options.buildingCount), 0, 40),
+    streetWidth: clamp(Math.round(options.streetWidth ?? 1), 1, 4),
     lightPropRatio: clamp(options.lightPropRatio ?? 0, 0, .05),
   };
 }

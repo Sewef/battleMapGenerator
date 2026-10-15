@@ -6,49 +6,68 @@ export function generateCity(
   random: Random,
   buildingWeight: number,
   difficultWeight: number,
+  streetWidth = 1,
 ) {
   const height = grid.length;
   const width = grid[0].length;
+  const roadWidth = Math.max(1, Math.min(4, Math.round(streetWidth)));
+  // Broader streets need broader blocks as well: one extra cell preserves the
+  // original building depth, and the second lets building footprints scale up
+  // with the road hierarchy instead of looking pinched between wide avenues.
+  const streetSpacingAdjustment = (roadWidth - 1) * 2;
   const verticalStreets = [0];
   const horizontalStreets = [0];
 
-  for (let x = 6 + Math.floor(random() * 3); x < width - 3;) {
+  for (
+    let x = 6 + Math.floor(random() * 3) + streetSpacingAdjustment;
+    x < width - 3;
+  ) {
     verticalStreets.push(x);
-    x += 7 + Math.floor(random() * 5);
+    x += 7 + Math.floor(random() * 5) + streetSpacingAdjustment;
   }
-  for (let y = 5 + Math.floor(random() * 3); y < height - 3;) {
+  for (
+    let y = 5 + Math.floor(random() * 3) + streetSpacingAdjustment;
+    y < height - 3;
+  ) {
     horizontalStreets.push(y);
-    y += 6 + Math.floor(random() * 4);
+    y += 6 + Math.floor(random() * 4) + streetSpacingAdjustment;
   }
   verticalStreets.push(width - 1);
   horizontalStreets.push(height - 1);
 
   for (const x of verticalStreets) {
-    for (let y = 0; y < height; y += 1) {
-      setTileSurface(grid[y][x], Terrain.Road);
+    for (let offset = 0; offset < roadWidth; offset += 1) {
+      for (let y = 0; y < height; y += 1) {
+        if (grid[y][x + offset]) setTileSurface(grid[y][x + offset], Terrain.Road);
+      }
     }
   }
   for (const y of horizontalStreets) {
-    for (let x = 0; x < width; x += 1) {
-      setTileSurface(grid[y][x], Terrain.Road);
+    for (let offset = 0; offset < roadWidth; offset += 1) {
+      if (!grid[y + offset]) continue;
+      for (let x = 0; x < width; x += 1) {
+        setTileSurface(grid[y + offset][x], Terrain.Road);
+      }
     }
   }
 
   // A wider avenue gives the street network a readable hierarchy.
   const avenue = verticalStreets[Math.floor(verticalStreets.length / 2)];
   for (let y = 0; y < height; y += 1) {
-    setTileSurface(grid[y][avenue], Terrain.Road);
-    if (grid[y][avenue + 1]) {
-      setTileSurface(grid[y][avenue + 1], Terrain.Road);
+    for (let offset = 0; offset <= roadWidth; offset += 1) {
+      if (grid[y][avenue + offset]) {
+        setTileSurface(grid[y][avenue + offset], Terrain.Road);
+      }
     }
   }
 
   let buildingId = 0;
   for (let row = 0; row < horizontalStreets.length - 1; row += 1) {
     for (let column = 0; column < verticalStreets.length - 1; column += 1) {
-      const left = verticalStreets[column] + 1;
+      const street = verticalStreets[column];
+      const left = street + roadWidth + (street === avenue ? 1 : 0);
       const right = verticalStreets[column + 1] - 1;
-      const top = horizontalStreets[row] + 1;
+      const top = horizontalStreets[row] + roadWidth;
       const bottom = horizontalStreets[row + 1] - 1;
       if (right - left < 2 || bottom - top < 2) continue;
 
