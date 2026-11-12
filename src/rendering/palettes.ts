@@ -92,7 +92,7 @@ const biomePalettes: Record<
     difficult: { color: "#8d965a", alt: "#818a50" },
   },
   archipelago: {
-    ground: { color: "#9fbd78", alt: "#93b16d" },
+    ground: { color: "#85b85c", alt: "rgb(67, 173, 90)" },
     difficult: { color: "#708d5c", alt: "#668253" },
   },
   "mountain-pass": {
