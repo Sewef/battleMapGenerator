@@ -116,7 +116,7 @@ const biomePalettes: Record<
     difficult: { color: "#7f9b68", alt: "#758f60" },
   },
   coast: {
-    ground: { color: "#b9bf86", alt: "#adb47b" },
+    ground: { color: "#85b85c", alt: "rgb(67, 173, 90)" },
     difficult: { color: "#99996a", alt: "#8d8d60" },
   },
   wetlands: {
